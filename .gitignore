@@ -58,3 +58,4 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 src/stuff.ts
 .astro/settings.json
 .vscode/extensions.json
+src/stuff.ts

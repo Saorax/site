@@ -70,7 +70,7 @@ function MakeList({ data, selectedType, onClick }) {
           <span className={`md:ml-3 font-medium text-base lg:text-lg ${textColor}`}>{data.name}</span>
         </div>
       </th>
-      <td className={`hidden sm:table-cell font-medium ${textColor} min-w-20 text-base md:text-lg`}>{selectedType == '1' ? data.total : data.total?.toFixed(6)}</td>
+      <td className={`hidden sm:table-cell font-medium ${textColor} min-w-20 text-base md:text-lg`}>{selectedType == '1' ? data.total : data.total?.toFixed(3)}</td>
       <td className={`table-cell sm:hidden font-medium ${textColor} min-w-20 text-base md:text-lg`}>{selectedType == '1' ? data.total : data.total?.toFixed(3)}</td>
       <td className="min-w-30 pl-2.5 hidden md:table-cell">
         <div className="flex space-x-2">
@@ -108,7 +108,7 @@ function RankingsList({ preset, region, minifyRank, selectedType, gamemode, date
       if (searchTerm) {
         body.search = searchTerm;
       }
-      const url = selectedType === '0' ? `${host}/pr/official` : `${host}/pr/circuit/${preset}/${region}`;
+      const url = `${host}/pr/official/allPoints`;
       const data = await fetchPostData(url, body);
       setRankList(data.players);
       setTotalPlayers(data.data.players);
@@ -117,23 +117,6 @@ function RankingsList({ preset, region, minifyRank, selectedType, gamemode, date
     };
     fetchAllData();
   }, [page, perPage, preset, region, minifyRank, searchTerm, gamemode, dateDecay, selectedType, tourneyIds]);
-
-  useEffect(() => {
-    if (selectedType === '1') {
-      const fetchPresetData = async () => {
-        const data = await fetchData(`${host}/pr/data/presets/circuit`);
-        setPresetData(data[preset]);
-      };
-      fetchPresetData();
-    } else if (selectedType === '0') {
-      const fetchPresetData = async () => {
-        let data = await fetchData(`${host}/pr/data/tourneys/officials`);
-        data = data.filter((r) => tourneyIds.includes(r.id));
-        setPresetData(data);
-      };
-      fetchPresetData();
-    }
-  }, [preset, selectedType]);
 
   const halfLength = Math.ceil(rankList.length / 2);
 
@@ -175,16 +158,8 @@ function RankingsList({ preset, region, minifyRank, selectedType, gamemode, date
             </div>
           </div>
         )}
-        <div className='flex flex-col lg:flex-row justify-center items-center'>
-          <input
-            type="text"
-            placeholder="Search..."
-            className="text-gray-200 w-full p-2 border bg-slate-800 border-gray-700 rounded-lg focus:outline-none focus:ring focus:ring-blue-500"
-            value={searchTerm}
-            onChange={handleSearchChange}
-          />
-          <div className='flex flex-col justify-center items-center'>
-            <span className="text-base text-slate-800 dark:text-slate-500">
+          <div className='flex w-full pb-2 justify-center items-center'>
+            <span className="text-lg text-slate-800 dark:text-slate-500">
               Showing <span id="pageMin" className="font-medium text-slate-950 dark:text-white">{(page - 1) * perPage + 1}</span> to <span id="pageMax" className="font-medium text-slate-950 dark:text-white">{Math.min(page * perPage, totalPlayers)}</span> of <span id="maxPlayers" className="font-medium text-slate-950 dark:text-white">{totalPlayers}</span> Players
             </span>
             <div className="inline-flex md:pl-2 pt-1 md:pt-0">
@@ -205,8 +180,6 @@ function RankingsList({ preset, region, minifyRank, selectedType, gamemode, date
               </button>
             </div>
           </div>
-          
-        </div>
       </div>
       <div className="overflow-auto w-full flex flex-col lg:flex-row scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
         <div className="w-full lg:w-1/2">
@@ -338,28 +311,6 @@ const Sidebar = ({ selectedGamemode, setSelectedGamemode, dateDecay, setDateDeca
   const [selectedPreset, setSelectedPreset] = useState(0);
   const [tourneySelections, setTourneySelections] = useState({});
 
-  useEffect(() => {
-    const fetchAllData = async () => {
-      const officialsPresets = await fetchData(`${host}/pr/data/presets/officials`);
-      const tourneysData = await fetchData(`${host}/pr/data/tourneys/officials`);
-      for (let i = 0; i < tourneysData.length; i++) {
-        console.log(tourneysData[i])
-        if (!tourneyYears.includes(tourneysData[i].year)) tourneyYears.push(tourneysData[i].year);
-      }
-      setPresets(officialsPresets);
-      setTourneys(tourneysData);
-      setLanPresets(await fetchData(`${host}/pr/data/presets/lans`));
-      const circuitData = await fetchData(`${host}/pr/data/presets/circuit`);
-      setCircuitPresets(circuitData.map((preset, i) => {
-        const season = i % 2 === 0 ? "Winter" : "Summer";
-        return { preset: preset, name: `${season} Circuit ${preset[0].year}` };
-      }));
-      setTourneyIds(officialsPresets[0].map(r => r.id));
-      setLanTourneys(await fetchData(`${host}/pr/data/tourneys/lans`));
-      setCircuit(await fetchData(`${host}/pr/data/tourneys/circuit`));
-    };
-    fetchAllData();
-  }, []);
 
   const handlePresetChange = (index) => {
     setSelectedPreset(index);
@@ -382,50 +333,6 @@ const Sidebar = ({ selectedGamemode, setSelectedGamemode, dateDecay, setDateDeca
       const newSelections = { ...prev, [id]: !prev[id] };
       setTourneyIds(Object.keys(newSelections).filter(key => newSelections[key]).map(key => parseInt(key, 10)));
       return newSelections;
-    });
-  };
-
-  const renderTournaments = () => {
-    return tourneyYears.map((year, index) => {
-      const yearTourneys = tourneys.filter(t => t.year === year);
-      return (
-        <div key={index} className="mb-4">
-          <Disclosure defaultOpen={year === "2024"}>
-            {({ open }) => (
-              <>
-                <Disclosure.Button className="flex justify-between w-full px-4 py-2 text-xl font-medium text-left text-gray-900 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus-visible:ring focus-visible:ring-gray-500 focus-visible:ring-opacity-75 shadow-md">
-                  <span>{year}</span>
-                  {open ? <ChevronUpIcon className="w-5 h-5 text-gray-900 dark:text-white" /> : <ChevronDownIcon className="w-5 h-5 text-gray-900 dark:text-white" />}
-                </Disclosure.Button>
-                <Disclosure.Panel className="px-0.5 pt-4 pb-2 text-sm md:text-base text-gray-900 dark:text-white">
-                  {yearTourneys.map((tourney, i) => (
-                    <div key={i} className="flex justify-between p-2 bg-white dark:bg-gray-800 border border-gray-300 rounded-lg shadow-sm mb-2 dark:border-gray-700">
-                      <div className="flex">
-                        <div className="flex items-center h-5">
-                          <input 
-                            type="checkbox" 
-                            id={`tourney-${tourney.id}`} 
-                            name={`tourney-${tourney.id}`} 
-                            className="w-4 h-4 text-blue-600 bg-gray-200 border-gray-400 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600" 
-                            checked={!!tourneySelections[tourney.id]} 
-                            onChange={() => handleTourneyToggle(tourney.id)}
-                          />
-                        </div>
-                        <div className="ml-2">
-                          <label htmlFor={`tourney-${tourney.id}`} className="text-sm md:text-base font-medium text-gray-900 dark:text-gray-300">{tourney.name}</label>
-                          <p className="text-xs md:text-sm font-normal text-gray-600 dark:text-gray-400">Regions: {tourney.regions.join(", ")}</p>
-                          <p className="text-xs md:text-sm font-normal text-gray-600 dark:text-gray-400">Gamemodes: {tourney.gamemode.join(", ")}</p>
-                        </div>
-                      </div>
-                      <img src={tourney.image} alt={tourney.name} className="w-12 h-12 rounded-lg" />
-                    </div>
-                  ))}
-                </Disclosure.Panel>
-              </>
-            )}
-          </Disclosure>
-        </div>
-      );
     });
   };
 
@@ -471,18 +378,6 @@ const Sidebar = ({ selectedGamemode, setSelectedGamemode, dateDecay, setDateDeca
           </RadioGroup>
         </div>
       )}
-      <label className="relative inline-flex items-center cursor-pointer mt-4">
-        <input
-          type="checkbox"
-          id="decay"
-          value="decay"
-          className="sr-only peer"
-          checked={dateDecay}
-          onChange={() => setDateDecay(!dateDecay)}
-        />
-        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-        <span className="ml-3 text-sm font-medium text-gray-900 dark:text-gray-300 sm:text-xs">Add Date Decay</span>
-      </label>
       <hr className="h-px my-2 bg-gray-300 border-0 dark:bg-gray-700" />
 
       {/* Regions */}
@@ -545,62 +440,6 @@ const Sidebar = ({ selectedGamemode, setSelectedGamemode, dateDecay, setDateDeca
       </Disclosure>
 
       <hr className="h-px my-2 bg-gray-300 border-0 dark:bg-gray-700" />
-
-      {/* Presets */}
-      <Disclosure defaultOpen>
-        {({ open }) => (
-          <>
-            <Disclosure.Button className="flex justify-between w-full px-4 py-2 text-xl font-medium text-left text-gray-900 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus-visible:ring focus-visible:ring-gray-500 focus-visible:ring-opacity-75 shadow-md">
-              <span>Presets</span>
-              {open ? <ChevronUpIcon className="w-5 h-5 text-gray-900 dark:text-white" /> : <ChevronDownIcon className="w-5 h-5 text-gray-900 dark:text-white" />}
-            </Disclosure.Button>
-            <Disclosure.Panel className=" p-2 pt-2 pb-2 md:text-sm text-gray-900 dark:text-white text-xs">
-              <RadioGroup value={selectedPreset} onChange={handlePresetChange}>
-                <RadioGroup.Label className="sr-only">Select a preset</RadioGroup.Label>
-                {selectedType === '1' ? (
-                  circuitPresets.slice().map((preset, i) => (
-                    <RadioGroup.Option key={i} value={i} className={({ checked }) => `${checked ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-300'} flex justify-between items-center py-2 border border-gray-300 rounded-lg shadow-sm mb-2 dark:border-gray-700 cursor-pointer`}>
-                      {({ checked }) => (
-                        <>
-                          <div className="flex items-center">
-                            <input type="radio" id={`preset-${i}`} name="preset" className="hidden" checked={checked} readOnly />
-                            <label htmlFor={`preset-${i}`} className="ml-2 md:text-base font-medium text-sm">{preset.name}</label>
-                          </div>
-                          <img src={preset.preset[preset.preset.length - 1].image} alt={preset.name} className="w-12 h-12 rounded-lg" />
-                        </>
-                      )}
-                    </RadioGroup.Option>
-                  ))
-                ) : (
-                  presets.slice().map((preset, i) => (
-                    <RadioGroup.Option key={i} value={i} className={({ checked }) => `${checked ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-300'} flex justify-between items-center py-2 border border-gray-300 rounded-lg shadow-sm mb-2 dark:border-gray-700 cursor-pointer`}>
-                      {({ checked }) => (
-                        <>
-                          <div className="flex items-center">
-                            <input type="radio" id={`preset-${i}`} name="preset" className="hidden" checked={checked} readOnly />
-                            <label htmlFor={`preset-${i}`} className="ml-2 md:text-base font-medium text-sm">{preset[0].name}</label>
-                          </div>
-                          <img src={preset[0].image} alt={preset[0].name} className="w-12 h-12 rounded-lg" />
-                        </>
-                      )}
-                    </RadioGroup.Option>
-                  ))
-                )}
-              </RadioGroup>
-            </Disclosure.Panel>
-          </>
-        )}
-      </Disclosure>
-
-      <hr className="h-px my-2 bg-gray-300 border-0 dark:bg-gray-700" />
-
-      {/* Individual Tournaments */}
-      {selectedType === '0' && (
-        <a className="flex justify-center pl-2.5 py-3">
-          <span className="self-center text-2xl font-semibold text-gray-900 dark:text-white">Individual Tournaments</span>
-        </a>
-      )}
-      {selectedType === '0' && renderTournaments()}
     </div>
   );
 };
@@ -608,7 +447,7 @@ const Sidebar = ({ selectedGamemode, setSelectedGamemode, dateDecay, setDateDeca
 const PowerRankings = () => {
   const [selectedType, setSelectedType] = useState('0');
   const [selectedGamemode, setSelectedGamemode] = useState('1v1');
-  const [dateDecay, setDateDecay] = useState(true);
+  const [dateDecay, setDateDecay] = useState(false);
   const [minifyRank, setMinifyRank] = useState(true);
   const [preset, setPreset] = useState(0);
   const [region, setRegion] = useState("NA");
@@ -623,14 +462,6 @@ const PowerRankings = () => {
   };
 
   useEffect(() => {
-    if (selectedType === '1') {
-      const fetchPresetData = async () => {
-        const data = await fetchData(`${host}/pr/data/presets/circuit`);
-        setTempPreset(0);
-      };
-      fetchPresetData();
-      setPreset(tempPreset);
-    }
 
     document.addEventListener('mousedown', handleOutsideClick);
 
@@ -666,18 +497,6 @@ const PowerRankings = () => {
       <div className="bg-gray-100 flex h-screen dark:bg-slate-950">
         <aside ref={sidebarRef} id="logo-sidebar" className="fixed inset-0 z-40 md:w-1/4 w-80 h-screen transition-transform -translate-x-full md:translate-x-0 bg-white dark:bg-gray-900 md:static overflow-y-auto shadow-lg scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thumb-rounded-full scrollbar-track-rounded-full">
           <div className="h-full p-2">
-            <div className="py-2">
-              <h2 htmlFor="prType" className="block mb-2 text-base font-medium text-gray-900 dark:text-gray-400">These are estimates. They will not be 100% accurate, but they are as close as possible to what officials would look like, up until top 200</h2>
-              <hr className="h-px my-2 bg-gray-300 border-0 dark:bg-gray-700" />
-              <label htmlFor="prType" className="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-400">Tournament Type</label>
-              <select id="prType" value={selectedType} onChange={handleTypeChange} className="block w-full px-4 py-3 text-base text-gray-900 border border-gray-400 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:placeholder-gray-500 dark:text-white dark:focus:ring-blue-700 dark:focus:border-blue-700">
-                <option value="0">Official Tournaments</option>
-                <option value="1">Brawlhalla Circuit</option>
-                <option value="2">LAN Tournaments</option>
-                <option value="3">Royales</option>
-                <option value="4">Community Tournaments</option>
-              </select>
-            </div>
             <Sidebar
               selectedGamemode={selectedGamemode}
               setSelectedGamemode={setSelectedGamemode}
