@@ -22,7 +22,7 @@ const fetchPostData = async (url, body) => {
     document.getElementById('text-'+body.int1).value = `please wait ${aa.minutes() > 0 ? `${aa.minutes()}m ${aa.seconds()}s` : `${aa.seconds()}s`}`
     return null
   };
-  if (((10 - mx) - body.int2) < 0) body.int2 = 10 - mx;
+  if (mx && ((10 - mx) - body.int2) < 0) body.int2 = 10 - mx;
   const res = await fetch(url, {
     method: 'POST',
     body: JSON.stringify(body)
