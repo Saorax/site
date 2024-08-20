@@ -28,8 +28,8 @@ const fetchPostData = async (url, body) => {
     body: JSON.stringify(body)
   });
   const data = await res.json();
+  if (data.length !== 0) document.cookie = `mx=${mx ? mx + body.int2 : body.int2};`;
   document.cookie = `gfd=${new Date().getTime() + 300000};`;
-  document.cookie = `mx=${mx ? mx + body.int2 : body.int2};`
   return data;
 };
 async function copyCodes(int1, int2) {
@@ -38,7 +38,7 @@ async function copyCodes(int1, int2) {
   });
   if (data !== null) {
     document.getElementById('text-'+int1).value = data.join('\n')
-    //navigator.clipboard.writeText(data.join('\n'));
+    navigator.clipboard.writeText(data.join('\n'));
   }
   return data;
 }
@@ -80,12 +80,16 @@ function MakeTable(data) {
 const CodeDatabase = () => {
   const [allCodes, setAllCodes] = useState([]);
   const [usedLength, setUsedLength] = useState();
+  const [allLength, setAllLength] = useState();
+  
   useEffect(() => {
     const fetchData = async () => {
       const response = await fetchData2(host + '/codes/list/all');
       const response2 = await fetchData2(host + '/codes/list/usedLength');
+      const response3 = await fetchData2(host + '/codes/list/allLength');
       setAllCodes(response);
       setUsedLength(response2.length);
+      setAllLength(response3.length);
     };
     fetchData();
   }, []);
@@ -93,7 +97,7 @@ const CodeDatabase = () => {
     <div class=' text-white'>
       <div className='flex flex-col p-2 text-center text-3xl font-bold'>
         <span>Limit of 10 Codes every 5 minutes</span>
-        <span>{usedLength} used codes</span>
+        <span>{usedLength} used codes out of {allLength}</span>
       </div>
       <div className=' bg-slate-900 grid grid-cols-4'>
         {allCodes.map(r => <MakeTable data={r} />)}
