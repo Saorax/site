@@ -18,7 +18,7 @@ const fetchPostData = async (url, body) => {
   if (mx) mx = parseFloat(mx.split('=')[1]);
   
   const aa = moment.duration(cook - new Date().getTime());
-  if (cook > new Date().getTime() && mx >= 10) {
+  if (cook && (cook > new Date().getTime() && mx >= 10)) {
     document.getElementById('text-'+body.int1).value = `please wait ${aa.minutes() > 0 ? `${aa.minutes()}m ${aa.seconds()}s` : `${aa.seconds()}s`}`
     return null
   };
