@@ -38,7 +38,7 @@ async function copyCodes(int1, int2) {
   });
   if (data !== null) {
     document.getElementById('text-'+int1).value = data.join('\n')
-    navigator.clipboard.writeText(data.join('\n'));
+    //navigator.clipboard.writeText(data.join('\n'));
   }
   return data;
 }
