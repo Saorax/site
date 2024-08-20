@@ -16,7 +16,7 @@ const fetchPostData = async (url, body) => {
   let mx = document.cookie.split('; ').find(row => row.startsWith('mx='));
   if (cook) cook = parseFloat(cook.split('=')[1]);
   if (mx) mx = parseFloat(mx.split('=')[1]);
-  
+  if (body.int2 == 0) body.int2 = 1;
   const aa = moment.duration(cook - new Date().getTime());
   if (cook && (cook > new Date().getTime() && mx >= 10)) {
     document.getElementById('text-'+body.int1).value = `please wait ${aa.minutes() > 0 ? `${aa.minutes()}m ${aa.seconds()}s` : `${aa.seconds()}s`}`
