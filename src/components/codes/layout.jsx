@@ -94,7 +94,7 @@ const CodeDatabase = () => {
     fetchData();
   }, []);
   return (
-    <div class=' text-white'>
+    <div class='text-white'>
       <div className='flex flex-col p-2 text-center text-3xl font-bold'>
         <span>Limit of 10 Codes every 5 minutes</span>
         <span>{usedLength} used codes out of {allLength}</span>
