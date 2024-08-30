@@ -182,7 +182,33 @@ function App() {
                                         Changed Data
                                     </button>
                                     {historyData.changesOpen && (
+                                        <div>
+                                            {historyData.varChanges.new.length !== 0 && (
+                                                <div>
+                                                    <span className='text-lg'>New Variables</span>
+                                                    <div>
+                                                        {historyData.varChanges.new.map((cng) => {
+                                                            return (
+                                                                <li>{cng}</li>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+                                            {historyData.varChanges.deleted.length !== 0 && (
+                                                <div>
+                                                    <span>Deleted Variables</span>
+                                                    <div>
+                                                        {historyData.varChanges.deleted.map((cng) => {
+                                                            return (
+                                                                <li>{cng}</li>
+                                                            )
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                            
                                             {historyData.changes.map((change, index) => {
                                                 const flattenedChange = flattenChangeObject(change);
                                                 const isExpanded = expandedItems.changes[index];
@@ -222,6 +248,7 @@ function App() {
                                                     </div>
                                                 );
                                             })}
+                                        </div>
                                         </div>
                                     )}
                                 </div>
