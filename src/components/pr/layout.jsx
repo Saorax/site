@@ -43,9 +43,29 @@ const fetchPostData = async (url, body) => {
 
 function MakeList({ data, selectedType, onClick }) {
   const isTopFourCircuit = selectedType === '1' && data.place <= 4;
-  const backgroundColor = isTopFourCircuit || data.place === 1 ? 'bg-yellow-400' : data.place === 2 ? 'bg-gray-300' : data.place === 3 ? 'bg-yellow-800' : 'bg-slate-900';
-  const hoverColor = isTopFourCircuit || data.place === 1 ? 'hover:bg-yellow-500' : data.place === 2 ? 'hover:bg-gray-400' : data.place === 3 ? 'hover:bg-yellow-900' : 'hover:bg-slate-700';
-  const textColor = isTopFourCircuit || data.place === 1 || data.place === 2 ? 'text-slate-900' : 'text-white';
+  let backgroundColor = isTopFourCircuit || data.place === 1 ? 'bg-yellow-400 hover:bg-yellow-500' : data.place === 2 ? 'bg-gray-300 hover:bg-gray-400' : data.place === 3 ? 'bg-yellow-800 hover:bg-yellow-900' : 'bg-slate-900 hover:bg-slate-700';
+  let textColor = selectedType === '1' || data.place === 1 || data.place === 2 ? 'text-slate-900' : 'text-white';
+  const eligG = 'bg-green-600 hover:bg-green-700';
+  const eligP = 'bg-yellow-600 hover:bg-yellow-700';
+  const eligE = 'bg-red-800 hover:bg-red-900';
+  let elig = '';
+  if (data.eligibility) {
+    if (data.eligibility == 1) elig = eligG;
+    if (data.eligibility == 2) elig = eligP;
+    if (data.eligibility == 3) elig = eligE;
+  }
+  if (selectedType === '1') {
+    if(data.playedTotal == 4) {
+      if (data.place <= 4) {
+        backgroundColor = 'bg-green-600 hover:bg-green-700';
+        textColor = 'text-slate-900'
+      } else {
+        backgroundColor = 'bg-red-800 hover:bg-red-900';
+        textColor = 'text-gray-400'
+      }
+    };
+    if (data.eligibility && data.eligibility == 3) textColor = 'text-gray-400'
+  }
   let rankChange;
   if (data.lastPlace != 0 && data.lastPlace != data.place ) {
     if (data.lastPlace > data.place) {
@@ -55,7 +75,7 @@ function MakeList({ data, selectedType, onClick }) {
     }
   } else if (data.place == data.lastPlace) rankChange = <span className="text-orange-500 ml-3">≈</span>;
   return (
-    <tr className={`justify-between cursor-pointer ${backgroundColor} border-b border-r dark:border-slate-800 ${hoverColor}`} onClick={() => onClick(selectedType != 0 ? null : data)}>
+    <tr className={`justify-between cursor-pointer ${selectedType === '1' && data.playedTotal <= 3 ? elig : backgroundColor} border-b border-r dark:border-slate-800`} onClick={() => onClick(selectedType != 0 ? null : data)}>
       <td className={`lg:p-3 p-2 font-bold ${textColor} md:w-20 w-16`}>{ordinal(data.place)}</td>
       <td className='md:w-20 w-16 font-bold'> {rankChange}</td>
       <th scope="row" className="w-[40%]">
@@ -593,7 +613,13 @@ const Sidebar = ({ selectedGamemode, setSelectedGamemode, dateDecay, setDateDeca
       </Disclosure>
 
       <hr className="h-px my-2 bg-gray-300 border-0 dark:bg-gray-700" />
-
+      {selectedType === '1' && (
+        <div className='flex flex-col text-base'>
+          <li className='text-green-600'>Green means they are guaranteed to go to the Royale</li>
+          <li className='text-yellow-600'>Yellow/Orange means they can still make it to the Royale</li>
+          <li className='text-red-600'>Red means they cannot make it to the royale</li>
+        </div>
+      )}
       {/* Individual Tournaments */}
       {selectedType === '0' && (
         <a className="flex justify-center pl-2.5 py-3">
