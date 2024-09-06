@@ -363,7 +363,6 @@ const Sidebar = ({ selectedGamemode, setSelectedGamemode, dateDecay, setDateDeca
       const officialsPresets = await fetchData(`${host}/pr/data/presets/officials`);
       const tourneysData = await fetchData(`${host}/pr/data/tourneys/officials`);
       for (let i = 0; i < tourneysData.length; i++) {
-        console.log(tourneysData[i])
         if (!tourneyYears.includes(tourneysData[i].year)) tourneyYears.push(tourneysData[i].year);
       }
       setPresets(officialsPresets);
