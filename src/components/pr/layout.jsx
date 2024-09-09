@@ -75,7 +75,7 @@ function MakeList({ data, selectedType, onClick }) {
     }
   } else if (data.place == data.lastPlace) rankChange = <span className="text-orange-500 ml-3">≈</span>;
   return (
-    <tr className={`justify-between cursor-pointer ${selectedType === '1' && data.playedTotal <= 3 ? elig : backgroundColor} border-b border-r dark:border-slate-800`} onClick={() => onClick(selectedType != 0 ? null : data)}>
+    <tr className={`justify-between cursor-pointer ${selectedType === '1' && data.playedTotal <= 3 ? elig : backgroundColor} border-b border-r dark:border-slate-800`} onClick={() => onClick(data)}>
       <td className={`lg:p-3 p-2 font-bold ${textColor} md:w-20 w-16`}>{ordinal(data.place)}</td>
       <td className='md:w-20 w-16 font-bold'> {rankChange}</td>
       <th scope="row" className="w-[40%]">
@@ -266,12 +266,12 @@ function RankingsList({ preset, region, minifyRank, selectedType, gamemode, date
           </table>
         </div>
       </div>
-      {(selectedType == 0 && selectedPlayer) && (
+      {(selectedPlayer) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" onClick={closeModal}>
           <div className="text-white bg-white dark:bg-gray-900 p-4 rounded-lg shadow-lg max-h-[80%] min-w-[45%] overflow-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thumb-rounded-full scrollbar-track-rounded-full" onClick={e => e.stopPropagation()}>
-            <h2 className="text-center text-2xl font-bold mb-4">{selectedPlayer.name}'s In-Depth Stats</h2>
+            <h2 className="text-center text-2xl font-bold mb-4">{selectedPlayer.name}'s Best Placements</h2>
             <div className='space-y-2'>
-                {selectedPlayer.tourneyInfo.map((info, index) => (
+                {selectedType == 0 && selectedPlayer.tourneyInfo.map((info, index) => (
                   <div key={index} className='p-2 border-2 border-slate-500 rounded-xl'>
                     <div className='flex justify-between pb-3'>
                       <div className='flex items-center'>
@@ -339,6 +339,22 @@ function RankingsList({ preset, region, minifyRank, selectedType, gamemode, date
                       </div>
                     </div>
                     </div>
+                ))}
+                {selectedType == 1 && selectedPlayer.tourneyInfo.map((info, index) => (
+                  <div key={index} className='p-2 border-2 border-slate-500 rounded-xl'>
+                    <div className='flex justify-between pb-3'>
+                      <div className='flex items-center'>
+                        <img className="h-12 w-12 rounded-lg" src={info.image}/>
+                        <div className='pl-2 flex flex-col'>
+                          <span className="text-2xl font-bold">{info.tourney}</span>
+                        </div>
+                      </div>
+                      <div className='flex text-right flex-col'>
+                        <span className='text-2xl font-bold'>{ordinal(info.placement)}</span>
+                        <span className='text-right text-xl font-bold'>{info.points} points</span>
+                      </div>
+                    </div>
+                  </div>
                 ))}
             </div>
           </div>
