@@ -386,7 +386,7 @@ const Sidebar = ({ selectedGamemode, setSelectedGamemode, dateDecay, setDateDeca
       setLanPresets(await fetchData(`${host}/pr/data/presets/lans`));
       const circuitData = await fetchData(`${host}/pr/data/presets/circuit`);
       setCircuitPresets(circuitData.map((preset, i) => {
-        const season = i % 2 === 0 ? "Summer" : "Winter";
+        const season = i % 2 === 0 ? "Autumn" : "Spring";
         return { preset: preset, name: `${season} Circuit ${preset[0].year}` };
       }));
       setTourneyIds(officialsPresets[0].map(r => r.id));
