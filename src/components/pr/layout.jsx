@@ -81,7 +81,7 @@ function MakeList({ data, selectedType, onClick }) {
       <th scope="row" className="w-[40%]">
         <div className="flex items-center">
           {data.image ? (
-            <img src={data.image} alt={data.name} className="hidden md:visible w-8 h-8 lg:w-10 lg:h-10 rounded-full" />
+            <img src={data.image} alt={data.name} className="hidden md:flex w-8 h-8 lg:w-10 lg:h-10 rounded-full" />
           ) : (
             <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-full hidden md:flex items-center justify-center bg-slate-500 text-white">
               {data.name.charAt(0)}

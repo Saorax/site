@@ -1,0 +1,20 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import $ from "jquery";
+import { parse } from 'node-html-parser';
+import { countryToAlpha2 } from "country-to-iso";
+import flag from 'country-code-emoji';
+import { host } from "../../stuff";
+let legends = await fetch(host+'/game/legends/all').then(res => res.json());
+import LegendSide from '../../components/game/charList.astro';
+import History from '../../components/game/history.jsx';
+import LegendData from '../../components/game/legendData.jsx';
+import ColorScheme from '../../components/game/colorScheme.jsx';
+---
+<Layout title="Game Database">
+    <div class="text-slate-100 dark:bg-slate-950 overflow-y-auto overflow-x-hidden">
+        <div class=" h-full w-full flex flex-col" id="mainContent"> <!-- main content -->
+            <LegendData client:load />
+         </div>
+	</div>
+</Layout>

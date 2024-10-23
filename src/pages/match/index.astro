@@ -1,0 +1,11 @@
+---
+import { useState } from 'react';
+import App from '../../layouts/MatchDisplay';
+import Layout from '../../layouts/Layout.astro';
+---
+<Layout title="Power Rankings">
+    <div class="text-white">
+        <App client:load />
+    </div>
+  </Layout>
+
