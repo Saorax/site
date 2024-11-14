@@ -11,7 +11,7 @@ import auth from "auth-astro";
 
 // https://astro.build/config
 export default defineConfig({
-  integrations: [tailwind(), react(), auth()],
+  integrations: [tailwind(), react()],
   output: "server",
   server: {
     port: 3000,
