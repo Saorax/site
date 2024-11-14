@@ -1,0 +1,17 @@
+---
+import { useEffect } from 'react';
+
+const searchParams = new URLSearchParams(window.location.search);
+const accessToken = searchParams.get('accessToken');
+const user = searchParams.get('user');
+
+if (accessToken) {
+  localStorage.setItem('accessToken', accessToken);
+  localStorage.setItem('user', user);
+  window.location.href = '/index'; 
+} else {
+  window.location.href = '/';
+}
+---
+
+<h1>Authenticating...</h1>

@@ -1,0 +1,13 @@
+@font-face {
+    font-family: 'BHSlim';
+    src: url('/fonts/ErasDemiITC.woff2') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'BHbold';
+    src: url('/fonts/bhbold.ttf') format('truetype');
+    font-weight: bold;
+    font-style: normal;
+}

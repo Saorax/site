@@ -1,0 +1,19 @@
+---
+import Layout from "../../../layouts/Layout.astro";
+import LegendPage from "../../../components/game/LegendPage.jsx";
+const { bioName } = Astro.params;
+import { host } from "../../../stuff";
+const legends = await fetch(`${host}/game/legends/all`).then(r => r.json())
+function normalizeString(input: string): string {
+  return input.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase();
+}
+const legend = legends.find((item) => normalizeString(item.bio.name.normal) == bioName);
+const history = await fetch(`${host}/game/history/legend/${legend.id}`).then(r => r.json());
+const currentIndex = legends.findIndex(item => normalizeString(item.bio.name.normal.toLocaleLowerCase()) == normalizeString(bioName.toLocaleLowerCase()));
+const prevLegends = legends.slice(Math.max(currentIndex - 2, 0), currentIndex);
+const nextLegends = legends.slice(currentIndex + 1, currentIndex + 3);
+---
+
+<Layout title={legend.bio.name.normal}>
+  <LegendPage client:load legend={legend} prevLegends={prevLegends} nextLegends={nextLegends} history={history} />
+</Layout>

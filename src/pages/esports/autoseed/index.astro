@@ -1,0 +1,23 @@
+---
+import { host } from "../../../stuff";
+import Layout from "../../../layouts/playerLayout.astro";
+import Layout2 from '../../../layouts/Layout.astro';
+import $ from "jquery";
+import LoginButton from '../../../components/auth/butt.jsx';
+
+let session = null;
+
+if (typeof window !== "undefined") {
+  const token = localStorage.getItem('accessToken');
+  if (token) {
+    session = JSON.parse(localStorage.getItem('user'));
+  }
+  if (session) {
+    window.location.href = '/panel/admin';
+  }
+}
+---
+
+<Layout2 title="StartGG Auto Seeding">
+	<LoginButton client:load />
+</Layout2>

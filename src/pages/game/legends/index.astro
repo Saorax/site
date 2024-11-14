@@ -1,0 +1,12 @@
+---
+import Layout from "../../../layouts/Layout.astro";
+import LegendData from '../../../components/game/legendData.jsx';
+---
+
+<Layout title="Game Database">
+    <div class="text-slate-100 dark:bg-slate-950 overflow-y-auto overflow-x-hidden">
+        <div class="h-full w-full flex flex-col" id="mainContent">
+            <LegendData client:load />
+        </div>
+    </div>
+</Layout>
