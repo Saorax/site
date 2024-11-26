@@ -534,7 +534,7 @@ function AdminPanel() {
               </div>
             )}
             <div className="flex mb-6">
-              <div className="pr-6 w-[40%]">
+              <div className="pr-2 w-[40%]">
                 <h3 className="text-3xl font-bold mb-2">Original Seeding</h3>
                 <div className="h-[37rem] overflow-y-auto scrollbar-thin scrollbar-track-gray-800 rounded-lg p-4 bg-gray-900">
                 {loadingSeedingList ? (
