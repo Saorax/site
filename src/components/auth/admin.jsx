@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-
+import { host } from "../../stuff"
 function AdminPanel() {
   const [accessToken, setAccessToken] = useState(null);
   const [user, setUser] = useState({});
@@ -52,7 +52,7 @@ function AdminPanel() {
   const fetchUserInfo = async (token) => {
     try {
       const response = await fetch(
-        `http://localhost:3001/auth/events/user?upcoming=${showUpcoming}&owned=${showOwned}&page=${currentPage}&perPage=10`,
+        `${host}/auth/events/user?upcoming=${showUpcoming}&owned=${showOwned}&page=${currentPage}&perPage=10`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
@@ -66,7 +66,7 @@ function AdminPanel() {
     setLoadingTournaments(true);
     try {
       const response = await fetch(
-        `http://localhost:3001/auth/events/user?upcoming=${showUpcoming}&owned=${showOwned}&page=${page}&perPage=10`,
+        `${host}/auth/events/user?upcoming=${showUpcoming}&owned=${showOwned}&page=${page}&perPage=10`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const data = await response.json();
@@ -99,7 +99,7 @@ function AdminPanel() {
     setLoadingEvents(true);
     try {
       const response = await fetch(
-        `http://localhost:3001/auth/tournaments/${tournamentId}/events`,
+        `${host}/auth/tournaments/${tournamentId}/events`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
         }
@@ -121,7 +121,7 @@ function AdminPanel() {
     setModifiedSeeding([]);
     try {
       const response = await fetch(
-        `http://localhost:3001/auth/events/${eventId}/phases`,
+        `${host}/auth/events/${eventId}/phases`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
         }
@@ -139,7 +139,7 @@ function AdminPanel() {
   const fetchSeeding = async (phaseId) => {
     setLoadingSeedingList(true);
     try {
-      const response = await fetch(`http://localhost:3001/auth/phases/${phaseId}/seeding`, {
+      const response = await fetch(`${host}/auth/phases/${phaseId}/seeding`, {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       const data = await response.json();
@@ -177,7 +177,7 @@ function AdminPanel() {
     setLoadingCustomPR(true);
     try {
       const response = await fetch(
-        `http://localhost:3001/auth/phases/${selectedPhase}/custom-pr-seeding`,
+        `${host}/auth/phases/${selectedPhase}/custom-pr-seeding`,
         {
           method: "POST",
           headers: {
@@ -208,7 +208,7 @@ function AdminPanel() {
     setLoadingOfficialPR(true);
     try {
       const response = await fetch(
-        `http://localhost:3001/auth/phases/${selectedPhase}/official-pr-seeding`,
+        `${host}/auth/phases/${selectedPhase}/official-pr-seeding`,
         {
           method: "POST",
           headers: {
@@ -239,7 +239,7 @@ function AdminPanel() {
     setUploadingSeeding(true);
     try {
       const response = await fetch(
-        `http://localhost:3001/auth/phases/${selectedPhase}/upload-seeding`,
+        `${host}/auth/phases/${selectedPhase}/upload-seeding`,
         {
           method: "POST",
           headers: {

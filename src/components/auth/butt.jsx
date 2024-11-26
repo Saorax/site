@@ -1,7 +1,8 @@
 import React from 'react';
 
+import { host } from "../../stuff";
 function LoginButton() {
-  const backendLoginURL = 'http://localhost:3001/auth/login';
+  const backendLoginURL = `${host}/auth/login`;
 
 
   return (
