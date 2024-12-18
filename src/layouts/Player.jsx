@@ -2,9 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { host } from "../stuff";
-import LoginButton from '../components/auth/butt.jsx';
-import flag from 'country-code-emoji';
-import { countryToAlpha2 } from "country-to-iso";
+import { countryCodeEmoji } from 'country-code-emoji';
+import { getCode } from 'country-list';
 import twemoji from 'twemoji';
 import Layout from "./PlayerLayout.jsx";
 
@@ -108,7 +107,7 @@ function Player({id}) {
                 {user.country !== null && (
                   <div className="absolute bottom-0 left-0 w-9 h-9">
                     <TwemojiText
-                      text={flag(countryToAlpha2(user.location.country))}
+                      text={countryCodeEmoji(getCode(user.location.country))}
                       className="w-full h-full"
                     />
                   </div>
