@@ -286,7 +286,7 @@ const applyColorsToSvg = (colorScheme) => {
 async function getHistory(event, legendCache) {
   const id = event.target.id || event.target.parentElement.id;
   const main = document.getElementById('colorSchemeContent');
-  main.innerHTML = '<div class="flex justify-center items-center h-full"><LoadingSpinner /></div>';
+  main.innerHTML = '<div className="flex justify-center items-center h-full"><LoadingSpinner /></div>';
 
   const legendData = await fetchLegend(id, legendCache);
 
@@ -309,7 +309,7 @@ async function getHistory(event, legendCache) {
 async function crossoverDiv(event, legendCache) {
   const id = event.target.id || event.target.parentElement.id;
   const main = document.getElementById('colorSchemeContent');
-  main.innerHTML = '<div class="flex justify-center items-center h-full"><LoadingSpinner /></div>';
+  main.innerHTML = '<div className="flex justify-center items-center h-full"><LoadingSpinner /></div>';
 
   const legendData = await fetchLegend(id, legendCache);
 
@@ -324,7 +324,7 @@ async function crossoverDiv(event, legendCache) {
 async function setColorDiv(event, legendCache) {
   const id = event.target.id || event.target.parentElement.id;
   const main = document.getElementById('colorData');
-  main.innerHTML = '<div class="flex justify-center items-center h-full"><LoadingSpinner /></div>';
+  main.innerHTML = '<div className="flex justify-center items-center h-full"><LoadingSpinner /></div>';
 
   const colors = JSON.parse(sessionStorage.getItem('colors')) || [];
   const customColorsList = JSON.parse(sessionStorage.getItem('customColorsList')) || [];

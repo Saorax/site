@@ -2,7 +2,7 @@
 import { host } from "../../../stuff";
 const data = await fetch(`${host}/player/main/${Astro.params.smashId}`).then(res => res.json()).then(res => res);
 console.log(data)
-import Layout from "../../../layouts/playerLayout.astro";
+import Layout from "../../../layouts/PlayerLayout";
 import Layout2 from '../../../layouts/Layout.astro';
 import $ from "jquery";
 import { parse } from 'node-html-parser';

@@ -1,0 +1,11 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import { host } from "../../../stuff";
+import Layout2 from '../../../layouts/PlayerMain.jsx';
+import $ from "jquery";
+import LoginButton from '../../../components/auth/butt.jsx';
+
+---
+<Layout title="Brawlhalla eSports Database">
+    <Layout2 client:load />
+</Layout>

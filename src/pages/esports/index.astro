@@ -1,26 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import Layout2 from '../../layouts/EsportsLayout.jsx';
 ---
 <Layout title="Brawlhalla eSports Database">
-    <div class="h-screen bg-slate-950 text-slate-50">
-        <div>
-            <p>most tourneys played</p>    
-            <p>most officials</p>
-            <p>most communities</p>
-            <p>most gold/silver/bronze medals</p>
-            <p>most earnings</p>
-            <p>upcoming tourneys</p>
-            <p>search bar lol</p>
-            <p>confirm if user/startID is real</p>
-            <p>stat numbers for total users in database</p>
-            <p>you shouldn't be here</p>
-        </div>
-        <div>
-            <div>
-                <span>tourney</span>
-                <span>player</span>
-            </div>
-            <div></div>
-        </div>
-    </div>
+    <Layout2 client:load />
 </Layout>

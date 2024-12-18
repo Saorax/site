@@ -22,7 +22,6 @@ const IndexPage = () => {
           <h1 className="text-3xl mb-4">Brawlhalla Power Rankings</h1>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card onClick={() => handlePlayerClick('some-player-id')} />
-            {/* Render other player cards here */}
           </div>
           <Pagination totalPlayers={1128} currentPage={currentPage} onPageChange={setCurrentPage} />
         </div>

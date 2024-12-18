@@ -29,7 +29,7 @@ const { title } = Astro.props as Props;
     }
   </style>
 </head>
-<nav class="bg-white border-b border-gray-200 dark:bg-gray-900 dark:border-gray-700">
+<nav class="bg-white border-b border-gray-200  dark:bg-gray-900 dark:border-gray-700">
   <div class="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
     <div class="relative flex items-center justify-between h-16">
       <div class="absolute inset-y-0 left-0 flex items-center sm:hidden">
@@ -49,10 +49,10 @@ const { title } = Astro.props as Props;
         </div>
         <div class="hidden sm:block sm:ml-6">
           <div class="flex space-x-4">
-            <a href="../" class={title == "Home" ? "bg-gray-900 text-white px-3 py-2 rounded-md text-sm font-medium" : "text-gray-900 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}>Home</a>
-            <a href="../pr" class={title == "Power Rankings" ? "bg-gray-900 text-white px-3 py-2 rounded-md text-sm font-medium" : "text-gray-900 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}>Power Rankings</a>
-            <a href="../esports" class={title == "eSports Database" ? "bg-gray-900 text-white px-3 py-2 rounded-md text-sm font-medium" : "text-gray-900 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}>eSports Database</a>
-            <a href="../game" class={title == "Game Database" ? "bg-gray-900 text-white px-3 py-2 rounded-md text-sm font-medium" : "text-gray-900 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}>Game Database</a>
+            <a href="/" class={title == "Home" ? "bg-gray-900 text-white px-3 py-2 rounded-md text-sm font-medium" : "text-gray-900 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}>Home</a>
+            <a href="/pr" class={title == "Power Rankings" ? "bg-gray-900 text-white px-3 py-2 rounded-md text-sm font-medium" : "text-gray-900 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}>Power Rankings</a>
+            <a href="/esports" class={title == "eSports Database" ? "bg-gray-900 text-white px-3 py-2 rounded-md text-sm font-medium" : "text-gray-900 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}>eSports Database</a>
+            <a href="/game" class={title == "Game Database" ? "bg-gray-900 text-white px-3 py-2 rounded-md text-sm font-medium" : "text-gray-900 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}>Game Database</a>
           </div>
         </div>
       </div>
@@ -61,10 +61,10 @@ const { title } = Astro.props as Props;
 
   <div class="sm:hidden hidden" id="mobile-menu">
     <div class="px-2 pt-2 pb-3 space-y-1">
-      <a href="../" class={title == "Home" ? "bg-gray-900 text-white block px-3 py-2 rounded-md text-base font-medium" : "text-gray-900 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}>Home</a>
-      <a href="../pr" class={title == "Power Rankings" ? "bg-gray-900 text-white block px-3 py-2 rounded-md text-base font-medium" : "text-gray-900 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}>Power Rankings</a>
-      <a href="../player" class={title == "Player Database" ? "bg-gray-900 text-white block px-3 py-2 rounded-md text-base font-medium" : "text-gray-900 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}>Player Database</a>
-      <a href="../game" class={title == "Game Database" ? "bg-gray-900 text-white block px-3 py-2 rounded-md text-base font-medium" : "text-gray-900 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}>Game Database</a>
+      <a href="/" class={title == "Home" ? "bg-gray-900 text-white block px-3 py-2 rounded-md text-base font-medium" : "text-gray-900 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}>Home</a>
+      <a href="/pr" class={title == "Power Rankings" ? "bg-gray-900 text-white block px-3 py-2 rounded-md text-base font-medium" : "text-gray-900 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}>Power Rankings</a>
+      <a href="/player" class={title == "eSports Database" ? "bg-gray-900 text-white block px-3 py-2 rounded-md text-base font-medium" : "text-gray-900 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}>Player Database</a>
+      <a href="/game" class={title == "Game Database" ? "bg-gray-900 text-white block px-3 py-2 rounded-md text-base font-medium" : "text-gray-900 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}>Game Database</a>
     </div>
   </div>
 </nav>

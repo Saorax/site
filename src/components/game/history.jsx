@@ -7,7 +7,7 @@ function App() {
     const [patches, setPatches] = useState([]);
     const [historyData, setHistoryData] = useState(null);
     const [expandedItems, setExpandedItems] = useState({ adds: {}, changes: {} });
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false); // State to manage sidebar visibility
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     useEffect(() => {
         fetch(`${host}/game/history/all`)
@@ -45,12 +45,12 @@ function App() {
                 const newKey = parentKey ? `${parentKey}.${key}` : key;
                 if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
                     if ('old' in obj[key] && 'new' in obj[key]) {
-                        result[newKey] = obj[key]; // Store the entire old/new object
+                        result[newKey] = obj[key];
                     } else {
-                        flattenChangeObject(obj[key], newKey, result); // Recursively flatten nested objects
+                        flattenChangeObject(obj[key], newKey, result);
                     }
                 } else {
-                    result[newKey] = obj[key]; // Store non-object values
+                    result[newKey] = obj[key];
                 }
             }
         }
@@ -69,12 +69,11 @@ function App() {
 
     const handleSelectPatch = (patch) => {
         setSelectedPatch(patch);
-        setIsSidebarOpen(false); // Close the sidebar on small screens
+        setIsSidebarOpen(false);
     };
 
     return (
         <div className="flex max-lg:flex-col h-screen bg-gray-900 text-gray-100">
-            {/* Sidebar toggle button for small screens */}
             <div className="lg:hidden p-4">
                 <button 
                     onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
@@ -85,8 +84,6 @@ function App() {
                     </svg>
                 </button>
             </div>
-
-            {/* Sidebar */}
             <div className={`fixed lg:static inset-0 bg-zinc-800 lg:translate-x-0 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out lg:w-64 p-4 shadow-lg overflow-y-auto`}>
                 <h1 className="text-lg font-bold mb-4 text-white">Patch History</h1>
                 <ul className="space-y-2">
