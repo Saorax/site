@@ -6,29 +6,40 @@ function gamemode(gm) {
   if (gm === 2) return "2v2";
   return "Other"
 };
-
+async function fetchData(url, token) {
+  const response = await fetch(url,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  const data = await response.json();
+  return data;
+}
 const swapIds = [
   [169, 1496], // Lord Vraxx > Princess Bubblegum
   [179, 1495], // Kor > Jake
   [167, 1494], // Jhala > Finn
 ];
 function legendFetch(lsd) {
-  let legends = lsd.videogame.characters.map((m) => {
-    return {
+  return lsd.videogame.characters.map((m) => {
+    let legend = {
       id: m.id,
       name: m.name,
-      image: `https://saorax.github.io/images/legends/${encodeURI(m.name.toLocaleLowerCase())}/icons/0.png`,
+      image: `https://saorax.github.io/images/legends/${encodeURI(m.name.toLocaleLowerCase())}/icons/0-menu.png`,
       games: 0,
-      wins: 0
+      wins: 0,
     };
-  });
-  for (var i = 0; i < legends.length; i++) {
-    if (swapIds.filter(r => r[1] == legends[i].id)[0] !== undefined) {
-      legends[i].name = legends.filter(r => r.id == swapIds.filter(r => r[1] == legends[i].id)[0][0])[0].name;
-      legends[i].image = legends.filter(r => r.id == swapIds.filter(r => r[1] == legends[i].id)[0][0])[0].image;
+
+    const swap = swapIds.find(r => r[1] === legend.id);
+    if (swap) {
+      const original = lsd.videogame.characters.find(r => r.id === swap[0]);
+      if (original) {
+        legend.name = original.name;
+        legend.image = original.image;
+      }
     }
-  }
-  return legends;
+    return legend;
+  });
 }
 async function legendFunc(data, entrantId, lsd) {
   let tempLegend = legendFetch(lsd);
@@ -113,8 +124,29 @@ function ordinal(i) {
   }
   return i + "th";
 };
-async function Event(event, user, lsd, setEventData) {
-  const eventData = await fetch(`${host}/player/event/${event}/${user}`).then(res => res.json());
+function WinrateBar({ wins, games, type, type2 }) {
+  const winrate = games ? ((wins / games) * 100).toFixed(2) : 0;
+  return (
+    <div className='lg:px-2 px-1 pb-2'>
+      {type2 == 2 && <span className="text-2xl font-medium">{games} {type} Played</span>}
+      <div className='justify-between flex pb-2'>
+        <span className={`${type2 != 1 ? 'text-xl' : 'text-lg'} text-blue-400`}>{wins}W</span>
+        {type2 != 2 && <span className={`${type2 != 1 ? 'text-xl' : 'text-lg'} font-medium`}>{games}{type !== null ? ` ${type} Played` : " Games"}</span>}
+        <span className={`${type2 != 1 ? 'text-xl' : 'text-lg'} text-red-400`}>{games - wins}L</span>
+      </div>
+      <div className="relative h-6 bg-red-500 rounded-md flex items-center justify-center">
+        <div
+          className="absolute left-0 h-full bg-blue-500 rounded-md"
+          style={{ width: `${winrate}%` }}
+        ></div>
+        <span className="absolute text-lg text-white font-bold">{winrate}%</span>
+      </div>
+    </div>
+  );
+}
+async function Event(event, user, lsd, setEventData, acs) {
+  const eventData = await fetchData(`${host}/player/event/${event}/${user}`, acs);
+  console.log(eventData)
   const stages = await stageFunc(eventData, eventData.userEntrant.id);
   const legends = await legendFunc(eventData, eventData.userEntrant.id, lsd);
   setEventData({
@@ -294,46 +326,26 @@ function EventData(data) {
                 </div>
                 <div className="lg:mr-2 lg:ml-4 justify-evenly lg:justify-start lg:space-x-8 flex">
                   <div className="flex flex-col text-center">
-                    <span className="text-xl font-semibold">Set Count</span>
-                    <a className="text-lg">{userEntrant.paginatedSets.nodes.map(a => { return 1 }).reduce((a, b) => a + b, 0)} {gc[1] == 1 ? 'Set' : 'Sets'}</a>
-                    <div className="flex text-lg justify-evenly">
-                      <a className="text-green-500">
-                        {userEntrant.paginatedSets.nodes.map(a => {
-                          if (a.winnerId == userEntrant.id) return 1;
-                          return 0
-                        }).reduce((a, b) => a + b, 0)} W
-                      </a>
-                      <a className="text-red-500">
-                        L {userEntrant.paginatedSets.nodes.map(a => {
-                          if (a.winnerId != userEntrant.id) return 1;
-                          return 0
-                        }).reduce((a, b) => a + b, 0)}
-                      </a>
-                    </div>
+
+                    <WinrateBar wins={userEntrant.paginatedSets.nodes.map(a => {
+                      if (a.winnerId == userEntrant.id) return 1;
+                      return 0
+                    }).reduce((a, b) => a + b, 0)} games={userEntrant.paginatedSets.nodes.length} type={gc[1] == 1 ? 'Set' : 'Sets'} type2={2} />
                   </div>
                   <div className="flex flex-col text-center">
-                    <span className="text-xl font-semibold">Game Count</span>
-                    <a className="text-lg">{userEntrant.paginatedSets.nodes.map(a => {
-                      if (a.slots.filter(p => p.entrant.id == userEntrant.id)[0].standing.stats.score.value >= 0 && a.slots.filter(p => p.entrant.id != userEntrant.id)[0].standing.stats.score.value >= 0)
-                        return a.slots.filter(p => p.entrant.id == userEntrant.id)[0].standing.stats.score.value + a.slots.filter(p => p.entrant.id != userEntrant.id)[0].standing.stats.score.value;
-                      return 0
-                    }).reduce((a, b) => a + b, 0)} {gc[0] == 1 ? 'Game' : 'Games'}</a>
-                    <div className="flex text-lg justify-evenly">
-                      <a className="text-green-500">
-                        {userEntrant.paginatedSets.nodes.map(a => {
-                          if (a.slots.filter(p => p.entrant.id == userEntrant.id)[0].standing.stats.score.value >= 0)
-                            return a.slots.filter(p => p.entrant.id == userEntrant.id)[0].standing.stats.score.value;
-                          return 0
-                        }).reduce((a, b) => a + b, 0)} W
-                      </a>
-                      <a className="text-red-500">
-                        L {userEntrant.paginatedSets.nodes.map(a => {
-                          if (a.slots.filter(p => p.entrant.id != userEntrant.id)[0].standing.stats.score.value >= 0)
-                            return a.slots.filter(p => p.entrant.id != userEntrant.id)[0].standing.stats.score.value;
-                          return 0
-                        }).reduce((a, b) => a + b, 0)}
-                      </a>
-                    </div>
+                    <WinrateBar
+                      wins={userEntrant.paginatedSets.nodes.map(a => {
+                        if (a.slots.filter(p => p.entrant.id == userEntrant.id)[0].standing.stats.score.value >= 0)
+                          return a.slots.filter(p => p.entrant.id == userEntrant.id)[0].standing.stats.score.value;
+                        return 0
+                      }).reduce((a, b) => a + b, 0)}
+                      games={userEntrant.paginatedSets.nodes.map(a => {
+                        if (a.slots.filter(p => p.entrant.id == userEntrant.id)[0].standing.stats.score.value >= 0 && a.slots.filter(p => p.entrant.id != userEntrant.id)[0].standing.stats.score.value >= 0)
+                          return a.slots.filter(p => p.entrant.id == userEntrant.id)[0].standing.stats.score.value + a.slots.filter(p => p.entrant.id != userEntrant.id)[0].standing.stats.score.value;
+                        return 0
+                      }).reduce((a, b) => a + b, 0)}
+                      type={gc[0] == 1 ? 'Game' : 'Games'}
+                      type2={2} />
                   </div>
                 </div>
               </div>
@@ -343,16 +355,17 @@ function EventData(data) {
           <div className="lg:flex cursor-default lg:space-x-2 space-y-2 lg:space-y-0 text-center lg:h-64  bg-slate-900 p-2 rounded-2xl w-full">
             <div className="rounded-2xl lg:w-[50%] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800 overflow-x-hidden scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full bg-slate-950">
               <span className="text-2xl font-medium">Legends Played</span>
-              <div className={`p-1 scrollbar-thin w-full items-center text-center scrollbar-thumb-slate-800 scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full overflow-y-auto ${data.data.stages.length >= 1 ? 'grid grid-cols-2 lg:grid-cols-3' : ''} justify-evenly`}>
+              <div className={`p-1 scrollbar-thin w-full items-center text-center scrollbar-thumb-slate-800 scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full overflow-y-auto ${data.data.legends.length >= 1 ? 'grid grid-cols-2 lg:grid-cols-3' : ''} justify-evenly`}>
                 {data.data.legends.length == 0 ? <a className="text-xl">no legends reported</a> : data.data.legends.map(leg => {
-                  return <div className="m-0.5 flex items-center rounded-2xl shadow border-slate-700 bg-slate-900 hover:bg-slate-800 transition duration-200">
-                    <img className="w-18 h-18 rounded-2xl" src={leg.image} alt={leg.name} />
+                  return <div className="flex flex-col m-0.5 text-center justify-center items-center rounded-2xl shadow border-slate-700 bg-slate-900 hover:bg-slate-800 transition duration-200">
+                    <img className="flex w-16 h-16 justify-center items-center text-center rounded-2xl" src={leg.image} alt={leg.name} />
                     <div className="flex w-full flex-col justify-between p-1.5 leading-normal">
                       <p className="mb-0.5 text-2xl font-bold text-gray-900 dark:text-white">{leg.name}</p>
-                      <div className="text-base flex space-x-3 justify-evenly lg:justify-normal">
-                        <p><span className='font-semibold text-xl p-1'>{leg.games}</span> {leg.games == 1 ? 'Game' : 'Games'}</p>
-                        <p><span className='font-semibold text-xl p-1'>{leg.wins}</span> {leg.wins == 1 ? 'Win' : 'Wins'}</p>
-                      </div>
+                      <WinrateBar
+                        wins={leg.wins}
+                        games={leg.games}
+                        type={null}
+                        type2={3} />
                     </div>
                   </div>
                 })}
@@ -484,7 +497,7 @@ function Events(data) {
     ? eventData.userEntrant.paginatedSets.nodes.sort(function (a, b) { return b.completedAt - a.completedAt })
     : [];
   return (
-    <div onClick={async () => await Event(eventData.id, data.userId, data.lsd, data.eventData)} className="cursor-pointer py-1 w-full flex md:items-center shadow hover:bg-gray-200 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-700">
+    <div onClick={async () => await Event(eventData.id, data.userId, data.lsd, data.eventData, data.accessToken)} className="cursor-pointer py-1 w-full flex md:items-center shadow hover:bg-gray-200 dark:border-gray-800 dark:bg-gray-900 dark:hover:bg-gray-700">
       {
         eventData.tournament.images.filter(p => p.type === "profile")[0] !== undefined
           ? <img className="ml-1 w-16 h-16 rounded-2xl" src={eventData.tournament.images.filter(p => p.type === "profile")[0].url} />
@@ -565,32 +578,87 @@ const Filter = ({ label, id, options, value, onChange }) => {
   );
 };
 
-function MainLayout({ data, lsd }) {
+
+
+function MainLayout({ data, lsd, accessToken }) {
   const [legendData, setLegendData] = useState([]);
   const [eventData, setEventData] = useState(null);
   const [matchData, setMatchData] = useState(null);
   const [curId, setCurId] = useState(0);
-
   const [filters, setFilters] = useState({
     gamemode: "0",
     year: "0",
     sorting: "0",
+    search: "",
   });
+  const [currentPage, setCurrentPage] = useState(1);
+  const eventsPerPage = 50;
+
   const handleFilterChange = (filterKey, value) => {
     setFilters({ ...filters, [filterKey]: value });
+    setCurrentPage(1);
   };
+
   useEffect(() => {
-    setCurId(data.events[0]?.id)
-  }, [])
-  const events = data.events;
+    setCurId(data.events.nodes[0]?.id);
+  }, []);
+
+  const filterAndSortEvents = () => {
+    const events = data.isFull ? data.events.nodes : data.events.nodes;
+
+    return events
+      .filter(event => {
+        const searchTerm = filters.search.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const eventName = event.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const tourneyName = event.tournament.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        return (eventName.includes(searchTerm) || tourneyName.includes(searchTerm))
+      })
+      .filter(event => {
+        if (filters.year === "0") return true;
+        const eventYear = new Date(event.startAt * 1000).getFullYear();
+        return eventYear.toString() === filters.year;
+      })
+      .filter(event => {
+        if (filters.gamemode === "0") return true;
+        const participantCount = event.userEntrant.participants.length;
+        if (filters.gamemode === "1" && participantCount === 1) return true;
+        if (filters.gamemode === "2" && participantCount === 2) return true;
+        if (filters.gamemode === "3" && participantCount >= 3) return true;
+        return false;
+      })
+      .sort((a, b) => {
+        if (filters.sorting === "0") return b.startAt - a.startAt;
+        if (filters.sorting === "1") return a.startAt - b.startAt;
+        if (filters.sorting === "2") return a.userEntrant.standing.placement - b.userEntrant.standing.placement;
+        if (filters.sorting === "3") return b.userEntrant.standing.placement - a.userEntrant.standing.placement;
+        return 0;
+      });
+  };
+
+  const paginatedEvents = () => {
+    const filteredEvents = filterAndSortEvents();
+    const startIndex = (currentPage - 1) * eventsPerPage;
+    return filteredEvents.slice(startIndex, startIndex + eventsPerPage);
+  };
+
+  const totalPages = Math.ceil(filterAndSortEvents().length / eventsPerPage);
+
   return (
     <div className="rounded-lg" role="tabpanel" aria-labelledby="main-tab">
       <div className="lg:flex">
-        {/* Sidebar Filters */}
         <div className="lg:w-1/3">
           <div className="py-1 text-center">
-            <a id="tourneyCount" className="text-xl lg:text-2xl font-medium text-slate-800 dark:text-slate-200">{events.nodes.length} tourneys</a>
+            <a id="tourneyCount" className="text-xl lg:text-2xl font-medium text-slate-800 dark:text-slate-200">
+              {filterAndSortEvents().length} events
+            </a>
           </div>
+          <input
+            type="text"
+            placeholder="Search by event name"
+            value={filters.search}
+            onChange={(e) => handleFilterChange("search", e.target.value)}
+            className="w-full text-white bg-slate-900 p-2 mb-4 border border-slate-600 rounded"
+          />
           <div className="space-x-4 flex">
             <Filter
               label="Gamemode"
@@ -611,12 +679,16 @@ function MainLayout({ data, lsd }) {
               onChange={(value) => handleFilterChange("year", value)}
               options={[
                 { value: "0", label: "Default (All Years)" },
+                { value: "2025", label: "2025" },
+                { value: "2024", label: "2024" },
                 { value: "2023", label: "2023" },
                 { value: "2022", label: "2022" },
                 { value: "2021", label: "2021" },
                 { value: "2020", label: "2020" },
                 { value: "2019", label: "2019" },
                 { value: "2018", label: "2018" },
+                { value: "2017", label: "2017" },
+                { value: "2016", label: "2016" },
               ]}
             />
             <Filter
@@ -632,24 +704,372 @@ function MainLayout({ data, lsd }) {
               ]}
             />
           </div>
+          <div className="flex justify-center my-2">
+            <button
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(currentPage - 1)}
+              className="px-4 py-2 mx-1 bg-slate-700 rounded disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <span className="px-4 py-2">Page {currentPage} of {totalPages}</span>
+            <button
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(currentPage + 1)}
+              className="px-4 py-2 mx-1 bg-slate-700 rounded disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
           <div className="flex w-full flex-col overflow-y-auto h-[25vh] lg:h-screen scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900">
-            {events.nodes.map((item) =>
-              <Events data={item} userId={data.id} playerId={data.player.id} lsd={lsd} eventData={setEventData} />)
-            }
+            {paginatedEvents().map((item) => (
+              <Events
+                key={item.id}
+                data={item}
+                userId={data.id}
+                playerId={data.player.id}
+                lsd={lsd}
+                eventData={setEventData}
+                accessToken={accessToken}
+              />
+            ))}
           </div>
         </div>
-        {eventData && <EventData data={eventData} lsd={lsd} md={matchData} setmd={setMatchData} id={curId} sid={setCurId} />}
+        {eventData && (
+          <EventData
+            data={eventData}
+            lsd={lsd}
+            md={matchData}
+            setmd={setMatchData}
+            id={curId}
+            sid={setCurId}
+          />
+        )}
       </div>
     </div>
-  )
+  );
 }
+function MakeOppPage(data, opp, setOpp) {
+  console.log(data)
+  if (opp.id !== data.id) return setOpp(data)
+}
+function OppList({ data, opp, setOpp }) {
+  return (<div
+    key={data.id || index}
+    className="border-2 my-2 bg-slate-900 rounded-xl border-slate-600 hover:border-slate-400 transition duration-200 cursor-pointer" onClick={() => MakeOppPage(data, opp, setOpp)}
+  >
+    <div className="lg:flex rounded-xl relative text-white bg-slate-900 lg:text-left lg:items-start text-center items-center flex lg:flex-row flex-col group">
+      {data.images.filter((img) => img.type === "banner").length === 0 ? (
+        <div src="" className="rounded-xl opacity-25 w-full lg:h-24 h-16 bg-gray-700"></div>
+      ) : (
+        <img
+          src={data.images.filter((img) => img.type === "banner")[0].url}
+          className="rounded-2xl opacity-35 w-full lg:h-24 h-16"
+        />
+      )}
+      <div className="flex text-left items-center h-full lg:justify-normal justify-between p-1.5 leading-normal absolute">
+        <div>
+          <div className="relative w-16 h-16">
+            {data.images.filter((img) => img.type === "profile").length === 0 ? (
+              <a className="flex w-16 h-16 rounded-2xl bg-slate-700 justify-center items-center text-center">
+                <div className="text-4xl text-slate-100 place-self-center">
+                  {data.name[0].toLocaleUpperCase()}
+                </div>
+              </a>
+            ) : (
+              <img
+                src={data.images.filter((img) => img.type === "profile")[0].url}
+                className="w-full h-full rounded-lg uns"
+                style={{ display: "unset !important" }}
+                alt={data.name}
+              />
+            )}
+          </div>
+        </div>
+        <div className="pl-2 place-content-end">
+          {data.prefix && (
+            <p className="lg:text-xl text-lg text-gray-600 dark:text-gray-400">
+              {data.prefix}
+            </p>
+          )}
+          {data.name && (
+            <p className="lg:text-3xl text-2xl dark:text-white">
+              {data.name}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+    <div className="flex">
+      <div className="w-1/2 text-center items-center">
+        <WinrateBar wins={data.score.sets.wins} games={data.score.sets.num} type="Sets" type2={1} />
+      </div>
+      <div className="w-1/2 text-center items-center">
+        <WinrateBar wins={data.score.games.wins} games={data.score.games.num} type="Games" type2={1} />
+      </div>
+    </div>
+  </div>)
+}
+function OpponentLayout({ data, lsd, accessToken }) {
+  const [activeTab, setActiveTab] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [opp, setOpp] = useState({});
+  const [selectedLegend, setSelectedLegend] = useState(null);
 
-function TabLayout({ data }) {
+  const handleLegendClick = (legend) => {
+    setSelectedLegend(legend);
+  };
+
+  const opponentData = data.opponentData;
+  const itemsPerPage = 25;
+  const filteredData = opponentData.filter((data) =>
+    data.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (data.prefix && data.prefix.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const paginatedData = filteredData.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  const handleSearch = (event) => {
+    setSearchTerm(event.target.value);
+    setCurrentPage(1);
+  };
+
+  const handlePageChange = (direction) => {
+    setCurrentPage((prev) => {
+      if (direction === "next" && prev < totalPages) return prev + 1;
+      if (direction === "prev" && prev > 1) return prev - 1;
+      return prev;
+    });
+  };
+  console.log(opp);
+  const tabs = [
+    { id: `events-${opp.id}`, label: "Events" },
+    { id: `legends-${opp.id}`, label: "Legend Data" },
+    { id: `stages-${opp.id}`, label: "Stage Data" },
+  ];
+  return (
+    <div className='lg:flex'>
+      <div className='lg:w-1/3'>
+        <div className="my-4">
+          <input
+            type="text"
+            placeholder="Search opponents"
+            value={searchTerm}
+            onChange={handleSearch}
+            className="w-full text-white bg-slate-900 p-2 border border-slate-600 rounded"
+          />
+        </div>
+        <div className="flex justify-between my-4">
+          <button
+            onClick={() => handlePageChange("prev")}
+            disabled={currentPage === 1}
+            className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <div className="text-white flex flex-col text-center">
+            <span>Page {currentPage} of {totalPages}</span>
+            <span>{filteredData.length} players</span>
+          </div>
+          <button
+            onClick={() => handlePageChange("next")}
+            disabled={currentPage === totalPages}
+            className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+        <div className='px-1 lg:h-screen h-96 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900'>
+          {paginatedData.map((data, index) => (
+            <OppList data={data} opp={opp} setOpp={setOpp} />
+          ))}
+        </div>
+      </div>
+      {opp.name && (
+        <div className='lg:w-2/3 p-2'>
+          <div className='lg:flex lg:h-48 bg-slate-900 rounded-2xl'>
+            <div className="lg:flex rounded-2xl lg:w-1/2 relative text-white lg:text-left lg:items-start text-center items-center flex lg:flex-row flex-col group">
+              {opp.images.filter(img => img.type === "banner").length === 0
+                ? <div src="" className="opacity-25 rounded-2xl w-full lg:h-48 h-32 bg-gray-700"></div>
+                : <img src={opp.images.filter(img => img.type === "banner")[0].url} className="rounded-2xl opacity-25 w-full lg:h-48 h-32" />}
+              <div className="flex rounded-2xl text-left items-center h-full lg:justify-normal justify-between p-1.5 leading-normal absolute">
+                <div>
+                  <div className="relative w-24 h-24">
+                    {opp.images.filter(img => img.type === "profile").length === 0 ? (
+                      <div className="w-full h-full rounded-lg uns" alt={opp.name}></div>
+                    ) : (
+                      <img
+                        src={opp.images.filter(img => img.type === "profile")[0].url}
+                        className="w-full h-full rounded-lg uns"
+                        style={{ display: "unset !important" }}
+                        alt={opp.name}
+                      />
+                    )}
+                  </div>
+                </div>
+                <div className="pl-2 place-content-end">
+                  {opp.prefix && (<p className="lg:text-2xl text-xl text-gray-600 dark:text-gray-400">{opp.prefix}</p>)}
+                  {opp.name && (<p className="lg:text-3xl text-2xl dark:text-white">{opp.name}</p>)}
+                </div>
+              </div>
+            </div>
+            <div className='lg:w-1/2 h-full items-center flex justify-between '>
+              <div className='w-1/2 text-center items-center'>
+                <WinrateBar
+                  wins={opp.score.sets.wins}
+                  games={opp.score.sets.num}
+                  type={'Sets'}
+                  type2={2} />
+              </div>
+              <div className='w-1/2 text-center items-center'>
+                <WinrateBar
+                  wins={opp.score.games.wins}
+                  games={opp.score.games.num}
+                  type={'Games'}
+                  type2={2} />
+              </div>
+            </div>
+          </div>
+          <div>
+            <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+            <div className='lg:flex lg:flex-col cursor-default lg:space-x-2 space-y-2 lg:space-y-0 text-center bg-slate-900 p-2 rounded-2xl w-full'>
+              {activeTab === 0 && <div>s</div>}
+              {activeTab === 1 &&
+                (<div className="lg:flex w-full rounded-2xl overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800 overflow-x-hidden scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full bg-slate-950">
+                  <div className="p-1 lg:w-[50%] lg:h-[50%]  h-96 scrollbar-thin items-center text-center scrollbar-thumb-slate-800 scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full overflow-y-auto grid grid-cols-2 lg:grid-cols-3 justify-evenly">
+                    {opp.legends.length === 0 ? (
+                      <a className="text-xl">no legends reported</a>
+                    ) : (
+                      opp.legends.map((leg) => (
+                        <div
+                          key={leg.id}
+                          className="flex flex-col m-0.5 text-center justify-center items-center rounded-2xl shadow border-slate-700 bg-slate-900 hover:bg-slate-800 transition duration-200 cursor-pointer"
+                          onClick={() => handleLegendClick(leg)}
+                        >
+                          <img className="flex w-16 h-16 justify-center items-center text-center rounded-2xl" src={leg.image} alt={leg.name} />
+                          <div className="flex w-full flex-col justify-between p-1.5 leading-normal">
+                            <p className="mb-0.5 text-2xl font-bold text-gray-900 dark:text-white">{leg.name}</p>
+                            <WinrateBar wins={leg.score.wins} games={leg.score.games} type={null} type2={3} />
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {selectedLegend && (
+                    <div className="lg:w-[50%] overflow-y-auto items-center text-center bg-gray-900 p-2 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full rounded-lg m-1.5 lg:mt-1.5 mt-4">
+                      <div className='flex justify-center'>
+                        <div>
+                          <img className="w-20 h-20" src={selectedLegend.image} alt={selectedLegend.startData.name} />
+                          <h2 className="text-center text-xl font-bold">{selectedLegend.startData.name}</h2>
+                        </div>
+                        <WinrateBar
+                          wins={selectedLegend.score.wins}
+                          games={selectedLegend.score.games}
+                          type={'Games'}
+                          type2={2} />
+                      </div>
+                      {/* opponent legend data */}
+                      <div className='bg-slate-900 rounded-lg overflow-y-auto w-full'>
+                        <div className='lg:min-w-[50%] overflow-y-auto rounded-lg bg-slate-950'>
+                          <h3 className="text-3xl font-bold mt-2">{opp.name}'s Legends</h3>
+                          <div className="bg-slate-950 max-h-[400px] rounded-lg p-1 scrollbar-thin w-full items-center text-center scrollbar-thumb-slate-800 scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full overflow-y-auto grid grid-cols-2 lg:grid-cols-3 justify-evenly">
+                            {selectedLegend.oppLegends?.length === 0 ? (
+                              <a className="text-xl">no legends reported</a>
+                            ) : (
+                              selectedLegend.oppLegends?.map((opp) => (
+                                <div
+                                  key={opp.id}
+                                  className="flex flex-col m-0.5 text-center justify-center items-center rounded-2xl shadow border-slate-700 bg-slate-900 hover:bg-slate-800 transition duration-200"
+                                >
+                                  <img className="flex w-16 h-16 justify-center items-center text-center rounded-2xl" src={opp.image} alt={opp.startData.name} />
+                                  <div className="flex w-full flex-col justify-between p-1.5 leading-normal">
+                                    <WinrateBar wins={opp.score.wins} games={opp.score.games} type={null} type2={3} />
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                        <div className='lg:min-w-[50%] mt-1.5 rounded-lg bg-slate-950'>
+                          <div className="scrollbar-thin scrollbar-thumb-slate-800 overflow-x-hidden scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full rounded-2xl ">
+                            <span className="text-3xl font-medium">Stages Played</span>
+                            <div className={` h-full p-1 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full overflow-y-auto ${selectedLegend.stages.length >= 1 ? 'grid grid-cols-2 lg:grid-cols-3' : ''} justify-evenly`}>
+                              {selectedLegend.stages.length == 0 ? <a className="text-xl">no stages reported</a> : selectedLegend.stages.map(stage => {
+                                return <div className="m-0.5 relative text-center items-center flex flex-col group">
+                                  <img
+                                    src={`https://saorax.github.io/images/brawlhalla/mapBg/${stage.name.replaceAll(" ", "-").toLocaleLowerCase()}.jpg`}
+                                    className="rounded-2xl h-24 w-full brightness-50 group-hover:brightness-75 transition duration-200"
+                                    alt={stage.name}
+                                  />
+                                  <div className="flex flex-col text-center items-center h-full justify-between p-1.5 leading-normal absolute">
+                                    <p className="mb-0.5 text-lg font-medium text-gray-900 dark:text-white">
+                                      {stage.name}
+                                    </p>
+                                    <div className="text-sm flex space-x-2">
+                                      <p>
+                                        <span className="font-semibold text-xl">{stage.games}</span> {stage.games == 1 ? 'Game' : 'Games'}
+                                      </p>
+                                      <p>
+                                        <span className="font-semibold text-xl">{stage.wins}</span> {stage.wins == 1 ? 'Win' : 'Wins'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                </div>)}
+              {activeTab === 2 && <div className="w-full scrollbar-thin scrollbar-thumb-slate-800 overflow-x-hidden scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full rounded-2xl bg-slate-950">
+                <span className="text-3xl font-medium">Stages Played</span>
+                <div className={`p-1 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full overflow-y-auto ${opp.stages.length >= 1 ? 'grid grid-cols-6' : ''} justify-evenly`}>
+                  {opp.stages.length == 0 ? <a className="text-xl">no stages reported</a> : opp.stages.map(stage => {
+                    return <div className="m-0.5 relative text-center items-center flex flex-col group">
+                      <img
+                        src={stage.image}
+                        className="rounded-2xl h-24 w-full brightness-50 group-hover:brightness-75 transition duration-200"
+                        alt={stage.name}
+                      />
+                      <div className="flex flex-col text-center items-center h-full justify-between p-1.5 leading-normal absolute">
+                        <p className="mb-0.5 text-lg font-medium text-gray-900 dark:text-white">
+                          {stage.name}
+                        </p>
+                        <div className="text-sm flex space-x-2">
+                          <p>
+                            <span className="font-semibold text-xl">{stage.games}</span> {stage.games == 1 ? 'Game' : 'Games'}
+                          </p>
+                          <p>
+                            <span className="font-semibold text-xl">{stage.wins}</span> {stage.wins == 1 ? 'Win' : 'Wins'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  })}
+                </div>
+              </div>}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+function TabLayout({ data, accessToken }) {
   const [activeTab, setActiveTab] = useState(0);
   const [legendStartData, setLegendStart] = useState([]);
   useEffect(() => {
     async function lsd() {
-      const lsd = await fetch(host + '/player/legends').then(res => res.json())
+      const lsd = await fetchData(host + '/player/legends', accessToken)
       setLegendStart(lsd);
     }
     lsd()
@@ -665,9 +1085,9 @@ function TabLayout({ data }) {
       <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
       <div id="myTabContent">
         {activeTab === 0 && (
-          <MainLayout data={data} lsd={legendStartData} />
+          <MainLayout data={data} lsd={legendStartData} accessToken={accessToken} />
         )}
-        {activeTab === 1 && <div role="tabpanel">Opponent History Content</div>}
+        {activeTab === 1 && <OpponentLayout data={data} lsd={legendStartData} accessToken={accessToken} />}
         {activeTab === 2 && <div role="tabpanel">Legend Data Content</div>}
         {activeTab === 3 && <div role="tabpanel">2v2 Data Content</div>}
       </div>
