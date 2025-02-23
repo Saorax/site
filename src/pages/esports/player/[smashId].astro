@@ -1,22 +1,27 @@
 ---
 import { host } from "../../../stuff";
-//const data = await fetch(`${host}/player/main/${Astro.params.smashId}`).then(res => res.json()).then(res => res);
 import Layout from "../../../layouts/PlayerLayout.jsx";
-import Layout2 from '../../../layouts/Layout.astro';
-import Layout3 from '../../../layouts/Player.jsx';
-import $ from "jquery";
-import { parse } from 'node-html-parser';
-import { countryToAlpha2 } from "country-to-iso";
-/*console.log(data)
-let banner = `<div src="" class="opacity-25 w-full h-64 bg-gray-700"></div>`;
-let pfp = `<img src="" class="w-28 h-28 rounded-lg uns" alt=${data.data.player.gamerTag}>`;
-if (data.data.images.filter(img => img.type === "banner").length !== 0) banner = `<img
-	src=${data.data.images.filter(img=> img.type === "banner")[0].url} class="opacity-25 w-full h-64">`;
-if (data.data.images.filter(img => img.type === "profile").length !== 0) pfp = `<img src=${data.data.images.filter(img=>
-img.type === "profile")[0].url} class="w-28 h-28 rounded-lg uns" style="display:unset !important"
-alt=${data.data.player.gamerTag}>`;
-*/
+import Layout2 from "../../../layouts/Layout.astro";
+import Layout3 from "../../../layouts/Player.jsx";
+let token = Astro.cookies.get("accessToken")?.value || null;
+async function fetchUserData() {
+  try {
+    const response = await fetch(`${host}/player/user/${Astro.params.smashId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await response.json();
+
+    if (data.success === false) {
+      console.error("Error fetching player data:", data.message);
+    } else {
+      return data;
+    }
+  } catch (error) {
+    console.error("Failed to fetch player data:", error);
+  }
+}
+const user = await fetchUserData();
 ---
 <Layout2 title="Player Database">
-	<Layout3 id={Astro.params.smashId} client:load/>
+  <Layout3 id={Astro.params.smashId} playerData={user} client:load />
 </Layout2>

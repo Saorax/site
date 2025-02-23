@@ -12,6 +12,8 @@ function PlayerDiv() {
     const token = searchParams.get("access_token") || localStorage.getItem("accessToken");
     if (token) {
       localStorage.setItem("accessToken", token);
+      document.cookie = `accessToken=${token};`;
+      console.log('hello?', token)
       setAccessToken(token);
       fetchUserInfo(token);
       searchParams.delete("access_token");

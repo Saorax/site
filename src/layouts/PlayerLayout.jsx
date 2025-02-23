@@ -128,7 +128,7 @@ function WinrateBar({ wins, games, type, type2 }) {
   const winrate = games ? ((wins / games) * 100).toFixed(2) : 0;
   return (
     <div className='lg:px-2 px-1 pb-2'>
-      {type2 == 2 && <span className="text-2xl font-medium">{games} {type} Played</span>}
+      {type2 == 2 && <span className="text-2xl font-medium">{games} {type} {type !== null ? "Played" : 'Games'}</span>}
       <div className='justify-between flex pb-2'>
         <span className={`${type2 != 1 ? 'text-xl' : 'text-lg'} text-blue-400`}>{wins}W</span>
         {type2 != 2 && <span className={`${type2 != 1 ? 'text-xl' : 'text-lg'} font-medium`}>{games}{type !== null ? ` ${type} Played` : " Games"}</span>}
@@ -192,22 +192,22 @@ function MatchDataFunc(match, user, opp, legend, setmd, md) {
         {opp.entrant.participants.map((part, index) => {
           if (part.player.user == null || part.player.user.images.length == 0) {
             return <div className='flex space-x-2'>
-              <a className={`flex w-8 h-8 rounded-2xl bg-slate-700 justify-center items-center text-center`}>
+              <a className={`flex w-10 h-10 rounded-2xl  bg-slate-700 justify-center items-center text-center`}>
                 <div className="text-2xl text-slate-100 place-self-center">
                   {part.player.gamerTag[0].toLocaleUpperCase()}
                 </div>
               </a>
               <div>
                 {part.prefix && <span className="text-slate-400 mr-1.5">{part.prefix}</span>}
-                <span>{part.gamerTag}</span>
+                <a className="text-2xl" target="_blank" rel="noopener noreferrer" href={`/esports/player/${part.player.user.slug.split('/')[1]}`}>{part.gamerTag}</a>
               </div>
             </div>
           } else {
             return <div className='flex space-x-2'>
-              <img className={`w-8 h-8 rounded-xl`} src={part.player.user.images[0].url} />
+              <img className={`w-10 h-10 rounded-xl`} src={part.player.user.images[0].url} />
               <div>
                 {part.prefix && <span className="text-slate-400 mr-1.5">{part.prefix}</span>}
-                <span>{part.gamerTag}</span>
+                <a className="text-2xl" target="_blank" rel="noopener noreferrer" href={`/esports/player/${part.player.user.slug.split('/')[1]}`}>{part.gamerTag}</a>
               </div>
             </div>
           }
@@ -278,13 +278,15 @@ function EventData(data) {
                     <div className="flex mr-1.5 -space-x-4">
                       {userEntrant.participants.map((part, index) => {
                         if (part.player.user == null || part.player.user.images.length == 0) {
-                          return <a className={`flex w-14 h-14 rounded-2xl mt-${index * 2} bg-slate-700 justify-center items-center text-center`}>
+                          return <div key={part.player?.user?.id} >
+                            <a className={`flex w-14 h-14 rounded-2xl mt-${index * 2} bg-slate-700 justify-center items-center text-center`}>
                             <div className="text-2xl text-slate-100 place-self-center">
-                              {part.player.gamerTag[0].toLocaleUpperCase()}
+                              {part.gamerTag[0].toLocaleUpperCase()}
                             </div>
                           </a>
+                          </div>
                         } else {
-                          return <img className={`w-14 h-14 rounded-2xl mt-${index * 2}`} src={part.player.user.images[0].url} />
+                          return <div key={part.player?.user?.id} ><img className={`w-14 h-14 rounded-2xl mt-${index * 2}`} src={part.player.user.images[0].url} /></div>
                         }
                       })}
                     </div>
@@ -295,8 +297,8 @@ function EventData(data) {
                         <>
                           {userEntrant.participants.map((part, index) => (
                             <React.Fragment key={index}>
-                              {part.player.prefix && <span className="text-slate-400 mr-1.5">{part.player.prefix}</span>}
-                              <span>{part.player.gamerTag}</span>
+                              {part.prefix && <span className="text-slate-400 mr-1.5">{part.prefix}</span>}
+                              <span>{part.gamerTag}</span>
                               {index < userEntrant.participants.length - 1 && <span> &nbsp;&&nbsp; </span>}
                             </React.Fragment>
                           ))}
@@ -306,18 +308,20 @@ function EventData(data) {
                         <>
                           <div className='lg:flex lg:space-x-2'>
                             {userEntrant.participants.map((part, index) => (
-                              <React.Fragment key={index} className="flex">
-                                <div>{part.player.prefix && <span className="text-slate-400 mr-1.5">{part.player.prefix}</span>}
-                                  <span>{part.player.gamerTag}</span></div>
+                              <React.Fragment key={index}>
+                                <div>{part.prefix && <span className="text-slate-400 mr-1.5">{part.prefix}</span>}
+                                  <span>{part.gamerTag}</span></div>
                               </React.Fragment>
                             ))}
                           </div>
                         </>
                       </div>
                     </div>
-                    <div className="text-lg justify-between w-full flex lg:text-xl font-thin text-slate-800 dark:text-slate-200 space-x-4">
-                      <p><span className="font-bold">{ordinal(userEntrant.standing.placement)}</span> out of {data.data.numEntrants}</p>
-                      <p className="mr-5 font-bold">Seed {ordinal(userEntrant.initialSeedNum)}</p>
+                    <div className="text-lg  w-full lg:text-xl font-thin text-slate-800 dark:text-slate-200">
+                      <div className='flex w-full space-x-4'>
+                        <p><span className="font-bold">{ordinal(userEntrant.standing.placement)}</span> out of {data.data.numEntrants}</p>
+                        <p className="ml-5 font-bold">Seed {ordinal(userEntrant.initialSeedNum)}</p>
+                      </div>
                       <p className='font-bold flex'>${data.data.prizingInfo.enablePrizing == true && data.data.prizingInfo.prizing.filter(p => p.placement == userEntrant.standing.placement)[0] !== undefined ? <div className='flex'>{data.data.prizingInfo.prizing.filter(p => p.placement == userEntrant.standing.placement)[0].amount / userEntrant.participants.length}{userEntrant.participants.length >= 2 && <p> &nbsp;(${data.data.prizingInfo.prizing.filter(p => p.placement == userEntrant.standing.placement)[0].amount} before split)</p>}</div> : 0}</p>
                     </div>
                   </div>
@@ -357,7 +361,7 @@ function EventData(data) {
               <span className="text-2xl font-medium">Legends Played</span>
               <div className={`p-1 scrollbar-thin w-full items-center text-center scrollbar-thumb-slate-800 scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full overflow-y-auto ${data.data.legends.length >= 1 ? 'grid grid-cols-2 lg:grid-cols-3' : ''} justify-evenly`}>
                 {data.data.legends.length == 0 ? <a className="text-xl">no legends reported</a> : data.data.legends.map(leg => {
-                  return <div className="flex flex-col m-0.5 text-center justify-center items-center rounded-2xl shadow border-slate-700 bg-slate-900 hover:bg-slate-800 transition duration-200">
+                  return <div key={leg.name} className="flex flex-col m-0.5 text-center justify-center items-center rounded-2xl shadow border-slate-700 bg-slate-900 hover:bg-slate-800 transition duration-200">
                     <img className="flex w-16 h-16 justify-center items-center text-center rounded-2xl" src={leg.image} alt={leg.name} />
                     <div className="flex w-full flex-col justify-between p-1.5 leading-normal">
                       <p className="mb-0.5 text-2xl font-bold text-gray-900 dark:text-white">{leg.name}</p>
@@ -375,7 +379,7 @@ function EventData(data) {
               <span className="text-2xl font-medium">Stages Played</span>
               <div className={`p-1 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full overflow-y-auto ${data.data.stages.length >= 1 ? 'grid grid-cols-2 lg:grid-cols-3' : ''} justify-evenly`}>
                 {data.data.stages.length == 0 ? <a className="text-xl">no stages reported</a> : data.data.stages.map(stage => {
-                  return <div className="m-0.5 relative text-center items-center flex flex-col group">
+                  return <div key={stage.name} className="m-0.5 relative text-center items-center flex flex-col group">
                     <img
                       src={stage.url}
                       className="rounded-2xl h-24 w-full brightness-50 group-hover:brightness-75 transition duration-200"
@@ -408,14 +412,14 @@ function EventData(data) {
         {/* history */}
         <div className="max-h-[60.5vh] divide-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900 w-full p-1 divide-slate-700 rounded-2xl bg-slate-900 text-slate-100">
           {newData.map(matchData => {
-            return <div className={`${newData.length > 1 ? i == 0 ? "mb-2 " : "mt-2 " : ""}text-xl lg:text-3xl text-center`}>
+            return <div key={matchData.type.ident} className={`${newData.length > 1 ? i == 0 ? "mb-2 " : "mt-2 " : ""}text-xl lg:text-3xl text-center`}>
               <a>{matchData.type.name == "Bracket" ? `${matchData.type.name} ${matchData.type.ident}` : matchData.type.name}</a>
               <div className="pt-3 text-start">
                 {matchData.array.map((mArray, mai) => {
                   let user = mArray.slots.filter(d => d.entrant.id == userEntrant.id)[0];
                   let opponent = mArray.slots.filter(d => d.entrant.id != userEntrant.id)[0];
                   return <div
-                    onClick={() => MatchDataFunc(mArray, user, opponent, data.lsd, data.setmd)}
+                    key={mai} onClick={() => MatchDataFunc(mArray, user, opponent, data.lsd, data.setmd)}
                     className={`rounded-2xl hover:bg-slate-800 transition duration-200 cursor-pointer flex ${matchData.array.length != mai - 1 ? "mb-2" : ""}`}
                   >
                     <div className="w-24 flex flex-col text-center items-center">
@@ -433,33 +437,32 @@ function EventData(data) {
                       <div className="flex mr-1.5 -space-x-4">
                         {opponent.entrant.participants.map((part, index) => {
                           if (part.player.user == null || part.player.user.images.length == 0) {
-                            return <a className={`flex w-12 h-12 rounded-2xl mt-${index * 2} bg-slate-700 justify-center items-center text-center`}>
+                            return <div  key={part.player?.user?.id} ><a className={`flex w-12 h-12 rounded-2xl mt-${index * 2} bg-slate-700 justify-center items-center text-center`}>
                               <div className="text-2xl text-slate-100 place-self-center">
                                 {part.player.gamerTag[0].toLocaleUpperCase()}
                               </div>
-                            </a>
+                            </a></div>
                           } else {
-                            return <img className={`w-12 h-12 rounded-2xl mt-${index * 2}`} src={part.player.user.images[0].url} />
+                            return <div  key={part.player?.user?.id} ><img className={`w-12 h-12 rounded-2xl mt-${index * 2}`} src={part.player.user.images[0].url} /></div>
                           }
                         })}
                       </div>
                       <div className="flex text-start flex-col">
-                        <div className='lg:flex hidden'>
+                        <div className='lg:flex lg:flex-col hidden'>
                           <>
-                            {opponent.entrant.participants.map((part, index) => (
-                              <React.Fragment key={index}>
-                                {part.prefix && <span className="text-slate-400 mr-1.5">{part.prefix}</span>}
-                                <span>{part.gamerTag}</span>
-                                {index < opponent.entrant.participants.length - 1 && <span> &nbsp;&&nbsp; </span>}
-                              </React.Fragment>
-                            ))}
+                          {opponent.entrant.participants.map((part, index) => (
+                                <React.Fragment key={index}>
+                                  <div>{part.prefix && <span className="text-slate-400 mr-1.5">{part.prefix}</span>}
+                                    <span>{part.gamerTag}</span></div>
+                                </React.Fragment>
+                              ))}
                           </>
                         </div>
                         <div className='lg:hidden'>
                           <>
                             <div className='lg:flex lg:space-x-2'>
                               {opponent.entrant.participants.map((part, index) => (
-                                <React.Fragment key={index} className="flex">
+                                <React.Fragment key={index}>
                                   <div>{part.prefix && <span className="text-slate-400 mr-1.5">{part.prefix}</span>}
                                     <span>{part.gamerTag}</span></div>
                                 </React.Fragment>
@@ -600,8 +603,14 @@ function MainLayout({ data, lsd, accessToken }) {
   };
 
   useEffect(() => {
-    setCurId(data.events.nodes[0]?.id);
-  }, []);
+    if (data.events.nodes.length > 0) {
+      const firstEventId = data.events.nodes[0].id;
+      setCurId(firstEventId);
+      async function aa() {
+        await Event(firstEventId, data.id, lsd, setEventData, accessToken);
+      } aa();
+    }
+  }, [data]); 
 
   const filterAndSortEvents = () => {
     const events = data.isFull ? data.events.nodes : data.events.nodes;
@@ -721,7 +730,7 @@ function MainLayout({ data, lsd, accessToken }) {
               Next
             </button>
           </div>
-          <div className="flex w-full flex-col overflow-y-auto h-[25vh] lg:h-screen scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900">
+          <div className="flex w-full flex-col overflow-y-auto h-[60vh] lg:h-screen scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900">
             {paginatedEvents().map((item) => (
               <Events
                 key={item.id}
@@ -800,11 +809,11 @@ function OppList({ data, opp, setOpp }) {
         </div>
       </div>
     </div>
-    <div className="flex">
-      <div className="w-1/2 text-center items-center">
+    <div className="w-full ">
+      <div className="text-center items-center">
         <WinrateBar wins={data.score.sets.wins} games={data.score.sets.num} type="Sets" type2={1} />
       </div>
-      <div className="w-1/2 text-center items-center">
+      <div className="text-center items-center">
         <WinrateBar wins={data.score.games.wins} games={data.score.games.num} type="Games" type2={1} />
       </div>
     </div>
@@ -816,6 +825,8 @@ function OpponentLayout({ data, lsd, accessToken }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [opp, setOpp] = useState({});
   const [selectedLegend, setSelectedLegend] = useState(null);
+  const [sortOption, setSortOption] = useState("gamesPlayed"); 
+  const [sortOrder, setSortOrder] = useState("desc");
 
   const handleLegendClick = (legend) => {
     setSelectedLegend(legend);
@@ -823,11 +834,19 @@ function OpponentLayout({ data, lsd, accessToken }) {
 
   const opponentData = data.opponentData;
   const itemsPerPage = 25;
-  const filteredData = opponentData.filter((data) =>
+  const sortedData = [...opponentData].sort((a, b) => {
+    let comparison = 0;
+    if (sortOption === "gamesPlayed") comparison = b.score.games.num - a.score.games.num;
+    if (sortOption === "setsPlayed") comparison = b.score.sets.num - a.score.sets.num;
+    if (sortOption === "gameWinrate") comparison = (b.score.games.wins / b.score.games.num) - (a.score.games.wins / a.score.games.num);
+    if (sortOption === "setWinrate") comparison = (b.score.sets.wins / b.score.sets.num) - (a.score.sets.wins / a.score.sets.num);
+    return sortOrder === "asc" ? -comparison : comparison;
+  });
+  const filteredData = sortedData.filter((data) =>
     data.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (data.prefix && data.prefix.toLowerCase().includes(searchTerm.toLowerCase()))
   );
-
+ 
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
   const paginatedData = filteredData.slice(
     (currentPage - 1) * itemsPerPage,
@@ -864,6 +883,30 @@ function OpponentLayout({ data, lsd, accessToken }) {
             className="w-full text-white bg-slate-900 p-2 border border-slate-600 rounded"
           />
         </div>
+        <div className="flex space-x-4 my-4">
+          <Filter
+            label="Sort by"
+            id="sortOption"
+            value={sortOption}
+            onChange={(value) => setSortOption(value)}
+            options={[
+              { value: "gamesPlayed", label: "Games Played" },
+              { value: "gameWinrate", label: "Game Winrate %" },
+              { value: "setsPlayed", label: "Sets Played" },
+              { value: "setWinrate", label: "Set Winrate %" }
+            ]}
+          />
+          <Filter
+            label="Order"
+            id="sortOrder"
+            value={sortOrder}
+            onChange={(value) => setSortOrder(value)}
+            options={[
+              { value: "desc", label: "Descending" },
+              { value: "asc", label: "Ascending" }
+            ]}
+          />
+        </div>
         <div className="flex justify-between my-4">
           <button
             onClick={() => handlePageChange("prev")}
@@ -886,7 +929,7 @@ function OpponentLayout({ data, lsd, accessToken }) {
         </div>
         <div className='px-1 lg:h-screen h-96 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900'>
           {paginatedData.map((data, index) => (
-            <OppList data={data} opp={opp} setOpp={setOpp} />
+            <OppList data={data} opp={opp} setOpp={setOpp} key={index} />
           ))}
         </div>
       </div>
@@ -901,7 +944,11 @@ function OpponentLayout({ data, lsd, accessToken }) {
                 <div>
                   <div className="relative w-24 h-24">
                     {opp.images.filter(img => img.type === "profile").length === 0 ? (
-                      <div className="w-full h-full rounded-lg uns" alt={opp.name}></div>
+                      <a className="flex w-24 h-24 rounded-2xl bg-slate-700 justify-center items-center text-center">
+                        <div className="text-5xl text-slate-100 place-self-center">
+                          {opp.name[0].toLocaleUpperCase()}
+                        </div>
+                      </a>
                     ) : (
                       <img
                         src={opp.images.filter(img => img.type === "profile")[0].url}
@@ -914,7 +961,7 @@ function OpponentLayout({ data, lsd, accessToken }) {
                 </div>
                 <div className="pl-2 place-content-end">
                   {opp.prefix && (<p className="lg:text-2xl text-xl text-gray-600 dark:text-gray-400">{opp.prefix}</p>)}
-                  {opp.name && (<p className="lg:text-3xl text-2xl dark:text-white">{opp.name}</p>)}
+                  {opp.name && (<a className="lg:text-3xl text-2xl dark:text-white" target="_blank" rel="noopener noreferrer" href={`/esports/player/${opp.slug.split('/')[1]}`}>{opp.name}</a>)}
                 </div>
               </div>
             </div>
@@ -954,7 +1001,7 @@ function OpponentLayout({ data, lsd, accessToken }) {
                           <img className="flex w-16 h-16 justify-center items-center text-center rounded-2xl" src={leg.image} alt={leg.name} />
                           <div className="flex w-full flex-col justify-between p-1.5 leading-normal">
                             <p className="mb-0.5 text-2xl font-bold text-gray-900 dark:text-white">{leg.name}</p>
-                            <WinrateBar wins={leg.score.wins} games={leg.score.games} type={null} type2={3} />
+                            <WinrateBar wins={leg.score.wins} games={leg.score.games} type={null} type2={2} />
                           </div>
                         </div>
                       ))
@@ -988,7 +1035,7 @@ function OpponentLayout({ data, lsd, accessToken }) {
                                 >
                                   <img className="flex w-16 h-16 justify-center items-center text-center rounded-2xl" src={opp.image} alt={opp.startData.name} />
                                   <div className="flex w-full flex-col justify-between p-1.5 leading-normal">
-                                    <WinrateBar wins={opp.score.wins} games={opp.score.games} type={null} type2={3} />
+                                    <WinrateBar wins={opp.score.wins} games={opp.score.games} type={null} type2={2} />
                                   </div>
                                 </div>
                               ))
@@ -998,7 +1045,7 @@ function OpponentLayout({ data, lsd, accessToken }) {
                         <div className='lg:min-w-[50%] mt-1.5 rounded-lg bg-slate-950'>
                           <div className="scrollbar-thin scrollbar-thumb-slate-800 overflow-x-hidden scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full rounded-2xl ">
                             <span className="text-3xl font-medium">Stages Played</span>
-                            <div className={` h-full p-1 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full overflow-y-auto ${selectedLegend.stages.length >= 1 ? 'grid grid-cols-2 lg:grid-cols-3' : ''} justify-evenly`}>
+                            <div className={` h-full p-1 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full overflow-y-auto ${selectedLegend.stages.length > 1 ? 'grid grid-cols-2 lg:grid-cols-3' : ''} justify-evenly`}>
                               {selectedLegend.stages.length == 0 ? <a className="text-xl">no stages reported</a> : selectedLegend.stages.map(stage => {
                                 return <div className="m-0.5 relative text-center items-center flex flex-col group">
                                   <img
@@ -1032,7 +1079,7 @@ function OpponentLayout({ data, lsd, accessToken }) {
                 </div>)}
               {activeTab === 2 && <div className="w-full scrollbar-thin scrollbar-thumb-slate-800 overflow-x-hidden scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full rounded-2xl bg-slate-950">
                 <span className="text-3xl font-medium">Stages Played</span>
-                <div className={`p-1 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full overflow-y-auto ${opp.stages.length >= 1 ? 'grid grid-cols-6' : ''} justify-evenly`}>
+                <div className={`p-1 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-slate-950 scrollbar-thumb-rounded-full scrollbar-track-rounded-full overflow-y-auto ${opp.stages.length >= 1 ? 'grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6' : ''} justify-evenly`}>
                   {opp.stages.length == 0 ? <a className="text-xl">no stages reported</a> : opp.stages.map(stage => {
                     return <div className="m-0.5 relative text-center items-center flex flex-col group">
                       <img
@@ -1066,20 +1113,32 @@ function OpponentLayout({ data, lsd, accessToken }) {
 }
 function TabLayout({ data, accessToken }) {
   const [activeTab, setActiveTab] = useState(0);
-  const [legendStartData, setLegendStart] = useState([]);
+  const [legendStartData, setLegendStart] = useState(null);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
     async function lsd() {
-      const lsd = await fetchData(host + '/player/legends', accessToken)
-      setLegendStart(lsd);
+      try {
+        const lsdData = await fetchData(host + '/player/legends', accessToken);
+        setLegendStart(lsdData);
+      } catch (error) {
+        console.error("Failed to fetch legend data:", error);
+      } finally {
+        setLoading(false);
+      }
     }
-    lsd()
+    lsd();
   }, []);
+
   const tabs = [
-    { id: "main", label: "Main" },
+    { id: "main", label: "Events" },
     { id: "opponents", label: "Opponent History" },
     { id: "legends", label: "Legend Data" },
     { id: "twos", label: "2v2 Data" },
   ];
+
+  if (loading) return <div className='text-lg text-slate-300'>Loading...</div>;
+
   return (
     <div>
       <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
@@ -1093,6 +1152,7 @@ function TabLayout({ data, accessToken }) {
       </div>
     </div>
   );
-};
+}
+
 
 export default TabLayout;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { Twitter, Twitch, MessageSquare } from "lucide-react";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { host } from "../stuff";
@@ -29,43 +30,23 @@ const TwemojiText = ({ text }) => {
 
   return <div ref={textRef}>{text}</div>;
 };
-function Player({ id }) {
+function Player({ id, playerData }) {
   const [accessToken, setAccessToken] = useState(null);
   const [signedInUser, setSignedInUser] = useState({})
-  const [user, setUser] = useState(null)
-  const [fullUser, setFullUser] = useState(null)
+  const [user, setUser] = useState(playerData)
+  console.log(playerData)
   useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    const token = searchParams.get("access_token") || localStorage.getItem("accessToken");
-    if (token) {
-      localStorage.setItem("accessToken", token);
-      setAccessToken(token);
-      fetchUserInfo(token);
-      searchParams.delete("access_token");
-      const newUrl = `${window.location.origin}${window.location.pathname}`;
-      window.history.replaceState(null, "", newUrl);
-    };
-    async function getUser() {
-      const response = await fetch(
-        `${host}/player/user/${id}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      const data = await response.json();
-      setUser(data)
-      if (data.isFull == true) {
-        setFullUser(data)
-      }
-      if (data.success == false) {
-        if (data.message.includes('expired')) {
-          alert("Your Start.gg token has expired")
-        }
-      }
-      console.log(data)
-    };
-    getUser()
-  }, []);
+    const token = localStorage.getItem("accessToken");
+    if (!token) {
+      console.error("No access token found.");
+      return;
+    }
+    setAccessToken(token);
+  }, [id]);
+
+  if (!user) {
+    return <div className="text-center text-white text-xl">Failed to load player data</div>;
+  }
   const fetchUserInfo = async (token) => {
     try {
       const response = await fetch(
@@ -101,271 +82,222 @@ function Player({ id }) {
     const data2 = await response2.json();
     window.location.reload()
   }
-  if (user) 
-    console.log(user.location.country, getCode(user.location.country))
-  return user && (
+  const statsTabs = [
+    { key: "career", label: "Career" },
+    { key: "1v1", label: "1v1" },
+    { key: "2v2", label: "2v2" },
+    { key: "other", label: "Other" }
+  ];
+
+  const renderStats = (stats, earnings, gm) => (
+    <div className="">
+      <p className="font-bold text-2xl">{gm == 1 ? "1v1" : gm == 2 ? "2v2" : gm == 3 ? "Other" : "Career"} Stats</p>
+      <div className="lg:flex lg:space-x-6">
+        <div className="flex lg:space-x-6 justify-between">
+          <div><p className="text-slate-400 lg:text-lg text-sm">Earnings</p><p className="lg:text-xl font-bold">${earnings.toLocaleString()}</p></div>
+          <div><p className="text-slate-400 lg:text-lg text-sm">Events</p><p className="lg:text-xl font-bold">{stats[6].toLocaleString()}</p></div>
+          <div><p className="text-slate-400 lg:text-lg text-sm">Gold</p><p className="lg:text-xl font-bold">{stats[0].toLocaleString()}</p></div>
+          <div><p className="text-slate-400 lg:text-lg text-sm">Silver</p><p className="lg:text-xl font-bold">{stats[1].toLocaleString()}</p></div>
+          <div><p className="text-slate-400 lg:text-lg text-sm">Bronze</p><p className="lg:text-xl font-bold">{stats[2].toLocaleString()}</p></div>
+          <div><p className="text-slate-400 lg:text-lg text-sm">Top 8</p><p className="lg:text-xl font-bold">{stats[3].toLocaleString()}</p></div>
+          <div><p className="text-slate-400 lg:text-lg text-sm">Top 16</p><p className="lg:text-xl font-bold">{stats[4].toLocaleString()}</p></div>
+          <div><p className="text-slate-400 lg:text-lg text-sm">Top 32</p><p className="lg:text-xl font-bold">{stats[5].toLocaleString()}</p></div>
+        </div>
+        <div className="flex lg:space-x-6 justify-between">
+          <div><p className="text-slate-400 lg:text-lg text-sm">Games Played</p><p className="lg:text-xl font-bold">{stats[7].toLocaleString()}</p></div>
+          <div><p className="text-slate-400 lg:text-lg text-sm">Games Won</p><p className="lg:text-xl font-bold">{stats[8].toLocaleString()}</p></div>
+          <div><p className="text-slate-400 lg:text-lg text-sm">Sets Played</p><p className="lg:text-xl font-bold">{stats[9].toLocaleString()}</p></div>
+          <div><p className="text-slate-400 lg:text-lg text-sms">Sets Won</p><p className="lg:text-xl font-bold">{stats[10].toLocaleString()}</p></div>
+        </div>
+      </div>
+    </div>
+  );
+  return user && accessToken && (
     <div className="dark:text-white dark:bg-slate-950 overflow-y-hidden overflow-x-hidden flex flex-col">
       <div className="overflow-hidden rounded text-slate-500 shadow-slate-200">
-        <div className="lg:space-x-2 lg:flex w-full relative p-2 text-white bg-slate-900 lg:text-left lg:items-start text-center items-center flex lg:flex-row flex-col group">
-          <div className="lg:flex w-full relative  text-white bg-slate-900 lg:text-left lg:items-start text-center items-center flex lg:flex-row flex-col group">
-            {user.images.filter(img => img.type === "banner").length === 0
-              ? <div src="" className="opacity-25 w-full lg:h-64 h-48 bg-gray-700"></div>
-              : <img src={user.images.filter(img => img.type === "banner")[0].url} className="rounded-2xl opacity-25 w-full lg:h-64 h-48" />}
-            <div className="flex text-left items-center h-full lg:justify-normal justify-between p-1.5 leading-normal absolute">
-              <div>
-                <div className="relative w-36 h-36">
-                  {user.images.filter(img => img.type === "profile").length === 0 ? (
-                    <div className="w-full h-full rounded-lg uns" alt={user.player.gamerTag}></div>
-                  ) : (
-                    <img
-                      src={user.images.filter(img => img.type === "profile")[0].url}
-                      className="w-full h-full rounded-lg uns"
-                      style={{ display: "unset !important" }}
-                      alt={user.player.gamerTag}
-                    />
-                  )}
-                  {user.country !== null && (
-                    <div className="absolute bottom-0 left-0 w-9 h-9">
-                      <TwemojiText
-                        text={countryCodeEmoji(getCode(user.location.country))}
-                        className="w-full h-full"
+        <div className="w-full">
+          <div className="w-full relative">
+            <div
+              className="absolute inset-0 lg:h-full h-auto bg-gray-800 bg-cover bg-center opacity-25"
+              style={{
+                backgroundImage: user.images.filter(img => img.type === "banner").length > 0
+                  ? `url(${user.images.filter(img => img.type === "banner")[0].url})`
+                  : "none",
+                width: "100%",
+              }}
+            ></div>
+
+            <div className="relative w-full lg:flex lg:justify-between">
+              <div className="">
+                <div className=" p-4 w-full flex">
+                  <div className="relative lg:w-36 w-24 lg:h-36 h-24">
+                    {user.images.filter(img => img.type === "profile").length === 0 ? (
+                      <div className="w-full h-full rounded-lg uns" alt={user.player.gamerTag}></div>
+                    ) : (
+                      <img
+                        src={user.images.filter(img => img.type === "profile")[0].url}
+                        className="w-full h-full rounded-lg uns"
+                        alt={user.player.gamerTag}
                       />
+                    )}
+                    {user.location.country !== null && (
+                      <div className="absolute bottom-0 left-0 w-9 h-9">
+                        <TwemojiText
+                          text={countryCodeEmoji(getCode(user.location.country))}
+                          className="w-full h-full"
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="pl-2 place-content-end">
+                    {user.player.prefix && (
+                      <p className="lg:text-2xl text-xl text-gray-600 dark:text-gray-400">{user.player.prefix}</p>
+                    )}
+                    {user.player.gamerTag && (
+                      <p className="lg:text-3xl text-2xl dark:text-white">{user.player.gamerTag}</p>
+                    )}
+                    <div className="flex space-x-1">
+                    {user.authorizations?.sort((a, b) => (a.type === "DISCORD" ? 1 : -1)).map((auth) => {
+                      if (auth.type === "TWITTER") {
+                        return (
+                          <a
+                            key="twitter"
+                            href={auth.url || `https://twitter.com/${auth.externalUsername}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="relative group"
+                          >
+                            <Twitter className="w-6 h-6 text-blue-500 hover:text-blue-400" />
+                            <span className="absolute bottom-8 left-1/2 transform -translate-x-1/2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition">
+                              @{auth.externalUsername}
+                            </span>
+                          </a>
+                        );
+                      }
+                      if (auth.type === "TWITCH") {
+                        return (
+                          <a
+                            key="twitch"
+                            href={auth.url || `https://twitch.tv/${auth.externalUsername}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="relative group"
+                          >
+                            <Twitch className="w-6 h-6 text-purple-600 hover:text-purple-500" />
+                            <span className="absolute bottom-8 left-1/2 transform -translate-x-1/2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition">
+                              {auth.externalUsername}
+                            </span>
+                          </a>
+                        );
+                      }
+                      if (auth.type === "DISCORD") {
+                        return (
+                          <div key="discord" className="relative group">
+                            <MessageSquare className="w-6 h-6 text-gray-500 hover:text-gray-400" />
+                            <span className="absolute bottom-8 left-1/2 transform -translate-x-1/2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition">
+                              {auth.externalUsername}
+                            </span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })}
                     </div>
-                  )}
+                    {user.bio && (
+                      <p className="text-base text-gray-700 dark:text-gray-300">Bio: {user.bio}</p>
+                    )}
+                    {user.isFull == false && (
+                      <div onClick={loadFull} className="flex">
+                        <button className="bg-slate-500 hover:bg-slate-600 text-white font-bold py-1 px-2 rounded">
+                          Load Full Data
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div className="pl-2 place-content-end">
-                {user.player.prefix && (<p className="lg:text-2xl text-xl text-gray-600 dark:text-gray-400">{user.player.prefix}</p>)}
-                {user.player.gamerTag && (<p className="lg:text-3xl text-2xl dark:text-white">{user.player.gamerTag}</p>)}
-                {user.names?.length !== 0 ?
-                  <div>
-                    <span className="lg:text-xl text-lg text-gray-600 dark:text-gray-400">Past Names: </span>
-                    <span className="lg:text-xl text- text-gray-700 dark:text-gray-300">{user.names?.join(", ")}</span>
-                  </div> : ""
-                }
-                {user.prefixes?.length !== 0 ?
-                  <div>
-                    <span className="lg:text-xl text-lg text-gray-600 dark:text-gray-400">Past Prefixes: </span>
-                    <span className="lg:text-xl text- text-gray-700 dark:text-gray-300">{user.prefixes?.join(", ")}</span>
-                  </div> : ""
-                }
-                {user.bio !== null && (<p className="text-base text-gray-700 dark:text-gray-300">Bio: {user.bio}</p>)}
-                {user.isFull == false && <div onClick={loadFull} className="flex">
-                  <button className="bg-slate-500 hover:bg-slate-600 text-white font-bold py-1 px-2 rounded">Load Full Data</button>
+                {user.isFull == true && <div>
+                  {user.names?.length !== 0 ? (
+                    <p className="lg:text-xl pl-1 text-lg text-gray-600 dark:text-gray-400">Past Names: <span className="lg:text-xl text-lg text-gray-700 dark:text-gray-300">{user.names?.join(", ")}</span></p>
+                  ) : ""}
+                  {user.prefixes?.length !== 0 ? (
+                    <p className="lg:text-xl pl-1 text-lg text-gray-600 dark:text-gray-400">Past Prefixes: <span className="lg:text-xl text-lg text-gray-700 dark:text-gray-300">{user.prefixes?.join(", ")}</span></p>
+                  ) : ""}</div>}
+                {user.pr && <div className="lg:flex lg:space-x-4">
+                  {user.pr[0].pr && <div className="p-2">
+                    <div className="text-slate-200">
+                      <p className="font-bold text-2xl">1v1 PR</p>
+                      <div className="">
+                        <div className="flex lg:space-x-6 justify-between">
+                          <div><p className="text-slate-400 lg:text-lg text-sm">Region</p><p className="lg:text-xl font-bold">{user.pr[0].pr.region.toLocaleString()}</p></div>
+                          <div><p className="text-slate-400 lg:text-lg text-sm">Ranking</p><p className="lg:text-xl font-bold">{user.pr[0].pr.powerRanking.toLocaleString()}</p></div>
+                          <div><p className="text-slate-400 lg:text-lg text-sm">Earnings</p><p className="lg:text-xl font-bold">${user.pr[0].earnings.toLocaleString()}</p></div>
+                        </div>
+                        <div className="flex lg:space-x-6 justify-between">
+                          <div><p className="text-slate-400 lg:text-lg text-sm">Gold</p><p className="lg:text-xl font-bold">{user.pr[0].pr.gold.toLocaleString()}</p></div>
+                          <div><p className="text-slate-400 lg:text-lg text-sm">Silver</p><p className="lg:text-xl font-bold">{user.pr[0].pr.silver.toLocaleString()}</p></div>
+                          <div><p className="text-slate-400 lg:text-lg text-sm">Bronze</p><p className="lg:text-xl font-bold">{user.pr[0].pr.bronze.toLocaleString()}</p></div>
+                          <div><p className="text-slate-400 lg:text-lg text-sm">Top 8</p><p className="lg:text-xl font-bold">{user.pr[0].pr.top8.toLocaleString()}</p></div>
+                          <div><p className="text-slate-400 lg:text-lg text-sm">Top 32</p><p className="lg:text-xl font-bold">{user.pr[0].pr.top32.toLocaleString()}</p></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>}
+                  {user.pr[1].pr && <div className="p-2">
+                    <div className="text-slate-200">
+                      <p className="font-bold text-2xl">2v2 PR</p>
+                      <div className="">
+                        <div className="flex lg:space-x-6 justify-between">
+                          <div><p className="text-slate-400 lg:text-lg text-sm">Region</p><p className="lg:text-xl font-bold">{user.pr[1].pr.region.toLocaleString()}</p></div>
+                          <div><p className="text-slate-400 lg:text-lg text-sm">Ranking</p><p className="lg:text-xl font-bold">{user.pr[1].pr.powerRanking.toLocaleString()}</p></div>
+                          <div><p className="text-slate-400 lg:text-lg text-sm">Earnings</p><p className="lg:text-xl font-bold">${user.pr[1].earnings.toLocaleString()}</p></div>
+                        </div>
+                        <div className="flex lg:space-x-6 justify-between">
+                          <div><p className="text-slate-400 lg:text-lg text-sm">Gold</p><p className="lg:text-xl font-bold">{user.pr[1].pr.gold.toLocaleString()}</p></div>
+                          <div><p className="text-slate-400 lg:text-lg text-sm">Silver</p><p className="lg:text-xl font-bold">{user.pr[1].pr.silver.toLocaleString()}</p></div>
+                          <div><p className="text-slate-400 lg:text-lg text-sm">Bronze</p><p className="lg:text-xl font-bold">{user.pr[1].pr.bronze.toLocaleString()}</p></div>
+                          <div><p className="text-slate-400 lg:text-lg text-sm">Top 8</p><p className="lg:text-xl font-bold">{user.pr[1].pr.top8.toLocaleString()}</p></div>
+                          <div><p className="text-slate-400 lg:text-lg text-sm">Top 32</p><p className="lg:text-xl font-bold">{user.pr[1].pr.top32.toLocaleString()}</p></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>}
                 </div>}
               </div>
+
+              {user.isFull == true && (
+                <div className="text-slate-200 p-2">
+                  <div className="space-y-4">
+                    {renderStats(
+                      [
+                        user.onesStats[0] + user.twosStats[0] + user.otherStats[0],
+                        user.onesStats[1] + user.twosStats[1] + user.otherStats[1],
+                        user.onesStats[2] + user.twosStats[2] + user.otherStats[2],
+                        user.onesStats[3] + user.twosStats[3] + user.otherStats[3],
+                        user.onesStats[4] + user.twosStats[4] + user.otherStats[4],
+                        user.onesStats[5] + user.twosStats[5] + user.otherStats[5],
+                        user.onesStats[6] + user.twosStats[6] + user.otherStats[6],
+                        user.onesStats[7] + user.twosStats[7] + user.otherStats[7],
+                        user.onesStats[8] + user.twosStats[8] + user.otherStats[8],
+                        user.onesStats[9] + user.twosStats[9] + user.otherStats[9],
+                        user.onesStats[10] + user.twosStats[10] + user.otherStats[10]
+                      ],
+                      user.earnings.reduce((a, b) => a + b, 0)
+                    )}
+                    {renderStats(user.onesStats, user.earnings[0], 1)}
+                    {renderStats(user.twosStats, user.earnings[1], 2)}
+                    {renderStats(user.otherStats, user.earnings[2], 3)}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-          {/* stats, not yet */}
-          <div className="lg:w-[150%]">stats 1s 2s other full, official somewhere here as well</div>
+
+
         </div>
       </div>
       <Layout data={user} accessToken={accessToken} />
     </div>
   );
-
-  return (
-
-    <div className="dark:bg-slate-950 overflow-y-hidden overflow-x-hidden flex flex-col">
-      <div className="overflow-hidden rounded text-slate-500 shadow-slate-200">
-        <figure className="relative">
-          {parse(banner)}
-          <div className="md:flex md:justify-start md:text-start md:items-start justify-center items-center text-center absolute bottom-0 left-0 w-full p-6 text-white from-slate-900">
-            {parse(pfp)}
-            <div className="md:pl-2 place-content-end md:justify-start md:items-start md:text-start justify-center items-end text-center">
-              <div className="md:justify-start md:items-start md:text-start justify-center items-center text-center">
-                <span className="md:text-xl text-lg text-gray-600 dark:text-gray-400">{user.player.prefix}</span>
-                <span className="md:justify-start md:items-start md:text-start justify-center items-center text-center flex md:text-3xl text-2xl dark:text-white">
-                  {user.country !== null ? <div title={user.country}>{flag(countryToAlpha2(user.country))}</div> : ""}
-                  {user.player.gamerTag}
-                </span>
-              </div>
-              {user.pastNames.length !== 0 ?
-                <div>
-                  <span className="md:text-xl text-lg text-gray-600 dark:text-gray-400">AKA </span>
-                  <span className="md:text-2xl text-xl text-gray-700 dark:text-gray-300">{user.pastNames.join(", ")}</span>
-                </div> : ""
-              }
-              {user.bio !== null ? <span className="text-base text-gray-700 dark:text-gray-300">{user.bio}</span> : ""}
-            </div>
-          </div>
-        </figure>
-      </div>
-      <div className="md:flex">
-        <div className="py-1 flex justify-center md:max-w-sm w-full border rounded-xl border-gray-300 dark:bg-gray-950 dark:border-gray-800">
-          <div className="w-full overflow-y-auto">
-            <div className="flex w-full overflow-hidden rounded shadow-md text-slate-400 shadow-slate-900">
-              <div className="flex flex-col w-full p-4">
-                <div className='pb-2 flex text-center items-center justify-between'>
-                  <div className="flex text-center items-center justify-start">
-                    <figure>
-                      <svg fill="#70c9d3" width="38px" height="38px" viewBox="-5.76 -5.76 27.52 27.52" id="money-2-16px" xmlns="http://www.w3.org/2000/svg" stroke="#70c9d3" stroke-width="0.00016">
-                        <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
-                        <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g>
-                        <g id="SVGRepo_iconCarrier">
-                          <path id="Path_65" data-name="Path 65" d="M-12.179,3.178A6.972,6.972,0,0,0-18.022,0,6.985,6.985,0,0,0-25,6.977a6.972,6.972,0,0,0,3.179,5.845A6.972,6.972,0,0,0-15.978,16,6.985,6.985,0,0,0-9,9.023,6.972,6.972,0,0,0-12.179,3.178Zm.133,3.8a5.984,5.984,0,0,1-5.976,5.978A5.985,5.985,0,0,1-24,6.977,5.984,5.984,0,0,1-18.022,1,5.983,5.983,0,0,1-12.046,6.977ZM-15.978,15A5.938,5.938,0,0,1-19.6,13.769a6.983,6.983,0,0,0,1.574.186,6.985,6.985,0,0,0,6.976-6.978A6.967,6.967,0,0,0-11.231,5.4,5.939,5.939,0,0,1-10,9.023,5.984,5.984,0,0,1-15.978,15ZM-18.522,2.5V3H-19a2,2,0,0,0-2,2,2,2,0,0,0,2,2h.478V9.5h-.228A1.252,1.252,0,0,1-20,8.25a.5.5,0,0,0-.5-.5.5.5,0,0,0-.5.5,2.253,2.253,0,0,0,2.25,2.25h.228v1a.5.5,0,0,0,.5.5.5.5,0,0,0,.5-.5v-1h.272A2.253,2.253,0,0,0-15,8.25,2.253,2.253,0,0,0-17.25,6h-.272V4H-17a1,1,0,0,1,1,1v.5a.5.5,0,0,0,.5.5.5.5,0,0,0,.5-.5V5a2,2,0,0,0-2-2h-.522V2.5a.5.5,0,0,0-.5-.5A.5.5,0,0,0-18.522,2.5ZM-16,8.25A1.252,1.252,0,0,1-17.25,9.5h-.272V7h.272A1.252,1.252,0,0,1-16,8.25ZM-18.522,6H-19a1,1,0,0,1-1-1,1,1,0,0,1,1-1h.478Z" transform="translate(25)"></path>
-                        </g>
-                      </svg>
-                    </figure>
-                    <h3 className="pl-1 text-2xl font-medium text-slate-400">Earnings</h3>
-                  </div>
-                  <p className="text-2xl dark:text-slate-300">$ {user.earnings.reduce((a, b) => a + b, 0).toLocaleString()}</p>
-                </div>
-                <div className="flex text-center justify-between items-center">
-                  <div>
-                    <p className="text-xl dark:text-slate-300">1v1</p>
-                    <p className="text-xl dark:text-slate-400">$ {user.earnings[0].toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-xl dark:text-slate-300">2v2</p>
-                    <p className="text-xl dark:text-slate-400">$ {user.earnings[1].toLocaleString()}</p>
-                  </div>
-                  <div>
-                    <p className="text-xl dark:text-slate-300">Other</p>
-                    <p className="text-xl dark:text-slate-400">$ {user.earnings[2].toLocaleString()}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="flex w-full overflow-hidden rounded shadow-md text-slate-400 shadow-slate-900">
-              <div className="flex-col w-full p-4">
-                <div className='pb-2 flex text-center items-center justify-between'>
-                  <div className="flex text-center items-center justify-start">
-                    <figure>
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-65.0627 -65.2627 130 129.5" width="36px" height="36px">
-                        <path d="M6.75-58.95 3.95-60 3.55-60.15 3.15-60.3 2.9-60.45 2.7-60.5Q-.25-61.75-3.3-60.5-5.35-59.55-7.5-58.75L-7.4-58.8Q-12.05-56.95-16.9-55.8L-25.8-53.9-26.05-53.85-32.5-52.9-32.8-52.85-33.3-52.6-33.6-51.55Q-34.4-48.45-34.8-45.2L-34.75-44.9-34.75-44.85-34.4-44.1-34.35-44-33.25-42.2-33-41.95Q-31.65-41.1-30.15-40.6L-30-40.55Q-28.1-39.95-26.1-39.05L-25.95-39-22.95-37.6-22.9-37.6-19.2-35.7Q-18.05-35.05-17.5-33.8-16.95-32.6-17.25-31.3-19.35-21.8-21.85-12.25-22.9-8.45-24.7-5.3L-24.85-5.05Q-25.3-4.25-25.9-3.75-27.35-2.35-29.2-1.8L-29.3-1.8Q-36.4.15-43.7 1.15L-43.85 1.15Q-49.2 1.65-54.5 2.9L-54.6 2.95Q-55.65 3.1-56.5 3.8-57.5 4.7-57.75 6.15-59.8 17.05-60.9 28.1L-60.9 28.15Q-61.2 30.4-59.9 32.25L-59.85 32.3Q-58.4 34.3-56.75 35.9L-56.85 35.8Q-55.9 36.65-54.7 37L-54.65 37-46.75 38.9-46.8 38.85Q-31.2 41.5-17.3 49.45L-17.35 49.4Q-12.85 51.9-8.8 54.8L-3.1 58.8-3.05 58.85-1.15 59.9Q0 60.35 1.15 59.9L1.35 59.85 3.05 59 3.15 58.9 6 56.7 6.05 56.65 11.45 53 11.5 52.95Q15.2 50.55 19.1 48.45L19.15 48.45Q23.95 45.75 29.05 43.85L29 43.85Q33.4 42.1 38 40.85L37.9 40.9Q42.7 39.4 47.9 38.65L51.1 37.9 51.4 37.85 54.2 37.2 54.3 37.15 56.25 36.25 56.5 36.15 56.85 35.9Q58.95 33.9 60.4 31.3L60.4 31.4 60.5 31.25 60.85 27.65 60.85 27.55 60.75 26.55 60.75 26.45 60.35 23.5 59.45 17.3 59.45 17.25 58.7 11.65 58.7 11.7 58.2 8.3 58.2 8.4 57.4 4.85 57.35 4.8Q57.15 4.2 56.55 3.9L56.65 3.9Q52.9 2.15 48.8 1.9L48.45 1.85 41.2.65 41.45.7Q35-.1 29.15-2L26.8-3Q26.4-3.2 26.1-3.45 24.9-4.45 24.55-5.5L24.1-6.45 24-6.6Q22.3-10.4 21.25-14.65L18.3-26.3 17.4-30.4Q17.25-30.85 17.25-31.2 16.9-32.55 17.45-33.75 17.95-35 19.15-35.65L23-37.6 23.05-37.6 28.85-40.15 29.2-40.3 29.8-40.45Q31.85-41 33.3-42.4L33.4-42.5 34.65-44.95 34.7-45.05 34.7-45.75 34.75-45.65Q34.4-49.35 33.15-52.55L33.15-52.65 33-52.85 32.25-53.05 32.2-53.05Q25.6-53.75 19.5-55.15 12.95-56.6 6.7-59L6.75-58.95M4.85-63.9 4.95-63.9 8.1-62.75Q14.1-60.45 20.35-59.05 26.25-57.7 32.6-57.05 34.3-56.9 35.6-55.95L35.95-55.6Q36.5-54.95 36.85-54.1 38.3-50.35 38.7-46.05 38.8-44.75 38.45-43.75 37.8-41.75 36.45-39.95L36.1-39.6Q33.9-37.4 30.8-36.6L30.45-36.5 24.6-33.95 21.1-32.2 21.2-31.8 21.25-31.4 22.15-27.3 25.1-15.65Q26.1-11.75 27.65-8.25L28.25-7.05 28.65-6.55Q29.5-6.1 30.4-5.8 35.9-4 41.9-3.3L49.05-2.1Q53.95-1.8 58.35.3 60.55 1.4 61.2 3.7L62.15 7.7 62.65 11.1 63.4 16.7 64.3 22.95 64.7 25.9 64.85 27.65 64.4 31.95 63.9 33.25Q62.15 36.4 59.55 38.85L58.2 39.75Q56.95 40.45 55.55 40.95L51.95 41.8 48.8 42.55Q43.75 43.25 39.05 44.7 34.65 45.9 30.45 47.55 25.6 49.4 21.05 51.95L13.65 56.3 8.3 59.95Q6.9 60.95 5.6 62.05 4.25 63.1 2.55 63.65 0 64.6-2.55 63.65-4.1 63.05-5.45 62.05L-11.1 58.05Q-15 55.3-19.3 52.9-32.55 45.35-47.5 42.8L-55.75 40.85Q-57.85 40.3-59.55 38.75L-63.15 34.6Q-65.3 31.55-64.9 27.7-63.75 16.5-61.7 5.4-61.15 2.45-59.05.7-57.45-.6-55.4-1-49.85-2.3-44.25-2.85-37.2-3.8-30.35-5.65-29.35-5.95-28.55-6.8L-28.3-7.1Q-26.65-9.9-25.75-13.3-23.25-22.75-21.15-32.2-22.85-33.15-24.6-33.95L-27.7-35.4-31.3-36.8Q-33.45-37.45-35.4-38.7L-36.55-39.95-37.9-42.15-38.6-43.7Q-38.9-44.75-38.8-45.75-38.35-49.2-37.5-52.55L-36.85-54.45-36.65-54.8Q-35.3-56.65-33.2-56.85L-26.55-57.85-17.8-59.7Q-13.25-60.75-8.9-62.5-6.9-63.25-5-64.15-.2-66.2 4.5-64.1L4.85-63.9M42.55 33.95 38.3 33.95 33.3 33.95 34 23.6 34.6 13.25Q33.75 13.7 33.05 14.25L29.9 16.4 30.05 12.25 30.2 8.7 32.6 7.3Q33.9 6.45 34.3 6.3L35.15 5.6 39.4 5.6 44.1 5.6 42.55 33.95M13.3 12.7 3.95 33.95-.45 33.95-5 33.95-12.1 12.7-7.7 12.85-3.7 12.7-2.3 17.8-.05 26.3.55 24.6 1.4 21.9 4.8 12.7 9.05 12.85 13.3 12.7M-29.55 5.6-31.1 33.95-35.35 33.95-40.3 33.95-39.6 23.6-39.05 13.25-40.6 14.25-43.75 16.4Q-43.6 14.7-43.6 12.25L-43.45 8.7-41.05 7.3-39.35 6.3-38.5 5.6-34.2 5.6-29.55 5.6" stroke="#70c9d3" stroke-width="0.1" fill="#70c9d3" />
-                      </svg>
-                    </figure>
-                    <h3 className="pl-3 text-2xl font-medium text-slate-400">1v1 Stats</h3>
-                  </div>
-                  <p className="text-xl dark:text-slate-300">{user.top[0][6]} tourneys played</p>
-                </div>
-                <div className="flex justify-between">
-                  <div className="flex text-center items-center">
-                    <div>
-                      <p className="text-xl dark:text-slate-300">🥇</p>
-                      <p className="text-xl dark:text-slate-400">{user.top[0][0]}</p>
-                    </div>
-                    <div className="lg:px-3 px-5">
-                      <p className="text-xl dark:text-slate-300">🥈</p>
-                      <p className="text-xl dark:text-slate-400">{user.top[0][1]}</p>
-                    </div>
-                    <div>
-                      <p className="text-xl dark:text-slate-300">🥉</p>
-                      <p className="text-xl dark:text-slate-400">{user.top[0][2]}</p>
-                    </div>
-                  </div>
-                  <div className="flex text-center md:justify-between items-center">
-                    <div>
-                      <p className="text-xl dark:text-slate-300">Top 8</p>
-                      <p className="text-xl dark:text-slate-400">{user.top[0][3]}</p>
-                    </div>
-                    <div className="lg:px-3 px-5">
-                      <p className="text-xl dark:text-slate-300">Top 16</p>
-                      <p className="text-xl dark:text-slate-400">{user.top[0][4]}</p>
-                    </div>
-                    <div>
-                      <p className="text-xl dark:text-slate-300">Top 32</p>
-                      <p className="text-xl dark:text-slate-400">{user.top[0][5]}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="flex w-full overflow-hidden rounded shadow-md text-slate-400 shadow-slate-900">
-              <div className="flex-col w-full p-4">
-                <div className='pb-2 flex text-center items-center justify-between'>
-                  <div className="flex text-center items-center justify-start">
-                    <figure>
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="-65.0627 -65.2627 130 129.5" width="36px" height="36px">
-                        <path d="M6.75 -58.95 L3.95 -60.0 3.55 -60.15 3.15 -60.3 2.9 -60.45 2.7 -60.5 Q-0.25 -61.75 -3.3 -60.5 -5.35 -59.55 -7.5 -58.75 L-7.4 -58.8 Q-12.05 -56.95 -16.9 -55.8 L-25.8 -53.9 -26.05 -53.85 -32.5 -52.9 -32.8 -52.85 -33.3 -52.6 -33.6 -51.55 Q-34.4 -48.45 -34.8 -45.2 L-34.75 -44.9 -34.75 -44.85 -34.4 -44.1 -34.35 -44.0 -33.25 -42.2 -33.0 -41.95 Q-31.65 -41.1 -30.15 -40.6 L-30.0 -40.55 Q-28.1 -39.95 -26.1 -39.05 L-25.95 -39.0 -22.95 -37.6 -22.9 -37.6 -19.2 -35.7 Q-18.05 -35.05 -17.5 -33.8 -16.95 -32.6 -17.25 -31.3 -19.35 -21.8 -21.85 -12.25 -22.9 -8.45 -24.7 -5.3 L-24.85 -5.05 Q-25.3 -4.25 -25.9 -3.75 -27.35 -2.35 -29.2 -1.8 L-29.3 -1.8 Q-36.4 0.15 -43.7 1.15 L-43.85 1.15 Q-49.2 1.65 -54.5 2.9 L-54.6 2.95 Q-55.65 3.1 -56.5 3.8 -57.5 4.7 -57.75 6.15 -59.8 17.05 -60.9 28.1 L-60.9 28.15 Q-61.2 30.4 -59.9 32.25 L-59.85 32.3 Q-58.4 34.3 -56.75 35.9 L-56.85 35.8 Q-55.9 36.65 -54.7 37.0 L-54.65 37.0 -46.75 38.9 -46.8 38.85 Q-31.2 41.5 -17.3 49.45 L-17.35 49.4 Q-12.85 51.9 -8.8 54.8 L-3.1 58.8 -3.05 58.85 -1.15 59.9 Q0.0 60.35 1.15 59.9 L1.35 59.85 3.05 59.0 3.15 58.9 6.0 56.7 6.05 56.65 11.45 53.0 11.5 52.95 Q15.2 50.55 19.1 48.45 L19.15 48.45 Q23.95 45.75 29.05 43.85 L29.0 43.85 Q33.4 42.1 38.0 40.85 L37.9 40.9 Q42.7 39.4 47.9 38.65 L51.1 37.9 51.4 37.85 54.2 37.2 54.3 37.15 56.25 36.25 56.5 36.15 56.85 35.9 Q58.95 33.9 60.4 31.3 L60.4 31.4 60.5 31.25 60.85 27.65 60.85 27.55 60.75 26.55 60.75 26.45 60.35 23.5 59.45 17.3 59.45 17.25 58.7 11.65 58.7 11.7 58.2 8.3 58.2 8.4 57.4 4.85 57.35 4.8 Q57.15 4.2 56.55 3.9 L56.65 3.9 Q52.9 2.15 48.8 1.9 L48.45 1.85 41.2 0.65 41.45 0.7 Q35.0 -0.1 29.15 -2.0 L26.8 -3.0 Q26.4 -3.2 26.1 -3.45 24.9 -4.45 24.55 -5.5 L24.1 -6.45 24.0 -6.6 Q22.3 -10.4 21.25 -14.65 L18.3 -26.3 17.4 -30.4 Q17.25 -30.85 17.25 -31.2 16.9 -32.55 17.45 -33.75 17.95 -35.0 19.15 -35.65 L23.0 -37.6 23.05 -37.6 28.85 -40.15 29.2 -40.3 29.8 -40.45 Q31.85 -41.0 33.3 -42.4 L33.4 -42.5 34.65 -44.95 34.7 -45.05 34.7 -45.75 34.75 -45.65 Q34.4 -49.35 33.15 -52.55 L33.15 -52.65 33.0 -52.85 32.25 -53.05 32.2 -53.05 Q25.6 -53.75 19.5 -55.15 12.95 -56.6 6.7 -59.0 L6.75 -58.95 M4.85 -63.9 L4.95 -63.9 8.1 -62.75 Q14.1 -60.45 20.35 -59.05 26.25 -57.7 32.6 -57.05 34.3 -56.9 35.6 -55.95 L35.95 -55.6 Q36.5 -54.95 36.85 -54.1 38.3 -50.35 38.7 -46.05 38.8 -44.75 38.45 -43.75 37.8 -41.75 36.45 -39.95 L36.1 -39.6 Q33.9 -37.4 30.8 -36.6 L30.45 -36.5 24.6 -33.95 21.1 -32.2 21.2 -31.8 21.25 -31.4 22.15 -27.3 25.1 -15.65 Q26.1 -11.75 27.65 -8.25 L28.25 -7.05 28.65 -6.55 Q29.5 -6.1 30.4 -5.8 35.9 -4.0 41.9 -3.3 L49.05 -2.1 Q53.95 -1.8 58.35 0.3 60.55 1.4 61.2 3.7 L62.15 7.7 62.65 11.1 63.4 16.7 64.3 22.95 64.7 25.9 64.85 27.65 64.4 31.95 63.9 33.25 Q62.15 36.4 59.55 38.85 L58.2 39.75 Q56.95 40.45 55.55 40.95 L51.95 41.8 48.8 42.55 Q43.75 43.25 39.05 44.7 34.65 45.9 30.45 47.55 25.6 49.4 21.05 51.95 L13.65 56.3 8.3 59.95 Q6.9 60.95 5.6 62.05 4.25 63.1 2.55 63.65 0.0 64.6 -2.55 63.65 -4.1 63.05 -5.45 62.05 L-11.1 58.05 Q-15.0 55.3 -19.3 52.9 -32.55 45.35 -47.5 42.8 L-55.75 40.85 Q-57.85 40.3 -59.55 38.75 L-63.15 34.6 Q-65.3 31.55 -64.9 27.7 -63.75 16.5 -61.7 5.4 -61.15 2.45 -59.05 0.7 -57.45 -0.6 -55.4 -1.0 -49.85 -2.3 -44.25 -2.85 -37.2 -3.8 -30.35 -5.65 -29.35 -5.95 -28.55 -6.8 L-28.3 -7.1 Q-26.65 -9.9 -25.75 -13.3 -23.25 -22.75 -21.15 -32.2 -22.85 -33.15 -24.6 -33.95 L-27.7 -35.4 -31.3 -36.8 Q-33.45 -37.45 -35.4 -38.7 L-36.55 -39.95 -37.9 -42.15 -38.6 -43.7 Q-38.9 -44.75 -38.8 -45.75 -38.35 -49.2 -37.5 -52.55 L-36.85 -54.45 -36.65 -54.8 Q-35.3 -56.65 -33.2 -56.85 L-26.55 -57.85 -17.8 -59.7 Q-13.25 -60.75 -8.9 -62.5 -6.9 -63.25 -5.0 -64.15 -0.2 -66.2 4.5 -64.1 L4.85 -63.9 M44.15 6.6 Q45.7 7.45 46.4 8.7 47.2 9.95 47.2 11.3 L46.95 13.1 46.1 15.15 Q45.4 16.7 44.15 18.05 L40.3 22.45 35.35 27.3 37.55 27.3 40.75 27.3 43.9 27.15 46.1 27.0 45.95 29.35 45.7 32.95 35.2 32.95 23.9 32.95 24.05 30.45 24.2 27.3 28.05 23.85 33.15 19.0 36.05 15.6 37.0 14.05 37.15 13.25 36.85 12.25 36.05 11.45 34.65 11.05 32.85 10.75 29.85 11.05 25.55 12.0 26.1 9.1 26.65 5.8 Q31.9 4.85 36.6 4.85 L40.6 5.25 Q42.5 5.65 44.15 6.6 M9.75 12.4 L13.85 12.25 4.75 32.95 0.5 32.95 -3.9 32.95 -10.8 12.25 -6.55 12.4 -2.7 12.25 -1.3 17.25 0.9 25.5 1.45 23.85 2.3 21.25 5.6 12.25 9.75 12.4 M-25.15 8.7 Q-24.3 9.95 -24.3 11.3 -24.3 12.25 -24.6 13.1 -24.7 14.05 -25.4 15.15 -26.1 16.7 -27.35 18.05 L-31.2 22.45 -36.15 27.3 -33.95 27.3 -30.8 27.3 -27.6 27.15 -25.4 27.0 -25.55 29.35 -25.85 32.95 -36.3 32.95 -47.6 32.95 Q-47.45 32.0 -47.45 30.45 L-47.3 27.3 -43.45 23.85 -38.35 19.0 -35.45 15.6 -34.5 14.05 -34.35 13.25 Q-34.35 12.7 -34.65 12.25 -34.9 11.7 -35.45 11.45 L-36.85 11.05 -38.65 10.75 -41.65 11.05 -45.95 12.0 -45.4 9.1 -44.85 5.8 -34.9 4.85 -30.9 5.25 Q-29.0 5.65 -27.35 6.6 -25.85 7.45 -25.15 8.7" stroke="#70c9d3" stroke-width="0.1" fill="#70c9d3" />
-                      </svg>
-                    </figure>
-                    <h3 className="pl-3 text-2xl font-medium text-slate-400">2v2 Stats</h3>
-                  </div>
-                  <p className="text-xl dark:text-slate-300">{user.top[1][6]} tourneys played</p>
-                </div>
-                <div className="flex justify-between">
-                  <div className="flex text-center items-center">
-                    <div>
-                      <p className="text-xl dark:text-slate-300">🥇</p>
-                      <p className="text-xl dark:text-slate-400">{user.top[1][0]}</p>
-                    </div>
-                    <div className="lg:px-3 px-5">
-                      <p className="text-xl dark:text-slate-300">🥈</p>
-                      <p className="text-xl dark:text-slate-400">{user.top[1][1]}</p>
-                    </div>
-                    <div>
-                      <p className="text-xl dark:text-slate-300">🥉</p>
-                      <p className="text-xl dark:text-slate-400">{user.top[1][2]}</p>
-                    </div>
-                  </div>
-                  <div className="flex text-center md:justify-between items-center">
-                    <div>
-                      <p className="text-xl dark:text-slate-300">Top 8</p>
-                      <p className="text-xl dark:text-slate-400">{user.top[1][3]}</p>
-                    </div>
-                    <div className="lg:px-3 px-5">
-                      <p className="text-xl dark:text-slate-300">Top 16</p>
-                      <p className="text-xl dark:text-slate-400">{user.top[1][4]}</p>
-                    </div>
-                    <div>
-                      <p className="text-xl dark:text-slate-300">Top 32</p>
-                      <p className="text-xl dark:text-slate-400">{user.top[1][5]}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="flex w-full overflow-hidden rounded text-slate-400">
-              <div className="flex-col w-full p-4">
-                <div className='pb-2 flex text-center items-center justify-between'>
-                  <div className="flex text-center items-center justify-start">
-                    <figure className="text-center items-center justify-start flex h-9 w-9">
-                      <img className="min-h-9 min-w-9" src="/other.png" />
-                    </figure>
-                    <h3 className="pl-3 text-2xl font-medium text-slate-400">Other Stats</h3>
-                  </div>
-                  <p className="text-xl dark:text-slate-300">{user.top[2][6]} tourneys played</p>
-                </div>
-                <div className="flex justify-between">
-                  <div className="flex text-center items-center">
-                    <div>
-                      <p className="text-xl dark:text-slate-300">🥇</p>
-                      <p className="text-xl dark:text-slate-400">{user.top[2][0]}</p>
-                    </div>
-                    <div className="lg:px-3 px-5">
-                      <p className="text-xl dark:text-slate-300">🥈</p>
-                      <p className="text-xl dark:text-slate-400">{user.top[2][1]}</p>
-                    </div>
-                    <div>
-                      <p className="text-xl dark:text-slate-300">🥉</p>
-                      <p className="text-xl dark:text-slate-400">{user.top[2][2]}</p>
-                    </div>
-                  </div>
-                  <div className="flex text-center md:justify-between items-center">
-                    <div>
-                      <p className="text-xl dark:text-slate-300">Top 8</p>
-                      <p className="text-xl dark:text-slate-400">{user.top[2][3]}</p>
-                    </div>
-                    <div className="lg:px-3 px-5">
-                      <p className="text-xl dark:text-slate-300">Top 16</p>
-                      <p className="text-xl dark:text-slate-400">{user.top[2][4]}</p>
-                    </div>
-                    <div>
-                      <p className="text-xl dark:text-slate-300">Top 32</p>
-                      <p className="text-xl dark:text-slate-400">{user.top[2][5]}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <Layout playerData={data} />
-      </div>
-    </div>
-  )
 }
 
 export default Player;

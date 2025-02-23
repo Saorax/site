@@ -14,6 +14,7 @@ function EsportsDiv() {
     const token = searchParams.get("access_token") || localStorage.getItem("accessToken");
     if (token) {
       localStorage.setItem("accessToken", token);
+      document.cookie = `accessToken=${token}; path=/; Secure; HttpOnly`;
       setAccessToken(token);
       fetchUserInfo(token);
       searchParams.delete("access_token");
