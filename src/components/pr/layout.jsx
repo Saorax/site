@@ -8,7 +8,7 @@ import { host } from "../../stuff";
 
 const regions = ['North America', 'Europe', 'South America', 'Southeast Asia', 'Australia', 'Middle East & North Africa'];
 const shortRegion = ['NA', 'EU', 'SA', 'SEA', 'AUS', 'MENA'];
-const tourneyYears = ["2024"];
+const tourneyYears = [new Date().getFullYear().toString()];
 const getRegionByShortCode = (shortCode) => {
   const index = shortRegion.indexOf(shortCode);
   if (index !== -1) {
@@ -425,7 +425,7 @@ const Sidebar = ({ selectedGamemode, setSelectedGamemode, dateDecay, setDateDeca
       const yearTourneys = tourneys.filter(t => t.year === year);
       return (
         <div key={index} className="mb-4">
-          <Disclosure defaultOpen={year === "2024"}>
+          <Disclosure defaultOpen={year === new Date().getFullYear()}>
             {({ open }) => (
               <>
                 <Disclosure.Button className="flex justify-between w-full px-4 py-2 text-xl font-medium text-left text-gray-900 dark:text-white bg-gray-200 dark:bg-gray-700 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 focus:outline-none focus-visible:ring focus-visible:ring-gray-500 focus-visible:ring-opacity-75 shadow-md">
