@@ -6,33 +6,6 @@ import LoginButton from '../components/auth/butt.jsx';
 
 
 function EsportsDiv() {
-  const [accessToken, setAccessToken] = useState(null);
-  const [user, setUser] = useState({})
-
-  useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    if (token) {
-      localStorage.setItem("accessToken", token);
-      setAccessToken(token);
-      fetchUserInfo(token);
-    }
-  }, []);
-  const fetchUserInfo = async (token) => {
-    try {
-      const response = await fetch(
-        `${host}/auth/user`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      const data = await response.json();
-      if (response.status == 401) {
-        localStorage.removeItem("accessToken");
-        window.location.href = "./";
-      }
-      setUser(data.user);
-    } catch (error) { }
-  };
   return (
     <div className="h-screen bg-slate-950 text-slate-50">
       <div className="flex justify-between bg-slate-900 p-2">
