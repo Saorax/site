@@ -28,16 +28,11 @@ function AdminPanel() {
   const [loadingSeedingList, setLoadingSeedingList] = useState(false);
 
   useEffect(() => {
-    const searchParams = new URLSearchParams(window.location.search);
-    const token = searchParams.get("access_token") || localStorage.getItem("accessToken");
+    const token = localStorage.getItem("accessToken");
     if (token) {
-      localStorage.setItem("accessToken", token);
       setAccessToken(token);
       fetchUserInfo(token);
       fetchUserEvents(token, currentPage);
-      searchParams.delete("access_token");
-      const newUrl = `${window.location.origin}${window.location.pathname}`;
-      window.history.replaceState(null, "", newUrl);
     } else {
       window.location.href = "./";
     }
@@ -59,7 +54,7 @@ function AdminPanel() {
       );
       const data = await response.json();
       setUser(data.user);
-    } catch (error) {}
+    } catch (error) { }
   };
 
   const fetchUserEvents = async (token, page) => {
@@ -112,7 +107,7 @@ function AdminPanel() {
       setLoadingEvents(false);
     }
   };
-  
+
 
   const fetchPhases = async (eventId) => {
     setLoadingPhases(true);
@@ -134,7 +129,7 @@ function AdminPanel() {
       setLoadingPhases(false);
     }
   };
-  
+
 
   const fetchSeeding = async (phaseId) => {
     setLoadingSeedingList(true);
@@ -170,8 +165,8 @@ function AdminPanel() {
       setLoadingSeedingList(false);
     }
   };
-  
-  
+
+
 
   const fetchCustomPRSeeding = async () => {
     setLoadingCustomPR(true);
@@ -187,7 +182,7 @@ function AdminPanel() {
           body: JSON.stringify({ players: seeding }),
         }
       );
-  
+
       const data = await response.json();
       setModifiedSeeding(
         data.map((seed) => ({
@@ -202,7 +197,7 @@ function AdminPanel() {
       setLoadingCustomPR(false);
     }
   };
-  
+
 
   const fetchOfficialPRSeeding = async () => {
     setLoadingOfficialPR(true);
@@ -218,7 +213,7 @@ function AdminPanel() {
           body: JSON.stringify({ players: seeding }),
         }
       );
-  
+
       const data = await response.json();
       setModifiedSeeding(
         data.map((seed) => ({
@@ -233,7 +228,7 @@ function AdminPanel() {
       setLoadingOfficialPR(false);
     }
   };
-  
+
 
   const uploadModifiedSeeding = async () => {
     setUploadingSeeding(true);
@@ -254,9 +249,9 @@ function AdminPanel() {
           }),
         }
       );
-  
+
       const data = await response.json();
-  
+
       if (data.errors && data.errors.length > 0) {
         toast.error(`Error: ${data.errors[0].message}`, {
           position: "top-right",
@@ -293,8 +288,8 @@ function AdminPanel() {
       setUploadingSeeding(false);
     }
   };
-  
-  
+
+
 
   const updateModifiedSeed = (index, field, newSeedNum) => {
     setModifiedSeeding((prev) => {
@@ -355,10 +350,6 @@ function AdminPanel() {
 
     setModifiedSeeding(updatedSeeding);
   };
-  const handleLogout = () => {
-    localStorage.removeItem("accessToken");
-    window.location.href = "./";
-  };
   return (
     <div className="text-white p-6 bg-gradient-to-b from-gray-900 to-gray-800 min-h-screen">
       <ToastContainer />
@@ -367,26 +358,6 @@ function AdminPanel() {
           <div className="flex w-[35%] px-2">
             <div className="w-full">
               <div className="mb-2">
-              <div className="flex items-center mb-4">
-                {renderImage(user.images?.[0]?.url, user.player?.gamerTag)}
-                <div className="pl-2">
-                  <p className="text-3xl">{user.player?.gamerTag}</p>
-                  <a
-                    className="text-slate-400 text-xl"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    href={"https://start.gg/" + user.slug}
-                  >
-                    {user.slug}
-                  </a>
-                </div>
-                <button
-                  onClick={handleLogout}
-                  className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded ml-3"
-                >
-                  Logout
-                </button>
-              </div>
                 <div className="flex justify-between mb-2">
                   <h3 className="text-center text-3xl font-bold">Tournaments</h3>
                   <div className="flex justify-between">
@@ -413,78 +384,75 @@ function AdminPanel() {
                   </div>
                 </div>
                 <div className="h-[25rem] overflow-y-auto scrollbar-thin scrollbar-track-gray-800 border border-gray-700 rounded-lg p-4 bg-gray-900">
-                {loadingTournaments ? (
-                  <div className="flex justify-center">
-                  <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-gray-400"></div>
-                  <p className="pl-2 text-gray-400">Loading tournaments...</p>
-                </div>
-                ) : (
-                  tournaments.length > 0 &&
-                  tournaments.map((tournament) => (
-                    <div
-                      key={tournament.id}
-                      onClick={() => {
-                        handleTournamentSelect(tournament.id);
-                        setSelectedEvent(null);
-                      }}
-                      className={`p-2 border-2 border-gray-600 rounded-md my-1 cursor-pointer ${
-                        selectedTournament === tournament.id ? "bg-gray-700" : "hover:bg-gray-700"
-                      } transition-all`}
-                    >
-                      <div className="flex items-center">
-                        {renderImage(tournament.images?.[0]?.url, 0, tournament.name)}
-                        <p className="pl-2 text-lg">{tournament.name}</p>
-                      </div>
+                  {loadingTournaments ? (
+                    <div className="flex justify-center">
+                      <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-gray-400"></div>
+                      <p className="pl-2 text-gray-400">Loading tournaments...</p>
                     </div>
-                  ))
-                )}
+                  ) : (
+                    tournaments.length > 0 &&
+                    tournaments.map((tournament) => (
+                      <div
+                        key={tournament.id}
+                        onClick={() => {
+                          handleTournamentSelect(tournament.id);
+                          setSelectedEvent(null);
+                        }}
+                        className={`p-2 border-2 border-gray-600 rounded-md my-1 cursor-pointer ${selectedTournament === tournament.id ? "bg-gray-700" : "hover:bg-gray-700"
+                          } transition-all`}
+                      >
+                        <div className="flex items-center">
+                          {renderImage(tournament.images?.[0]?.url, 0, tournament.name)}
+                          <p className="pl-2 text-lg">{tournament.name}</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
               <div className="flex w-full space-x-2">
                 <div className="w-[50%]">
                   <div className="h-[20rem] scrollbar-thin scrollbar-track-gray-800 border border-gray-700 rounded-lg p-4 bg-gray-900">
-                  <h3 className="text-center text-3xl font-bold mb-3">Events</h3>
-                  {loadingEvents ? (
-                    <div className="flex justify-center">
-                    <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-gray-400"></div>
-                    <p className="pl-2 text-gray-400">Loading events...</p>
-                  </div>
-                  ) : (
-                    events.map((event) => (
-                      <div
-                        key={event.id}
-                        onClick={() => handleEventSelect(event.id)}
-                        className={`p-2 text-lg border-2 ${
-                          selectedEvent === event.id ? "bg-gray-700" : "hover:bg-gray-800"
-                        } border-gray-600 rounded-md my-1 cursor-pointer transition-all`}
-                      >
-                        {event.name}
+                    <h3 className="text-center text-3xl font-bold mb-3">Events</h3>
+                    {loadingEvents ? (
+                      <div className="flex justify-center">
+                        <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-gray-400"></div>
+                        <p className="pl-2 text-gray-400">Loading events...</p>
                       </div>
-                    ))
-                  )}
+                    ) : (
+                      events.map((event) => (
+                        <div
+                          key={event.id}
+                          onClick={() => handleEventSelect(event.id)}
+                          className={`p-2 text-lg border-2 ${selectedEvent === event.id ? "bg-gray-700" : "hover:bg-gray-800"
+                            } border-gray-600 rounded-md my-1 cursor-pointer transition-all`}
+                        >
+                          {event.name}
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
                 <div className="w-[50%]">
                   <div className="h-[20rem] overflow-y-auto scrollbar-thin scrollbar-track-gray-800 border border-gray-700 rounded-lg p-4 bg-gray-900">
-                  <h3 className="text-3xl text-center font-bold mb-3">Phases</h3>
-                  {loadingPhases ? (
-                    <div className="flex justify-center">
-                      <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-gray-400"></div>
-                      <p className="pl-2 text-gray-400">Loading phases...</p>
-                    </div>
-                  ) : (
-                    phases.map((phase) => (
-                      <div
-                        key={phase.id}
-                        onClick={() => fetchSeeding(phase.id)}
-                        className={`p-2 text-lg border-2 ${
-                          selectedPhase === phase.id ? "bg-gray-700" : "hover:bg-gray-800"
-                        } border-gray-600 rounded-md my-1 cursor-pointer transition-all`}
-                      >
-                        {phase.name}
+                    <h3 className="text-3xl text-center font-bold mb-3">Phases</h3>
+                    {loadingPhases ? (
+                      <div className="flex justify-center">
+                        <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-gray-400"></div>
+                        <p className="pl-2 text-gray-400">Loading phases...</p>
                       </div>
-                    ))
-                  )}
+                    ) : (
+                      phases.map((phase) => (
+                        <div
+                          key={phase.id}
+                          onClick={() => fetchSeeding(phase.id)}
+                          className={`p-2 text-lg border-2 ${selectedPhase === phase.id ? "bg-gray-700" : "hover:bg-gray-800"
+                            } border-gray-600 rounded-md my-1 cursor-pointer transition-all`}
+                        >
+                          {phase.name}
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
@@ -500,15 +468,14 @@ function AdminPanel() {
                 )}
                 <div className="pl-4">
                   <a
-                    href={`https://start.gg/${
-                      tournaments.find((t) => t.id === selectedTournament)?.shortSlug ||
+                    href={`https://start.gg/${tournaments.find((t) => t.id === selectedTournament)?.shortSlug ||
                       tournaments.find((t) => t.id === selectedTournament)?.slug
-                    }`}
+                      }`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-2xl font-bold hover:underline"
                   >
-                    {tournaments.find((t) => t.id === selectedTournament)?.name || "Unknown"} 
+                    {tournaments.find((t) => t.id === selectedTournament)?.name || "Unknown"}
                     {selectedEvent && ` > ${events.find((e) => e.id === selectedEvent)?.name}`}
                   </a>
                   {selectedEvent && (
@@ -537,12 +504,12 @@ function AdminPanel() {
               <div className="pr-2 w-[40%]">
                 <h3 className="text-3xl font-bold mb-2">Original Seeding</h3>
                 <div className="h-[37rem] overflow-y-auto scrollbar-thin scrollbar-track-gray-800 rounded-lg p-4 bg-gray-900">
-                {loadingSeedingList ? (
+                  {loadingSeedingList ? (
                     <div className="flex justify-center items-center h-full">
                       <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-gray-400"></div>
                       <p className="ml-4 text-gray-400">Loading seeding...</p>
                     </div>
-                  ) : ( <table className="table-auto text-left rounded-lg w-full">
+                  ) : (<table className="table-auto text-left rounded-lg w-full">
                     <thead>
                       <tr className="bg-gray-800">
                         <th className="px-4 py-2 border-b border-gray-600">Seed #</th>
@@ -641,27 +608,24 @@ function AdminPanel() {
                 <div className="mt-2 space-x-2">
                   <button
                     onClick={fetchCustomPRSeeding}
-                    className={`bg-green-600 px-4 py-2 rounded hover:bg-green-700 transition-all ${
-                      loadingCustomPR ? "opacity-50 cursor-not-allowed" : ""
-                    }`}
+                    className={`bg-green-600 px-4 py-2 rounded hover:bg-green-700 transition-all ${loadingCustomPR ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
                     disabled={loadingCustomPR}
                   >
                     {loadingCustomPR ? "Loading..." : "Custom PR (Saorax)"}
                   </button>
                   <button
                     onClick={fetchOfficialPRSeeding}
-                    className={`bg-green-600 px-4 py-2 rounded hover:bg-green-700 transition-all ${
-                      loadingOfficialPR ? "opacity-50 cursor-not-allowed" : ""
-                    }`}
+                    className={`bg-green-600 px-4 py-2 rounded hover:bg-green-700 transition-all ${loadingOfficialPR ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
                     disabled={loadingOfficialPR}
                   >
                     {loadingOfficialPR ? "Loading..." : "Official PR"}
                   </button>
                   <button
                     onClick={uploadModifiedSeeding}
-                    className={`bg-blue-600 px-4 py-2 rounded hover:bg-blue-700 transition-all ${
-                      uploadingSeeding ? "opacity-50 cursor-not-allowed" : ""
-                    }`}
+                    className={`bg-blue-600 px-4 py-2 rounded hover:bg-blue-700 transition-all ${uploadingSeeding ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
                     disabled={uploadingSeeding}
                   >
                     {uploadingSeeding ? "Uploading..." : "Upload Seeding"}

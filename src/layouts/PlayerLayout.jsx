@@ -190,6 +190,7 @@ function MatchDataFunc(match, user, opp, legend, setmd, md) {
     <div className="w-full">
       <div className="text-2xl flex flex-col text-center items-center">
         {opp.entrant.participants.map((part, index) => {
+          console.log(part)
           if (part.player.user == null || part.player.user.images.length == 0) {
             return <div className='flex space-x-2'>
               <a className={`flex w-10 h-10 rounded-2xl  bg-slate-700 justify-center items-center text-center`}>
@@ -199,7 +200,9 @@ function MatchDataFunc(match, user, opp, legend, setmd, md) {
               </a>
               <div>
                 {part.prefix && <span className="text-slate-400 mr-1.5">{part.prefix}</span>}
-                <a className="text-2xl" target="_blank" rel="noopener noreferrer" href={`/esports/player/${part.player.user.slug.split('/')[1]}`}>{part.gamerTag}</a>
+                {part.player.user.slug !== null 
+                  ? <a className="text-2xl" target="_blank" rel="noopener noreferrer" href={`/esports/player/${part.player.user.slug.split('/')[1]}`}>{part.gamerTag}</a>
+                  : <a className="text-2xl">{part.gamerTag}</a>}
               </div>
             </div>
           } else {
@@ -227,7 +230,7 @@ function EventData(data) {
     if (a.slots.filter(p => p.entrant.id == userEntrant.id)[0].standing.stats.score.value >= 0 && a.slots.filter(p => p.entrant.id != userEntrant.id)[0].standing.stats.score.value >= 0)
       return a.slots.filter(p => p.entrant.id == userEntrant.id)[0].standing.stats.score.value + a.slots.filter(p => p.entrant.id != userEntrant.id)[0].standing.stats.score.value;
     return 0
-  }).reduce((a, b) => a + b, 0), userEntrant.paginatedSets.nodes.map(a => { return 1 }).reduce((a, b) => a + b, 0)]
+  }).reduce((a, b) => a + b, 0), userEntrant.paginatedSets.nodes.map(a => { return 1 }).reduce((a, b) => a + b, 0)];
   for (var i = userEntrant.paginatedSets.nodes.length; i--;) {
     if (newData.filter(p => p.type.name === userEntrant.paginatedSets.nodes[i].phaseGroup.phase.name)[0] === undefined) {
       newData.push({
@@ -247,7 +250,8 @@ function EventData(data) {
   if (data.id !== data.data.id) {
     data.sid(data.data.id);
     MatchDataFunc(newData[0].array[0], newData[0].array[0].slots.filter(d => d.entrant.id == userEntrant.id)[0], newData[0].array[0].slots.filter(d => d.entrant.id != userEntrant.id)[0], data.lsd, data.setmd)
-  }
+  };
+  console.log(newData)
   return (<div className="lg:max-h-[113.5vh] lg:w-[70%] p-2 lg:flex lg:flex-col scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900">
     <div className=" text-slate-100 w-full">
       {/* tournament info */}
@@ -412,7 +416,8 @@ function EventData(data) {
         {/* history */}
         <div className="max-h-[60.5vh] divide-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900 w-full p-1 divide-slate-700 rounded-2xl bg-slate-900 text-slate-100">
           {newData.map(matchData => {
-            return <div key={matchData.type.ident} className={`${newData.length > 1 ? i == 0 ? "mb-2 " : "mt-2 " : ""}text-xl lg:text-3xl text-center`}>
+            console.log(matchData)
+            return <div key={new Date().getTime() + Math.floor(Math.random() * 100000)} className={`${newData.length > 1 ? i == 0 ? "mb-2 " : "mt-2 " : ""}text-xl lg:text-3xl text-center`}>
               <a>{matchData.type.name == "Bracket" ? `${matchData.type.name} ${matchData.type.ident}` : matchData.type.name}</a>
               <div className="pt-3 text-start">
                 {matchData.array.map((mArray, mai) => {
@@ -605,10 +610,12 @@ function MainLayout({ data, lsd, accessToken }) {
   useEffect(() => {
     if (data.events.nodes.length > 0) {
       const firstEventId = data.events.nodes[0].id;
+      console.log(data)
       setCurId(firstEventId);
       async function aa() {
         await Event(firstEventId, data.id, lsd, setEventData, accessToken);
-      } aa();
+      };
+      aa();
     }
   }, [data]); 
 
@@ -661,7 +668,7 @@ function MainLayout({ data, lsd, accessToken }) {
               {filterAndSortEvents().length} events
             </a>
           </div>
-          <input
+          {data.isFull == true && (<div><input
             type="text"
             placeholder="Search by event name"
             value={filters.search}
@@ -729,7 +736,7 @@ function MainLayout({ data, lsd, accessToken }) {
             >
               Next
             </button>
-          </div>
+          </div></div>)}
           <div className="flex w-full flex-col overflow-y-auto h-[60vh] lg:h-screen scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900">
             {paginatedEvents().map((item) => (
               <Events

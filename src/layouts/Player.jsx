@@ -3,38 +3,40 @@ import { Twitter, Twitch, MessageSquare } from "lucide-react";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { host } from "../stuff";
-import { countryCodeEmoji } from 'country-code-emoji';
-import { getCode } from 'country-list';
 import twemoji from 'twemoji';
 import Layout from "./PlayerLayout.jsx";
-
-
-const TwemojiText = ({ text }) => {
-  const textRef = useRef(null);
-
-  useEffect(() => {
-    if (textRef.current) {
-      twemoji.parse(textRef.current, {
-        base: 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/',
-        folder: 'svg',
-        ext: '.svg',
-      });
-      const imgs = textRef.current.querySelectorAll('img');
-      imgs.forEach((img) => {
-        img.style.width = '2.4rem';
-        img.style.height = '3rem';
-        img.style.verticalAlign = 'middle';
-      });
-    }
-  }, [text]);
-
-  return <div ref={textRef}>{text}</div>;
+import countries from "i18n-iso-countries";
+import enLocale from "i18n-iso-countries/langs/en.json";
+countries.registerLocale(enLocale);
+function countryCodeToEmoji(countryCode) {
+  return countryCode?.toUpperCase().split("").map(char => String.fromCodePoint(0x1F1E6 + (char.charCodeAt(0) - 65))).join("");
+};
+function getTwemojiFlagUrl(countryName) {
+  const countryCode = countryCodeToEmoji(countries.getAlpha2Code(countryName, 'en'));
+  console.log(countryCode, countryName, countryName.toUpperCase().split("").map(char => String.fromCodePoint(0x1F1E6 + (char.charCodeAt(0) - 65))).join(""), countries.getAlpha2Code('Canada', 'en'))
+  if (!countryCode) return undefined;
+  const flagUnicode = [...countryCode.toUpperCase()]
+    .map((char) => (char.codePointAt(0)).toString(16))
+    .join("-");
+  return `https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/${flagUnicode}.svg`;
+}
+const TwemojiText = ({ countryName }) => {
+  console.log(countryName)
+  const flagUrl = getTwemojiFlagUrl(countryName);
+  console.log('hi', flagUrl);
+  if (!flagUrl) return '';
+  return (
+    <img
+      src={flagUrl}
+      alt={countryName}
+    />
+  );
 };
 function Player({ id, playerData }) {
   const [accessToken, setAccessToken] = useState(null);
   const [signedInUser, setSignedInUser] = useState({})
   const [user, setUser] = useState(playerData)
-  console.log(playerData)
+  //console.log(playerData)
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
     if (!token) {
@@ -112,7 +114,8 @@ function Player({ id, playerData }) {
       </div>
     </div>
   );
-  return user && accessToken && (
+  const ccemo = countryCodeToEmoji(countries.getAlpha2Code(user.location.country, "en"));
+  return user && (
     <div className="dark:text-white dark:bg-slate-950 overflow-y-hidden overflow-x-hidden flex flex-col">
       <div className="overflow-hidden rounded text-slate-500 shadow-slate-200">
         <div className="w-full">
@@ -141,11 +144,8 @@ function Player({ id, playerData }) {
                       />
                     )}
                     {user.location.country !== null && (
-                      <div className="absolute bottom-0 left-0 w-9 h-9">
-                        <TwemojiText
-                          text={countryCodeEmoji(getCode(user.location.country))}
-                          className="w-full h-full"
-                        />
+                      <div className="absolute -bottom-1.5 left-0 w-9 h-9">
+                        <TwemojiText countryName={user.location.country} className="" />
                       </div>
                     )}
                   </div>
@@ -157,51 +157,48 @@ function Player({ id, playerData }) {
                       <p className="lg:text-3xl text-2xl dark:text-white">{user.player.gamerTag}</p>
                     )}
                     <div className="flex space-x-1">
-                    {user.authorizations?.sort((a, b) => (a.type === "DISCORD" ? 1 : -1)).map((auth) => {
-                      if (auth.type === "TWITTER") {
-                        return (
-                          <a
-                            key="twitter"
-                            href={auth.url || `https://twitter.com/${auth.externalUsername}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="relative group"
-                          >
-                            <Twitter className="w-6 h-6 text-blue-500 hover:text-blue-400" />
-                            <span className="absolute bottom-8 left-1/2 transform -translate-x-1/2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition">
-                              @{auth.externalUsername}
-                            </span>
-                          </a>
-                        );
-                      }
-                      if (auth.type === "TWITCH") {
-                        return (
-                          <a
-                            key="twitch"
-                            href={auth.url || `https://twitch.tv/${auth.externalUsername}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="relative group"
-                          >
-                            <Twitch className="w-6 h-6 text-purple-600 hover:text-purple-500" />
-                            <span className="absolute bottom-8 left-1/2 transform -translate-x-1/2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition">
-                              {auth.externalUsername}
-                            </span>
-                          </a>
-                        );
-                      }
-                      if (auth.type === "DISCORD") {
-                        return (
-                          <div key="discord" className="relative group">
-                            <MessageSquare className="w-6 h-6 text-gray-500 hover:text-gray-400" />
-                            <span className="absolute bottom-8 left-1/2 transform -translate-x-1/2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition">
-                              {auth.externalUsername}
-                            </span>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })}
+                      {user.authorizations?.sort((a, b) => {
+                        const order = {
+                          "TWITTER": 0,
+                          "TWITCH": 1,
+                        };
+
+                        return (order[a.type] ?? 999) - (order[b.type] ?? 999);
+                      }).map((auth) => {
+                        if (auth.type === "TWITTER") {
+                          return (
+                            <a
+                              key="twitter"
+                              href={auth.url || `https://twitter.com/${auth.externalUsername}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="relative group"
+                            >
+                              <Twitter className="w-6 h-6 text-blue-500 hover:text-blue-400" />
+                              <span className="absolute bottom-8 left-1/2 transform -translate-x-1/2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition">
+                                @{auth.externalUsername}
+                              </span>
+                            </a>
+                          );
+                        }
+                        if (auth.type === "TWITCH") {
+                          return (
+                            <a
+                              key="twitch"
+                              href={auth.url || `https://twitch.tv/${auth.externalUsername}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="relative group"
+                            >
+                              <Twitch className="w-6 h-6 text-purple-600 hover:text-purple-500" />
+                              <span className="absolute bottom-8 left-1/2 transform -translate-x-1/2 px-2 py-1 text-xs text-white bg-gray-800 rounded opacity-0 group-hover:opacity-100 transition">
+                                {auth.externalUsername}
+                              </span>
+                            </a>
+                          );
+                        }
+                        return null;
+                      })}
                     </div>
                     {user.bio && (
                       <p className="text-base text-gray-700 dark:text-gray-300">Bio: {user.bio}</p>

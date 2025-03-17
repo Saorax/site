@@ -22,6 +22,6 @@ async function fetchUserData() {
 }
 const user = await fetchUserData();
 ---
-<Layout2 title="Player Database">
+<Layout2 title={`${user.player.prefix ? `${user.player.prefix} | ${user.player.gamerTag}` : user.player.gamerTag}'s Player Data`}>
   <Layout3 id={Astro.params.smashId} playerData={user} client:load />
 </Layout2>
