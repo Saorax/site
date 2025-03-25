@@ -251,7 +251,7 @@ function EventData(data) {
     data.sid(data.data.id);
     MatchDataFunc(newData[0].array[0], newData[0].array[0].slots.filter(d => d.entrant.id == userEntrant.id)[0], newData[0].array[0].slots.filter(d => d.entrant.id != userEntrant.id)[0], data.lsd, data.setmd)
   };
-  console.log(newData)
+  console.log(newData, userEntrant, data.data)
   return (<div className="lg:max-h-[113.5vh] lg:w-[70%] p-2 lg:flex lg:flex-col scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900">
     <div className=" text-slate-100 w-full">
       {/* tournament info */}
@@ -264,7 +264,7 @@ function EventData(data) {
                 ? <img className="w-20 h-20 rounded-2xl" src={data.data.tournament.images.filter(r => r.type === 'profile')[0].url} />
                 : <a className="flex w-20 h-20 rounded-2xl bg-slate-700 justify-center items-center text-center">
                   <div className="text-4xl text-slate-100 place-self-center">
-                    {userEntrant.sets.nodes[0].event.tournament.name[0].toLocaleUpperCase()}
+                    {data.data.tournament.name[0].toLocaleUpperCase()}
                   </div>
                 </a>}
             </div>

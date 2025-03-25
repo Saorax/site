@@ -9,8 +9,9 @@ async function fetchUserData() {
     const response = await fetch(`${host}/player/user/${Astro.params.smashId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
+    console.log(response)
     const data = await response.json();
-
+    console.log(data)
     if (data.success === false) {
       console.error("Error fetching player data:", data.message);
     } else {
