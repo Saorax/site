@@ -4,10 +4,109 @@
     font-weight: normal;
     font-style: normal;
 }
-
 @font-face {
     font-family: 'BHbold';
     src: url('/fonts/bhbold.ttf') format('truetype');
     font-weight: bold;
     font-style: normal;
 }
+
+@font-face {
+    font-family: 'BHKorean';
+    src: url('/fonts/woff2/BMGKoreanRegular.woff2') format('woff2'),
+        url('/fonts/woff/BMGKoreanRegular.woff') format('woff');
+    font-weight: normal;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'BHJapanese';
+    src: url('/fonts/woff2/DFGGothic-EBRegular.woff2') format('woff2'),
+        url('/fonts/woff/DFGGothic-EBRegular.woff') format('woff');
+    font-weight: normal;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'BHChineseTraditional';
+    src: url('/fonts/woff2/DFPYuanMXBold-B5Regular.woff2') format('woff2'),
+        url('/fonts/woff/DFPYuanMXBold-B5Regular.woff') format('woff');
+    font-weight: bold;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'BHLatinSemiBold';
+    src: url('/fonts/woff2/BMGAuthorSemibold.woff2') format('woff2'),
+        url('/fonts/woff/BMGAuthorSemibold.woff') format('woff');
+    font-weight: 600;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'BHChineseSimplified';
+    src: url('/fonts/woff2/DFPYuanW7-ARegular.woff2') format('woff2'),
+        url('/fonts/woff/DFPYuanW7-ARegular.woff') format('woff');
+    font-weight: normal;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'BMGRussianSlim';
+    src: url('/fonts/woff2/BMGRussianSlimRegular.woff2') format('woff2'),
+        url('/fonts/woff/BMGRussianSlimRegular.woff') format('woff');
+    font-weight: normal;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'BHLatinSlim';
+    src: url('/fonts/woff2/BMGAuthorMedium.woff2') format('woff2'),
+        url('/fonts/woff/BMGAuthorMedium.woff') format('woff');
+    font-weight: 500;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'BMGRussianBold';
+    src: url('/fonts/woff2/BMGRussianBoldRegular.woff2') format('woff2'),
+        url('/fonts/woff/BMGRussianBoldRegular.woff') format('woff');
+    font-weight: bold;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'BHLatinExtraBold';
+    src: url('/fonts/woff2/BMGBespokeSansExtrabold.woff2') format('woff2'),
+        url('/fonts/woff/BMGBespokeSansExtrabold.woff') format('woff');
+    font-weight: bold;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'BHLatinBold';
+    src: url('/fonts/woff2/BMGBespokeSansBold.woff2') format('woff2'),
+        url('/fonts/woff/BMGBespokeSansBold.woff') format('woff');
+    font-weight: bold;
+    font-style: italic;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'BHLatinSlimBold';
+    src: url('/fonts/woff2/BMGAuthorBold.woff2') format('woff2'),
+        url('/fonts/woff/BMGAuthorBold.woff') format('woff');
+    font-weight: bold;
+    font-style: italic;
+    font-display: swap;
+}
+

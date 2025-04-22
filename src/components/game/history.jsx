@@ -95,7 +95,7 @@ function App() {
               >
                 <span className="text-base font-semibold">{patch.patch}</span>
                 <br />
-                <span className="text-xs text-gray-400">{moment(patch.date.replace(' –', '')).format('MMMM Do YYYY, h:mm:ss a')}</span>
+                <span className="text-xs text-gray-400">{moment(patch.date * 1000).format('MMMM Do YYYY, h:mm:ss a')}</span>
               </button>
             </li>
           ))}
@@ -113,7 +113,7 @@ function App() {
                   Patch {historyData.patch}
                 </h2>
                 <p className="text-sm text-gray-400">
-                  {moment(historyData.date.replace(' –', '')).format('MMMM Do YYYY, h:mm:ss a')}
+                  {moment(historyData.date * 1000).format('MMMM Do YYYY, h:mm:ss a')}
                 </p>
               </div>
               <div className="text-sm text-gray-400 flex space-x-4">

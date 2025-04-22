@@ -5,6 +5,7 @@ import Layout2 from "../../../layouts/Layout.astro";
 import Layout3 from "../../../layouts/Player.jsx";
 let token = Astro.cookies.get("accessToken")?.value || null;
 async function fetchUserData() {
+  console.log('do')
   try {
     const response = await fetch(`${host}/player/user/${Astro.params.smashId}`, {
       headers: { Authorization: `Bearer ${token}` },

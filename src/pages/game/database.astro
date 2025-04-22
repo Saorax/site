@@ -1,0 +1,11 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import $ from "jquery";
+import { parse } from 'node-html-parser';
+import { countryToAlpha2 } from "country-to-iso";
+import flag from 'country-code-emoji';
+import GameDatabase from '../../layouts/Game.jsx';
+---
+<Layout title="Game Database">
+    <GameDatabase client:load />
+</Layout>
