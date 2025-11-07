@@ -7,9 +7,9 @@ const PlayerCard = ({ player }) => {
     // Fetch the legend data from the API asynchronously
     const fetchLegendImage = async () => {
       try {
-        const legendApi = await fetch(`https://api.saorax.xyz/game/legends/${player.loadout.LegendID}`).then(res => res.json());
+        const legendApi = await fetch(`https://api.saorax.com/game/legends/${player.loadout.LegendID}`).then(res => res.json());
         const skin = legendApi.skins.find(skin => skin.id == player.loadout.SkinID);
-        const imageUrl = `https://api.saorax.xyz/game/legends/${player.loadout.LegendID}/${skin.index}/create`;
+        const imageUrl = `https://api.saorax.com/game/legends/${player.loadout.LegendID}/${skin.index}/create`;
         setImage(imageUrl);
       } catch (error) {
         console.error('Error fetching legend image:', error);
