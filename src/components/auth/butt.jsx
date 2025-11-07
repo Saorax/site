@@ -62,7 +62,10 @@ function LoginButton() {
       fetchUserInfo(token);
       searchParams.delete("access_token");
       searchParams.delete("refresh_token");
-      const newUrl = `${window.location.origin}${window.location.pathname}`;
+      const newSearch = searchParams.toString();
+      const newUrl = newSearch
+        ? `${window.location.origin}${window.location.pathname}?${newSearch}`
+        : `${window.location.origin}${window.location.pathname}`;
       window.history.replaceState(null, "", newUrl);
     }
   }, []);

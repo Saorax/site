@@ -122,6 +122,7 @@ function ordinal(i) {
   if (j == 3 && k != 13) {
     return i + "rd";
   }
+  if (i == undefined) return 0
   return i + "th";
 };
 function WinrateBar({ wins, games, type, type2 }) {
@@ -436,7 +437,7 @@ function EventData(data) {
                       </a>
                       <a className='text-sm font-bold'>{moment.utc(moment(new Date(mArray.completedAt * 1000), "DD/MM/YYYY HH:mm:ss").diff(moment(new Date(mArray.startedAt * 1000), "DD/MM/YYYY HH:mm:ss"))).format("mm:ss")}</a>
                       <a className="text-sm font-thin text-slate-800 dark:text-slate-200">Seed: {opponent.entrant.initialSeedNum}</a>
-                      <a className="text-sm font-thin text-slate-800 dark:text-slate-200">Placed: {ordinal(opponent.entrant.standing.placement)}</a>
+                      <a className="text-sm font-thin text-slate-800 dark:text-slate-200">Placed: {ordinal(opponent.entrant?.standing?.placement)}</a>
                     </div>
                     <div className="flex items-center text-xl">
                       <div className="flex mr-1.5 -space-x-4">
