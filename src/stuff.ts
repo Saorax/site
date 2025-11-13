@@ -1,1 +1,1 @@
-export const host = process.env.HOST;
+export const host = import.meta.env.PUBLIC_HOST
