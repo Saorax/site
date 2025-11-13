@@ -3,7 +3,7 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
-    "start": "npm i && npm run build && HOST=0.0.0.0 PORT=3000 node ./dist/server/entry.mjs",
+    "start": "pnpm i && pnpm build && HOST=0.0.0.0 PORT=3000 node ./dist/server/entry.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro"
