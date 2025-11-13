@@ -14,7 +14,7 @@ module.exports = {
         muted: '#e2e8f0',
       },
       spacing: {
-        18: '4.5rem',
+        18: '4.55rem',
         22: '5.5rem',
         26: '6.5rem',
         30: '7.5rem',
