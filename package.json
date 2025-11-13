@@ -13,7 +13,10 @@
     "@types/jquery": "^3.5.29",
     "@types/node": "^20.12.7",
     "astro": "^5.13.5",
-    "tailwind-scrollbar": "^3.1.0",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwind-scrollbar": "^4.0.2",
+    "tailwindcss": "^4.1.17",
     "web-vitals": "^3.5.2"
   },
   "dependencies": {
@@ -26,7 +29,7 @@
     "@heroicons/react": "^2.1.4",
     "@nanostores/preact": "^0.5.1",
     "@tailwindcss/postcss": "^4.1.8",
-    "@tailwindcss/vite": "^4.1.8",
+    "@tailwindcss/vite": "^4.1.17",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.0",
     "astro-emoji": "^1.2.0",
@@ -54,7 +57,6 @@
     "react-virtualized-auto-sizer": "^1.0.26",
     "react-virtuoso": "^4.12.8",
     "react-window": "^1.8.11",
-    "tailwindcss": "^4.1.8",
     "tw-elements": "^2.0.0",
     "twemoji": "^14.0.2"
   }

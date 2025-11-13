@@ -3,7 +3,6 @@ import { useState, useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Disclosure } from '@headlessui/react';
 import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/solid';
-import 'tailwindcss/tailwind.css';
 import html2canvas from 'html2canvas';
 
 const fetchColors = async () => {

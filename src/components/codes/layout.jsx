@@ -3,8 +3,6 @@ import { Disclosure, RadioGroup } from '@headlessui/react';
 import { ChevronUpIcon, ChevronDownIcon } from '@heroicons/react/20/solid';
 import { FaTwitter, FaTwitch } from 'react-icons/fa';
 import moment from 'moment';
-import 'tailwindcss/tailwind.css';
-import 'tailwind-scrollbar';
 import { host } from "../../stuff";
 const fetchData2 = async (url) => {
   const res = await fetch(url);

@@ -387,7 +387,7 @@ export function SpawnBotStoreView({ spawnbots, langs }) {
     const isSelected = selectedSpawnBot?.spawnBotData?.SpawnBotID === item.spawnBotData?.SpawnBotID;
     return (
       <div
-        className={viewMode === 'grid' ? 'p-1 w-full h-[245px]' : 'p-0 px-2 h-[160px]'}
+        className={viewMode === 'grid' ? 'p-1 w-full h-[245px]' : 'p-0 px-2 h-40'}
         onClick={() => { setSelectedSpawnBot(item); filtersChanged.current = false; }}
       >
         <div className={`bg-white dark:bg-slate-800 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-700 p-3 transition-all duration-200 ${isSelected ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} ${viewMode === 'grid' ? 'flex flex-col items-center text-center' : 'flex'}`}>
@@ -402,7 +402,7 @@ export function SpawnBotStoreView({ spawnbots, langs }) {
           <div className={`flex-1 flex flex-col ${viewMode === 'grid' ? 'items-center mt-2' : 'ml-4'}`}>
             <div className={`flex flex-col gap-1 ${viewMode === 'grid' ? 'items-center text-center' : ''}`}>
               <div className={`mt-1 flex justify-start text-gray-900 dark:text-white font-bold ${viewMode === 'grid' ? 'text-base' : 'text-lg'}`}>
-                <span className={viewMode === 'grid' ? 'truncate max-w-[11rem]' : ''}>{langs.content?.[getDisplayNameKey(item)] || item.spawnBotData?.SpawnBotName}</span>
+                <span className={viewMode === 'grid' ? 'truncate max-w-44' : ''}>{langs.content?.[getDisplayNameKey(item)] || item.spawnBotData?.SpawnBotName}</span>
               </div>
               {viewMode !== 'grid' && (
                 <div className="flex flex-wrap gap-1">
@@ -651,7 +651,7 @@ export function SpawnBotStoreView({ spawnbots, langs }) {
             <svg className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
           </div>
         </div>
-        <div className="h-[100vh] overflow-y-auto">
+        <div className="h-screen overflow-y-auto">
           {viewMode === 'list' ? (
             <Virtuoso
               data={filtered}
