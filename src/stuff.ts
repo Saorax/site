@@ -1,2 +1,1 @@
-//export const host = "http://localhost:3001";
-export const host = "https://api.saorax.com";
+export const host = process.env.HOST;
