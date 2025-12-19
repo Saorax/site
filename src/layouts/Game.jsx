@@ -68,7 +68,7 @@ function PromoCodesView() {
   );
 }
 function TitlesView() {
-  return <div className="text-gray-900 dark:text-white text-lg p-4 bg-gray-100 dark:bg-slate-900">Titles View Content</div>;
+  return <div className="text-gray-900 dark:text-white text-lg p-4 bg-gray-100 dark:bg-slate-900">Titles View Content Empty GO AWAY</div>;
 }
 export default function GameDatabase() {
   const [storeData, setStoreData] = useState({});

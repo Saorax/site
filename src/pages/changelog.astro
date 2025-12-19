@@ -1,0 +1,29 @@
+---
+import Layout from "../layouts/Layout.astro";
+import ChangelogData from "../components/Changelog.astro";
+import "../styles/global.css";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/x-icon" href="/asuri.png" />
+    <meta name="generator" content={Astro.generator} />
+  </head>
+  <body>
+    <Layout title="Changelog">
+      <div class="px-2 sm:px-4 lg:px-6 py-4">
+        <ul>
+          <ChangelogData title="Dec. 19, 2025">
+            <div class="mb-2">
+              <p>- Added Changelog page</p>
+              <p>- Revamped color scheme page</p>
+            </div>
+          </ChangelogData>
+        </ul>
+      </div>
+    </Layout>
+  </body>
+</html>

@@ -1,0 +1,14 @@
+---
+import Layout from "../../../layouts/Layout.astro";
+import $ from "jquery";
+import { parse } from "node-html-parser";
+import { countryToAlpha2 } from "country-to-iso";
+import flag from "country-code-emoji";
+import { host } from "../../../stuff";
+import AnimDatabase from './comp/index.jsx';
+//let legends = await fetch(host+'/game/legends/all').then(res => res.json()).then(res => res.data);
+---
+
+<Layout title="Game Database">
+  <AnimDatabase client:only="react" />
+</Layout>

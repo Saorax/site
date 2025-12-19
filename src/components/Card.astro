@@ -8,7 +8,7 @@ export interface Props {
 const { href, title, body } = Astro.props as Props;
 ---
 
-<li class="max-w-md mx-auto rounded-lg overflow-hidden shadow-lg bg-white dark:bg-gray-800 hover:shadow-xl transition duration-300">
+<li class="max-w-md w-full rounded-lg overflow-hidden shadow-lg bg-white dark:bg-gray-800 hover:shadow-xl transition duration-300">
   <a href={href} class="block">
     <div class="px-6 py-4">
       <h2 class="text-xl font-bold text-gray-800 dark:text-white">{title}</h2>
