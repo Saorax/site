@@ -411,7 +411,7 @@ function LegendsGrid({
   }
 
   return (
-    <div className="grid grid-cols-3 gap-2 p-2 max-h-96 overflow-y-auto border-b border-slate-800 bg-slate-950/80">
+    <div className="grid grid-cols-3 gap-2 p-2 max-h-96 overflow-y-auto shadow-sm bg-slate-950/80">
       {filtered.map(({ legend, index, legendName }) => {
         const portraitFileName = legend?.heroData?.PortraitFileName;
         const portrait = legend?.heroData?.Portrait;
@@ -512,7 +512,7 @@ function SkinsGrid({
   }
 
   return (
-    <div className="p-2 border-t border-slate-800 bg-slate-950/80 overflow-y-auto">
+    <div className="p-2 shadow-sm bg-slate-950/80 overflow-y-auto">
       <div className="px-1 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
         Skins
       </div>
@@ -2125,8 +2125,8 @@ export default function AnimDatabase() {
       />
       {defineCss && <style dangerouslySetInnerHTML={{ __html: defineCss }} />}
 
-      <aside className="hidden xl:flex w-80 border-r border-slate-800 bg-slate-900/80 flex-col">
-        <div className="px-3 py-2 border-b border-slate-800">
+      <aside className="hidden xl:flex w-80 ring-1 ring-slate-800 bg-slate-900/80 flex-col">
+        <div className="px-3 py-2 shadow-sm">
           <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Legends</div>
           <div className="mt-2">
             <input
@@ -2219,7 +2219,7 @@ export default function AnimDatabase() {
 
 
       <div className="lg:hidden flex flex-col min-w-0">
-        <div className="border-b border-slate-800 bg-slate-950/80">
+        <div className="shadow-sm bg-slate-950/80">
           <div className="px-3 py-2">
             <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Browse</div>
             <div className="mt-2">
@@ -2310,7 +2310,7 @@ export default function AnimDatabase() {
           <div className="flex-1 flex items-center justify-center text-xs text-slate-500 px-3 py-6">Select a skin to view animations.</div>
         ) : (
           <>
-            <div className="px-3 py-3 border-b border-slate-800 bg-slate-950/60">
+            <div className="px-3 py-3 shadow-sm bg-slate-950/60">
               <div className="flex justify-between gap-3">
                 <div className="flex items-center gap-3">
                   {activeSkinIconUrl && (
@@ -2671,7 +2671,7 @@ export default function AnimDatabase() {
 
             <div className="px-2 pb-4">
               <div className="rounded-md border border-slate-800 bg-slate-950/40">
-                <div className="px-2 py-2 border-b border-slate-800 flex items-center justify-between">
+                <div className="px-2 py-2 shadow-sm flex items-center justify-between">
                   <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Defines</div>
                   <button type="button" onClick={resetAllColorsToDefault} className="min-h-10 rounded-md border border-slate-700 bg-slate-900/70 px-3 text-xs text-slate-200">
                     Reset
@@ -2697,7 +2697,7 @@ export default function AnimDatabase() {
                           <div className="text-[10px] text-slate-400">{count}</div>
                         </button>
                         {open && (
-                          <div className="border-t border-slate-800 px-2 py-2 flex flex-col gap-2">
+                          <div className="px-2 py-2 flex flex-col gap-2 shadow-sm">
                             {items.defines.map((d) => {
                               const isSelected = selectedDefineKey === d.key;
                               return (
@@ -2728,12 +2728,12 @@ export default function AnimDatabase() {
       </div>
 
       <main className="hidden lg:flex flex-1">
-        <section className="flex-1 border-r border-slate-800 bg-slate-950/80 flex flex-col">
+        <section className="flex-1 ring-1 ring-slate-800 bg-slate-950/80 flex flex-col">
           {!activeLegend || activeSkinIndex == null || !activeSkin ? (
             <div className="flex-1 flex items-center justify-center text-xs text-slate-500">Select a skin to view animations.</div>
           ) : (
             <div className="flex flex-col h-full">
-              <div className="border-b border-slate-800 px-4 py-2 flex items-center justify-between gap-3 text-xs">
+              <div className="px-4 py-2 flex items-center justify-between gap-3 text-xs shadow-sm">
                 <div className="flex items-center gap-3">
                   {activeSkinIconUrl && (
                     <div className="ml-auto">
@@ -3209,7 +3209,7 @@ export default function AnimDatabase() {
         </section>
 
         <section className="w-80 bg-slate-950/80">
-          <div className="h-full border-l border-slate-800 px-4 py-3 text-xs text-slate-200 flex flex-col gap-4">
+          <div className="h-full ring-1 ring-slate-800 px-4 py-3 text-xs text-slate-200 flex flex-col gap-4">
             {!activeLegend || activeSkinIndex == null || !activeSkin ? (
               <div className="text-slate-500">Select a skin to edit colors.</div>
             ) : (

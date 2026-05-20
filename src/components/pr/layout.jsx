@@ -73,7 +73,7 @@ function MakeList({ data, selectedType, onClick }) {
     }
   } else if (data.place == data.lastPlace) rankChange = <span className="text-orange-500 ml-3">≈</span>;
   return (
-    <tr className={`justify-between cursor-pointer ${selectedType === '1' && data.playedTotal <= 3 ? elig : backgroundColor} border-b border-r dark:border-slate-800`} onClick={() => onClick(data)}>
+    <tr className={`justify-between cursor-pointer ${selectedType === '1' && data.playedTotal <= 3 ? elig : backgroundColor} ring-1 ring-slate-800/40`} onClick={() => onClick(data)}>
       <td className={`lg:p-3 p-2 font-bold ${textColor} md:w-20 w-16`}>{ordinal(data.place)}</td>
       <td className='md:w-20 w-16 font-bold'> {rankChange}</td>
       <th scope="row" className="w-[40%]">
@@ -212,10 +212,10 @@ function RankingsList({ preset, region, minifyRank, selectedType, gamemode, date
                 </svg>
                 Prev
               </button>
-              <button className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-slate-900 border-0 border-l border-slate-800 hover:bg-slate-950 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-white">
+              <button className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-slate-900 ring-1 ring-slate-800 hover:bg-slate-950 dark:bg-slate-900 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-white">
                 {page}/{pages}
               </button>
-              <button onClick={handleNextPage} className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-slate-900 border-0 border-l border-slate-800 rounded-r hover:bg-slate-950 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-white">
+              <button onClick={handleNextPage} className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-slate-900 ring-1 ring-slate-800 rounded-r hover:bg-slate-950 dark:bg-slate-900 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-white">
                 Next
                 <svg aria-hidden="true" className="w-5 h-5 ml-2" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
                   <path fillRule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clipRule="evenodd"></path>
@@ -516,7 +516,7 @@ const Sidebar = ({ selectedGamemode, setSelectedGamemode, dateDecay, setDateDeca
         <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
         <span className="ml-3 text-sm font-medium text-gray-900 dark:text-gray-300 sm:text-xs">Add Date Decay</span>
       </label>
-      <hr className="h-px my-2 bg-gray-300 border-0 dark:bg-gray-700" />
+      <div className="my-2 rounded-full bg-gray-300 py-[1px] dark:bg-gray-700" />
 
       {/* Regions */}
       <Disclosure defaultOpen>
@@ -577,7 +577,7 @@ const Sidebar = ({ selectedGamemode, setSelectedGamemode, dateDecay, setDateDeca
         )}
       </Disclosure>
 
-      <hr className="h-px my-2 bg-gray-300 border-0 dark:bg-gray-700" />
+      <div className="my-2 rounded-full bg-gray-300 py-[1px] dark:bg-gray-700" />
 
       {/* Presets */}
       <Disclosure defaultOpen>
@@ -625,7 +625,7 @@ const Sidebar = ({ selectedGamemode, setSelectedGamemode, dateDecay, setDateDeca
         )}
       </Disclosure>
 
-      <hr className="h-px my-2 bg-gray-300 border-0 dark:bg-gray-700" />
+      <div className="my-2 rounded-full bg-gray-300 py-[1px] dark:bg-gray-700" />
       {selectedType === '1' && (
         <div className='flex flex-col text-base'>
           <li className='text-green-600'>Green means they are guaranteed to go to the Royale</li>
@@ -694,7 +694,7 @@ const PowerRankings = () => {
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-slate-950">
-      <div className="bg-white border-b border-gray-200 dark:bg-gray-900 dark:border-gray-700">
+      <div className="bg-white shadow-sm dark:bg-gray-900">
         <button onClick={() => document.getElementById('logo-sidebar').classList.toggle('-translate-x-full')} aria-controls="logo-sidebar" type="button" className="inline-flex items-center p-2 text-sm text-gray-600 rounded-lg md:hidden hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-300 dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-700">
           <svg className="w-6 h-6" aria-hidden="true" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
             <path clipRule="evenodd" fillRule="evenodd" d="M2 4.75A.75.75 0 012.75 4h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 4.75zm0 10.5a.75.75 0 01.75-.75h7.5a.75.75 0 010 1.5h-7.5a.75.75 0 01-.75-.75zM2 10a.75.75 0 01.75-.75h14.5a.75.75 0 010 1.5H2.75A.75.75 0 012 10z"></path>
@@ -707,7 +707,7 @@ const PowerRankings = () => {
           <div className="h-full p-2">
             <div className="py-2">
               <h2 htmlFor="prType" className="block mb-2 text-base font-medium text-gray-900 dark:text-gray-400">These are estimates. They will not be 100% accurate, but they are as close as possible to what officials would look like, up until top 200</h2>
-              <hr className="h-px my-2 bg-gray-300 border-0 dark:bg-gray-700" />
+              <div className="my-2 rounded-full bg-gray-300 py-[1px] dark:bg-gray-700" />
               <label htmlFor="prType" className="block mb-2 text-sm font-medium text-gray-900 dark:text-gray-400">Tournament Type</label>
               <select id="prType" value={selectedType} onChange={handleTypeChange} className="block w-full px-4 py-3 text-base text-gray-900 border border-gray-400 rounded-lg bg-gray-50 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-700 dark:placeholder-gray-500 dark:text-white dark:focus:ring-blue-700 dark:focus:border-blue-700">
                 <option value="0">Official Tournaments</option>

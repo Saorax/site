@@ -150,10 +150,10 @@ const LegendPage = ({ legend, prevLegends, nextLegends, history }) => {
     <div style={{ fontFamily: 'BHSlim, sans-serif' }} className="flex flex-col dark:text-white text-black">
       <MakeProfile legend={{ ...legend, releaseDate }} prevLegends={prevLegends} nextLegends={nextLegends} />
 
-      <div className="text-2xl flex justify-center space-x-8 border-b border-gray-500">
-        <button onClick={() => setCurrentTab("main")} className={`py-2 ${currentTab === "main" ? "border-b-2 border-blue-500" : ""}`}>Main Page</button>
-        <button onClick={() => setCurrentTab("skins")} className={`py-2 ${currentTab === "skins" ? "border-b-2 border-blue-500" : ""}`}>Skins</button>
-        <button onClick={() => setCurrentTab("history")} className={`py-2 ${currentTab === "history" ? "border-b-2 border-blue-500" : ""}`}>Historical Changes</button>
+      <div className="text-2xl flex justify-center space-x-8 shadow-sm">
+        <button onClick={() => setCurrentTab("main")} className={`py-2 ${currentTab === "main" ? "text-blue-500" : ""}`}>Main Page</button>
+        <button onClick={() => setCurrentTab("skins")} className={`py-2 ${currentTab === "skins" ? "text-blue-500" : ""}`}>Skins</button>
+        <button onClick={() => setCurrentTab("history")} className={`py-2 ${currentTab === "history" ? "text-blue-500" : ""}`}>Historical Changes</button>
       </div>
 
       {currentTab === "main" && (

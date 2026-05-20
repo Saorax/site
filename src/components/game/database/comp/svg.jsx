@@ -1,5 +1,6 @@
 import { host } from '../../../../stuff';
 import { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { LoadingSpinner } from './LoadingImage';
 
 const viewBoxCache = {};
 
@@ -174,9 +175,8 @@ export function SvgArrayFlipbook({ src, fps = 24, isLegend, classNames }) {
           Failed to load SVG
         </div>
       ) : loading || normalizedFrames.length === 0 ? (
-        <div className="flex items-center justify-center h-full" aria-busy="true">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-gray-500 dark:border-gray-300 mr-2"></div>
-          <span className="text-gray-900 dark:text-white">Loading...</span>
+        <div className="relative flex min-h-32 w-full items-center justify-center rounded-xl bg-slate-900/80" aria-busy="true">
+          <LoadingSpinner />
         </div>
       ) : (
         <div

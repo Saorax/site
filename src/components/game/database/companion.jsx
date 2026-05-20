@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { XMarkIcon } from '@heroicons/react/20/solid';
 import { Virtuoso, VirtuosoGrid } from 'react-virtuoso';
 import { useMediaQuery } from 'react-responsive';
+import { ImageWithLoader, LoadingSpinner, RawDataDetails } from './comp/LoadingImage';
 
 function uniqueValues(array, path) {
   const values = new Set();
@@ -147,6 +148,7 @@ export function CompanionStoreView({ companions, langs }) {
   const filterSectionRef = useRef(null);
   const detailPanelRef = useRef(null);
   const [viewMode, setViewMode] = useState('list');
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const [animLoading, setAnimLoading] = useState(false);
 
   useEffect(() => {
@@ -439,7 +441,6 @@ export function CompanionStoreView({ companions, langs }) {
 
   const Row = ({ index, data }) => {
     const companion = data[index];
-    const [imgLoading, setImgLoading] = useState(true);
     let storeData = [...companion?.store ?? [], ...companion.exclusive?.store ?? []];
     storeData = [...new Map(storeData.map(sd => [sd.StoreID, sd])).values()];
     storeData = storeData.map(sd => {
@@ -470,7 +471,7 @@ export function CompanionStoreView({ companions, langs }) {
 
     console.log(companion.companionData.CompanionID, storeData, companion.exclusive?.store)
     return (
-      <div className={viewMode === 'grid' ? 'p-1 w-full h-[340px]' : 'p-0 px-2 h-[185px]'}>
+      <div className={viewMode === 'grid' ? 'p-1 w-full h-[340px]' : 'p-0 px-2 min-h-[185px]'}>
         <div
           className={`bg-white dark:bg-slate-800 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-700 p-3 transition-all duration-200 ${selectedCompanion?.companionData?.CompanionID === companion.companionData?.CompanionID ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} ${viewMode === 'grid' ? 'flex flex-col items-center text-center h-full' : 'flex'}`}
           onClick={() => {
@@ -480,21 +481,8 @@ export function CompanionStoreView({ companions, langs }) {
             filtersChanged.current = false;
           }}
         >
-          <div className={`flex p-3 rounded-lg items-center justify-center bg-gray-100 dark:bg-slate-900 relative`}>
-            {imgLoading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-200 dark:bg-slate-800 bg-opacity-80 z-10 rounded-lg">
-                <svg className="animate-spin h-10 w-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M12 2a10 10 0 0 1 10 10h-4a6 6 0 0 0-6-6V2z" />
-                </svg>
-              </div>
-            )}
-            <img
-              src={`${host}/game/animCompanion/${companion.companionData?.CompanionID}/Ready/all`}
-              className="h-32 w-32 object-contain"
-              onLoad={() => setImgLoading(false)}
-              
-            />
+          <div className="flex p-3 rounded-lg items-center justify-center bg-gray-100 dark:bg-slate-900">
+            <ImageWithLoader src={`${host}/game/animCompanion/${companion.companionData?.CompanionID}/Ready/all`} alt="" className="h-32 w-32 rounded-lg bg-slate-900/80" />
           </div>
           <div className={`flex-1 flex flex-col ${viewMode === 'grid' ? 'items-center mt-2' : 'ml-4'}`}>
             <div className={`flex flex-col gap-1 ${viewMode === 'grid' ? 'items-center text-center' : ''}`}>
@@ -545,7 +533,7 @@ export function CompanionStoreView({ companions, langs }) {
               )}
               <div className={`flex flex-row items-center gap-2 text-gray-900 dark:text-white font-bold ${viewMode === 'grid' ? 'text-base' : 'text-lg'}`}>
                 <img src={`${host}/game/getGfx/${companion.companionData?.IconFileName}/${companion.companionData?.IconName}`} className="inline h-7"  />
-                <span className={viewMode === 'grid' ? 'truncate max-w-[10rem]' : ''}>{langs.content[getDisplayNameKey(companion)] || companion.companionData?.CompanionName}</span>
+                <span >{langs.content[getDisplayNameKey(companion)] || companion.companionData?.CompanionName}</span>
               </div>
               {viewMode === 'grid' && (
                 <div className="flex flex-wrap gap-1">
@@ -846,16 +834,21 @@ export function CompanionStoreView({ companions, langs }) {
   }
 
   return (
-    <div className="flex flex-col lg:flex-row h-full" style={{ fontFamily: langs.font || 'BHLatinBold' }}>
-      <div ref={topRef} className="flex-1 p-2 bg-gray-100 dark:bg-slate-900 lg:w-[35%] h-full">
-        <div ref={filterSectionRef} className="space-y-4 mb-4">
-          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4 items-center">
-            <div className="bg-gray-200 dark:bg-slate-800 p-2 rounded-lg flex flex-wrap gap-2 items-center">
+    <div className="flex flex-col lg:flex-row min-h-screen bg-gray-100 dark:bg-slate-900" style={{ fontFamily: langs.font || 'BHLatinBold' }}>
+      <div ref={topRef} className="flex-1 p-3 lg:p-4 bg-gray-100 dark:bg-slate-900 lg:w-[35%] h-full">
+        <div ref={filterSectionRef} className="space-y-4 mb-4 rounded-xl bg-white/70 dark:bg-slate-800/70 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
+          <button onClick={() => setFiltersOpen((open) => !open)} className="flex w-full items-center justify-between rounded-lg bg-gray-100 dark:bg-slate-700 px-3 py-2 text-left text-sm font-bold text-gray-900 dark:text-white">
+            <span>Filters</span>
+            <span className="text-xs text-gray-500 dark:text-gray-300">{filtersOpen ? 'Hide' : 'Show'}</span>
+          </button>
+          {filtersOpen && (<>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
               {Object.values(optionCounts.Cohort).some(count => count > 0) && (
                 <select
                   value={filterCohort}
                   onChange={e => handleFilterChange(setFilterCohort, e.target.value)}
-                  className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Cohorts</option>
                   {cohorts.filter(c => optionCounts.Cohort[c] > 0).map(c => (
@@ -867,7 +860,7 @@ export function CompanionStoreView({ companions, langs }) {
                 <select
                   value={filterPromo}
                   onChange={e => handleFilterChange(setFilterPromo, e.target.value)}
-                  className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Promotions</option>
                   {promotions.filter(p => optionCounts.TimedPromotion[p] > 0).map(p => (
@@ -879,7 +872,7 @@ export function CompanionStoreView({ companions, langs }) {
                 <select
                   value={filterRarity}
                   onChange={e => handleFilterChange(setFilterRarity, e.target.value)}
-                  className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">All Rarities</option>
                   {rarities.filter(r => optionCounts.Rarity[r] > 0).map(r => (
@@ -891,7 +884,7 @@ export function CompanionStoreView({ companions, langs }) {
                 <select
                   value={filterStoreLabel}
                   onChange={e => handleFilterChange(setFilterStoreLabel, e.target.value)}
-                  className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Store Label</option>
                   {storeLabels.filter(n => optionCounts.StoreLabel[n] > 0).map(n => (
@@ -903,7 +896,7 @@ export function CompanionStoreView({ companions, langs }) {
                 <select
                   value={filterPromoType}
                   onChange={e => handleFilterChange(setFilterPromoType, e.target.value)}
-                  className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Promo Codes</option>
                   {promoTypes.filter(n => optionCounts.PromoType[n] > 0).map(n => (
@@ -915,7 +908,7 @@ export function CompanionStoreView({ companions, langs }) {
                 <select
                   value={filterChestName}
                   onChange={e => handleFilterChange(setFilterChestName, e.target.value)}
-                  className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Chests</option>
                   {optionCounts.AllChests > 0 && <option value="AllChests">All Chest Companions ({optionCounts.AllChests})</option>}
@@ -931,7 +924,7 @@ export function CompanionStoreView({ companions, langs }) {
                 <select
                   value={filterBPSeason}
                   onChange={e => handleFilterChange(setFilterBPSeason, e.target.value)}
-                  className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Battle Pass</option>
                   {optionCounts.AllBP > 0 && <option value="AllBP">All Battle Pass Companions ({optionCounts.AllBP})</option>}
@@ -943,13 +936,13 @@ export function CompanionStoreView({ companions, langs }) {
                 </select>
               )}
             </div>
-            <div className="flex flex-wrap gap-2 lg:flex-row w-full items-center">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="flex gap-4 items-center">
-                <label className="text-gray-900 dark:text-white flex items-center cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
+                <label className="inline-flex items-center bg-gray-100 dark:bg-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
                   <input type="checkbox" checked={storeOnly} onChange={() => handleFilterChange(setStoreOnly, !storeOnly)} className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
                   Store Companions Only
                 </label>
-                <label className="text-gray-900 dark:text-white flex items-center cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
+                <label className="inline-flex items-center bg-gray-100 dark:bg-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
                   <input type="checkbox" checked={filterEntitlement} onChange={() => handleFilterChange(setFilterEntitlement, !filterEntitlement)} className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
                   DLC Companions
                 </label>
@@ -960,9 +953,9 @@ export function CompanionStoreView({ companions, langs }) {
               </button>
             </div>
           </div>
-        </div>
-        <div className="flex flex-col mb-2">
-          <div className="lg:flex gap-4 items-center">
+          </>)}
+
+          <div className="lg:flex lg:flex-col gap-4">
             <div className="relative">
               <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
               <input
@@ -970,10 +963,10 @@ export function CompanionStoreView({ companions, langs }) {
                 value={searchQuery}
                 onChange={e => handleFilterChange(setSearchQuery, e.target.value)}
                 placeholder="Search Companions"
-                className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg pl-10 pr-4 py-1 border border-gray-300 dark:border-slate-600 w-full sm:w-64 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white text-sm font-semibold placeholder:font-semibold rounded-lg pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
               />
             </div>
-            <div className='flex justify-between items-center w-full sm:w-auto py-2 gap-4'>
+            <div className='order-first flex justify-between items-center w-full sm:w-auto py-2 gap-4'>
               <div className="text-lg text-blue-600 dark:text-blue-400 font-bold">
                 Showing {filteredCompanions.length} Companion{filteredCompanions.length !== 1 ? 's' : ''}
               </div>
@@ -999,7 +992,7 @@ export function CompanionStoreView({ companions, langs }) {
             <select
               value={sortType}
               onChange={e => setSortType(e.target.value)}
-              className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 w-full sm:min-w-[200px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none"
+              className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white text-sm font-semibold w-full sm:min-w-[200px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none cursor-pointer"
             >
               <option value="ArrayIndexDesc">Default Sorting (Desc)</option>
               <option value="ArrayIndexAsc">Default Sorting (Asc)</option>
@@ -1026,7 +1019,7 @@ export function CompanionStoreView({ companions, langs }) {
             <VirtuosoGrid
               data={filteredCompanions}
               totalCount={filteredCompanions.length}
-              listClassName="grid grid-cols-2 lg:grid-cols-3"
+              listClassName="grid grid-cols-2 2xl:grid-cols-3 gap-2"
               itemClassName="companion-grid-item"
               itemContent={(index, companion) => <Row index={index} data={filteredCompanions} />}
               useWindowScroll={false}
@@ -1034,8 +1027,8 @@ export function CompanionStoreView({ companions, langs }) {
           )}
         </div>
       </div>
-      <div ref={detailPanelRef} className={`h-full lg:w-[65%] fixed inset-0 bg-black bg-opacity-50 z-50 lg:static lg:bg-transparent lg:border-l lg:border-gray-300 lg:dark:border-slate-600 lg:flex lg:flex-col lg:gap-4 lg:shadow-none ${selectedCompanion ? 'block' : 'hidden lg:block'}`}>
-        <div className="bg-white dark:bg-slate-900 p-2 h-full overflow-y-auto relative">
+      <div ref={detailPanelRef} className={`h-full lg:w-[65%] fixed inset-0 bg-black bg-opacity-50 z-50 lg:static lg:bg-transparent lg:flex lg:flex-col lg:gap-4 lg:shadow-none ${selectedCompanion ? 'block' : 'hidden lg:block'}`}>
+        <div className="bg-white dark:bg-slate-900 p-3 lg:p-4 h-full overflow-y-auto relative">
           <div className="flex items-center justify-between">
             <button
               className="lg:hidden text-gray-900 dark:text-white"
@@ -1134,8 +1127,8 @@ export function CompanionStoreView({ companions, langs }) {
                   </div>
                 </div>
               </div>
-              <div className="flex flex-col lg:flex-row gap-2">
-                <div className="order-2 lg:order-1 lg:w-1/2 flex flex-col gap-4 dark:bg-slate-800 bg-gray-100 p-2 rounded-lg">
+              <div className="flex flex-col gap-2">
+                <div className="order-2 w-full flex flex-col gap-4 dark:bg-slate-800 bg-gray-100 p-2 rounded-lg">
                   <div className="flex flex-col gap-4">
                     <div>
                       <span className="text-lg text-gray-900 dark:text-white">Companion Data</span>
@@ -1295,26 +1288,21 @@ export function CompanionStoreView({ companions, langs }) {
                     )}
                   </div>
                 </div>
-                <div className="order-1 lg:order-2 lg:w-1/2 flex flex-col gap-4 dark:bg-slate-800 bg-gray-100 p-2 rounded-lg">
+                <div className="order-1 w-full flex flex-col gap-4 dark:bg-slate-800 bg-gray-100 p-2 rounded-lg">
                   <div className="flex flex-col gap-2">
                     <span className="text-lg text-gray-900 dark:text-white">Animations</span>
-                    <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
-                      {animLoading && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-gray-200 dark:bg-slate-800 bg-opacity-80 z-10 rounded-lg">
-                          <svg className="animate-spin h-10 w-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M12 2a10 10 0 0 1 10 10h-4a6 6 0 0 0-6-6V2z" />
-                          </svg>
-                        </div>
-                      )}
-                      <img
-                        key={`${selectedCompanion.companionData?.CompanionID}-${currentAnimation.anim}-${animationType}`}
-                        src={`${host}/game/animCompanion/${selectedCompanion.companionData?.CompanionID}/${currentAnimation.anim}/${animationType}`}
-                        className="absolute top-0 left-0 w-full h-full rounded-lg object-contain"
-                        onLoad={() => setAnimLoading(false)}
-                        
-                        style={{ opacity: animLoading ? 0 : 1, transition: 'opacity 0.2s' }}
-                      />
+                    <div className="rounded-lg bg-slate-900/80 p-3">
+                      <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
+                        {animLoading && <LoadingSpinner />}
+                        <img
+                          key={`${selectedCompanion.companionData?.CompanionID}-${currentAnimation.anim}-${animationType}`}
+                          src={`${host}/game/animCompanion/${selectedCompanion.companionData?.CompanionID}/${currentAnimation.anim}/${animationType}`}
+                          className="absolute top-0 left-0 w-full h-full rounded-lg object-contain"
+                          onLoad={() => setAnimLoading(false)}
+                          
+                          style={{ opacity: animLoading ? 0 : 1, transition: 'opacity 0.2s' }}
+                        />
+                      </div>
                     </div>
                     <div className="flex flex-col gap-2">
                       <span className="text-base text-gray-600 dark:text-gray-300">Animation Frames</span>
@@ -1360,6 +1348,7 @@ export function CompanionStoreView({ companions, langs }) {
                   </div>
                 </div>
               </div>
+              <RawDataDetails data={selectedCompanion} />
             </div>
           ) : (
             <div className="flex items-center justify-center h-full">

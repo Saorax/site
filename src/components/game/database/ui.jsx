@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { XMarkIcon } from '@heroicons/react/20/solid';
 import { Virtuoso, VirtuosoGrid } from 'react-virtuoso';
 import { useMediaQuery } from 'react-responsive';
+import { ImageWithLoader, RawDataDetails } from './comp/LoadingImage';
 
 function uniq(arr) {
   return [...new Set(arr)];
@@ -194,6 +195,7 @@ export function UIThemeStoreView({ themes, langs }) {
   const [filterEntitlement, setFilterEntitlement] = useState(false);
   const [filterTimedEvent, setFilterTimedEvent] = useState('');
   const [viewMode, setViewMode] = useState('list');
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [copyFeedback, setCopyFeedback] = useState('');
   const [selectedAsset, setSelectedAsset] = useState('KillplateAsset');
@@ -414,7 +416,6 @@ export function UIThemeStoreView({ themes, langs }) {
 
   const Row = ({ index, data }) => {
     const theme = data[index];
-    const [imgLoading, setImgLoading] = useState(true);
     const storeData = getProcessedStoreData(theme);
     const hasStore = Array.isArray(theme.store) && theme.store.length > 0;
     const skirmish = theme.skirmish;
@@ -426,28 +427,12 @@ export function UIThemeStoreView({ themes, langs }) {
       backgroundStyle = { background: `linear-gradient(45deg, ${color1} 50%, ${color2} 50%)`, color: getTextColor(factions[0]?.FactionColor || '0x000000') };
     }
     return (
-      <div className={viewMode === 'grid' ? 'p-1 w-full h-[260px]' : 'p-0 px-2 h-[160px]'}>
+      <div className={viewMode === 'grid' ? 'p-1 w-full h-[260px]' : 'p-0 px-2 min-h-[160px]'}>
         <div
           className={`bg-white dark:bg-slate-800 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-700 p-3 transition-all duration-200 ${selectedTheme?.themeData?.PlayerThemeID === theme.themeData?.PlayerThemeID ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} ${viewMode === 'grid' ? 'flex flex-col items-center text-center h-full' : 'flex'}`}
           onClick={() => { setSelectedTheme(theme); filtersChanged.current = false; }}
         >
-          <div className="flex rounded-lg items-center justify-center relative">
-            {imgLoading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-gray-200 dark:bg-slate-800 bg-opacity-80 z-10 rounded-lg">
-                <svg className="animate-spin h-10 w-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M12 2a10 10 0 0 1 10 10h-4a6 6 0 0 0-6-6V2z" />
-                </svg>
-              </div>
-            )}
-            <img
-              src={`${host}/game/animUi/${theme.themeData?.PlayerThemeID}/StoreAllItems`}
-              className="h-32 max-w-48 object-contain"
-              onLoad={() => setImgLoading(false)}
-              onError={e => e.currentTarget.style.display = 'none'}
-              alt=""
-            />
-          </div>
+          <ImageWithLoader src={`${host}/game/animUi/${theme.themeData?.PlayerThemeID}/StoreAllItems`} alt="" className="h-32 w-48 rounded-lg bg-slate-900/80" />
           <div className={`flex-1 flex flex-col ${viewMode === 'grid' ? 'items-center mt-2' : 'ml-4'}`}>
             <div className={`flex flex-col gap-1 ${viewMode === 'grid' ? 'items-center text-center' : ''}`}>
               {viewMode !== 'grid' && (
@@ -558,16 +543,21 @@ export function UIThemeStoreView({ themes, langs }) {
   };
 
   return (
-    <div className="h-full flex flex-col lg:flex-row" style={{ fontFamily: langs.font || 'BHLatinBold' }}>
-      <div ref={topRef} className="flex-1 p-2 bg-gray-100 dark:bg-slate-900 lg:w-[35%] h-full">
-        <div ref={filterSectionRef} className="space-y-4 mb-4">
-          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4 items-center">
-            <div className="bg-gray-200 dark:bg-slate-800 p-2 rounded-lg flex flex-wrap gap-2 items-center">
+    <div className="min-h-screen flex flex-col lg:flex-row bg-gray-100 dark:bg-slate-900" style={{ fontFamily: langs.font || 'BHLatinBold' }}>
+      <div ref={topRef} className="flex-1 p-3 lg:p-4 bg-gray-100 dark:bg-slate-900 lg:w-[35%] h-full">
+        <div ref={filterSectionRef} className="space-y-4 mb-4 rounded-xl bg-white/70 dark:bg-slate-800/70 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
+          <button onClick={() => setFiltersOpen((open) => !open)} className="flex w-full items-center justify-between rounded-lg bg-gray-100 dark:bg-slate-700 px-3 py-2 text-left text-sm font-bold text-gray-900 dark:text-white">
+            <span>Filters</span>
+            <span className="text-xs text-gray-500 dark:text-gray-300">{filtersOpen ? 'Hide' : 'Show'}</span>
+          </button>
+          {filtersOpen && (<>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
               {Object.values(optionCounts.Cohort).some(c => c > 0) && (
                 <select
                   value={filterCohort}
                   onChange={e => handleFilterChange(setFilterCohort, e.target.value)}
-                  className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Cohorts</option>
                   {cohorts.filter(c => optionCounts.Cohort[c] > 0).map(c => (
@@ -579,7 +569,7 @@ export function UIThemeStoreView({ themes, langs }) {
                 <select
                   value={filterPromo}
                   onChange={e => handleFilterChange(setFilterPromo, e.target.value)}
-                  className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Promotions</option>
                   {promotions.filter(p => optionCounts.TimedPromotion[p] > 0).map(p => (
@@ -591,7 +581,7 @@ export function UIThemeStoreView({ themes, langs }) {
                 <select
                   value={filterRarity}
                   onChange={e => handleFilterChange(setFilterRarity, e.target.value)}
-                  className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">All Rarities</option>
                   {rarities.filter(r => optionCounts.Rarity[r] > 0).map(r => (
@@ -603,7 +593,7 @@ export function UIThemeStoreView({ themes, langs }) {
                 <select
                   value={filterStoreLabel}
                   onChange={e => handleFilterChange(setFilterStoreLabel, e.target.value)}
-                  className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Store Label</option>
                   {storeLabels.filter(n => optionCounts.StoreLabel[n] > 0).map(n => (
@@ -615,7 +605,7 @@ export function UIThemeStoreView({ themes, langs }) {
                 <select
                   value={filterPromoType}
                   onChange={e => handleFilterChange(setFilterPromoType, e.target.value)}
-                  className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Promo Codes</option>
                   {promoTypes.filter(n => optionCounts.PromoType[n] > 0).map(n => (
@@ -627,7 +617,7 @@ export function UIThemeStoreView({ themes, langs }) {
                 <select
                   value={filterTimedEvent}
                   onChange={e => handleFilterChange(setFilterTimedEvent, e.target.value)}
-                  className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Timed Events</option>
                   {timedEvents.filter(t => optionCounts.TimedEvent[t] > 0).map(t => (
@@ -639,7 +629,7 @@ export function UIThemeStoreView({ themes, langs }) {
                 <select
                   value={filterBPSeason}
                   onChange={e => handleFilterChange(setFilterBPSeason, e.target.value)}
-                  className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Battle Pass</option>
                   {optionCounts.AllBP > 0 && <option value="AllBP">All Battle Pass Themes ({optionCounts.AllBP})</option>}
@@ -649,12 +639,12 @@ export function UIThemeStoreView({ themes, langs }) {
                 </select>
               )}
             </div>
-            <div className="flex flex-wrap gap-4 lg:flex-row w-full items-center">
-              <label className="text-gray-900 dark:text-white flex items-center cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex items-center bg-gray-100 dark:bg-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
                 <input type="checkbox" checked={storeOnly} onChange={() => handleFilterChange(setStoreOnly, !storeOnly)} className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
                 Store Themes Only ({optionCounts.StoreOnly || 0})
               </label>
-              <label className="text-gray-900 dark:text-white flex items-center cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
+              <label className="inline-flex items-center bg-gray-100 dark:bg-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
                 <input type="checkbox" checked={filterEntitlement} onChange={() => handleFilterChange(setFilterEntitlement, !filterEntitlement)} className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" />
                 DLC Themes ({optionCounts.DLC || 0})
               </label>
@@ -664,10 +654,9 @@ export function UIThemeStoreView({ themes, langs }) {
               </button>
             </div>
           </div>
-        </div>
-
-        <div className="flex flex-col mb-2">
-          <div className="lg:flex gap-4 items-center">
+          </>)}
+          <div className="flex flex-col gap-3">
+          <div className="lg:flex lg:flex-col gap-4">
             <div className="relative">
               <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
               <input
@@ -675,10 +664,10 @@ export function UIThemeStoreView({ themes, langs }) {
                 value={searchQuery}
                 onChange={e => handleFilterChange(setSearchQuery, e.target.value)}
                 placeholder="Search Themes"
-                className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg pl-10 pr-4 py-1 border border-gray-300 dark:border-slate-600 w-full sm:w-64 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white text-sm font-semibold placeholder:font-semibold rounded-lg pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
               />
             </div>
-            <div className="flex justify-between items-center w-full sm:w-auto py-2 gap-4">
+            <div className="order-first flex justify-between items-center w-full sm:w-auto py-2 gap-4">
               <div className="text-lg text-blue-600 dark:text-blue-400 font-bold">{countText}</div>
               <div className="flex gap-2">
                 <button
@@ -702,7 +691,7 @@ export function UIThemeStoreView({ themes, langs }) {
             <select
               value={sortType}
               onChange={e => setSortType(e.target.value)}
-              className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 w-full sm:min-w-[200px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none"
+              className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white text-sm font-semibold w-full sm:min-w-[200px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none cursor-pointer"
             >
               <option value="ArrayIndexDesc">Default Sorting (Desc)</option>
               <option value="ArrayIndexAsc">Default Sorting (Asc)</option>
@@ -717,6 +706,7 @@ export function UIThemeStoreView({ themes, langs }) {
             </select>
             <svg className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
           </div>
+          </div>
         </div>
 
         <div className="h-[100vh]">
@@ -730,7 +720,7 @@ export function UIThemeStoreView({ themes, langs }) {
             <VirtuosoGrid
               data={filteredThemes}
               totalCount={filteredThemes.length}
-              listClassName="grid grid-cols-2 lg:grid-cols-3"
+              listClassName="grid grid-cols-2 2xl:grid-cols-3 gap-2"
               itemClassName="ui-grid-item"
               itemContent={(index) => <Row index={index} data={filteredThemes} />}
               useWindowScroll={false}
@@ -739,8 +729,8 @@ export function UIThemeStoreView({ themes, langs }) {
         </div>
       </div>
 
-      <div ref={detailPanelRef} className={`h-full lg:w-[65%] fixed inset-0 bg-black bg-opacity-50 z-50 lg:static lg:bg-transparent lg:border-l lg:border-gray-300 lg:dark:border-slate-600 lg:flex lg:flex-col lg:gap-4 lg:shadow-none ${selectedTheme ? 'block' : 'hidden lg:block'}`}>
-        <div className="bg-white dark:bg-slate-900 p-2 h-full overflow-y-auto relative">
+      <div ref={detailPanelRef} className={`h-full lg:w-[65%] fixed inset-0 bg-black bg-opacity-50 z-50 lg:static lg:bg-transparent lg:flex lg:flex-col lg:gap-4 lg:shadow-none ${selectedTheme ? 'block' : 'hidden lg:block'}`}>
+        <div className="bg-white dark:bg-slate-900 p-3 lg:p-4 h-full overflow-y-auto relative">
           <div className="flex items-center justify-between">
             <button className="lg:hidden text-gray-900 dark:text-white" onClick={() => setSelectedTheme(null)}>
               <XMarkIcon className="w-6 h-6" />
@@ -821,8 +811,8 @@ export function UIThemeStoreView({ themes, langs }) {
                 </div>
               </div>
 
-              <div className="flex flex-col lg:flex-row gap-2">
-                <div className="order-2 lg:order-1 lg:w-1/2 flex flex-col gap-2">
+              <div className="flex flex-col gap-2">
+                <div className="order-2 w-full flex flex-col gap-2">
                   <div className="dark:bg-slate-800 bg-gray-100 p-2 rounded-lg">
                     <span className="text-lg text-gray-900 dark:text-white">Theme Data</span>
                     <div className="grid grid-cols-2 gap-2 text-lg mt-2">
@@ -1011,7 +1001,7 @@ export function UIThemeStoreView({ themes, langs }) {
                   )}
                 </div>
 
-                <div className="order-1 lg:order-2 lg:w-1/2 flex flex-col gap-2">
+                <div className="order-1 w-full flex flex-col gap-2 dark:bg-slate-800 bg-gray-100 p-2 rounded-lg">
                   <div className="dark:bg-slate-800 bg-gray-100 flex flex-col gap-2 p-2 rounded-lg">
                     <span className="text-lg text-gray-900 dark:text-white">Image Data</span>
                     <div>
@@ -1042,6 +1032,7 @@ export function UIThemeStoreView({ themes, langs }) {
                   </div>
                 </div>
               </div>
+              <RawDataDetails data={selectedTheme} />
             </div>
           ) : (
             <div className="text-center text-gray-600 dark:text-gray-400 italic">Select a theme to view details</div>

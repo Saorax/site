@@ -415,7 +415,7 @@ function EventData(data) {
     <div className="lg:flex mt-1.5 ">
       <div className="lg:w-2/3">
         {/* history */}
-        <div className="max-h-[60.5vh] divide-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900 w-full p-1 divide-slate-700 rounded-2xl bg-slate-900 text-slate-100">
+        <div className="max-h-[60.5vh] space-y-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900 w-full p-1 rounded-2xl bg-slate-900 text-slate-100">
           {newData.map(matchData => {
             console.log(matchData)
             return <div key={new Date().getTime() + Math.floor(Math.random() * 100000)} className={`${newData.length > 1 ? i == 0 ? "mb-2 " : "mt-2 " : ""}text-xl lg:text-3xl text-center`}>
@@ -549,12 +549,12 @@ function Events(data) {
 
 const Tabs = ({ tabs, activeTab, onTabChange }) => {
   return (
-    <div className="border-b max-w-full border-gray-200 dark:border-gray-700">
+    <div className="max-w-full shadow-sm">
       <ul className="flex items-center text-slate-300 -mb-px text-sm lg:text-lg font-medium text-center" role="tablist">
         {tabs.map((tab, index) => (
           <li key={index} className="flex-1" role="presentation">
             <button
-              className={`inline-block w-full p-4 border-b rounded-t-lg ${activeTab === index ? 'border-gray-300 text-gray-900 dark:text-white' : 'border-transparent hover:text-gray-600 hover:border-gray-300 dark:hover:text-gray-300 transition duration-200'}`}
+              className={`inline-block w-full p-4 rounded-t-lg ${activeTab === index ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-white' : 'hover:text-gray-600 dark:hover:text-gray-300 transition duration-200'}`}
               onClick={() => onTabChange(index)}
               role="tab"
               aria-controls={tab.id}

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { XMarkIcon } from '@heroicons/react/20/solid';
 import { VirtuosoGrid } from 'react-virtuoso';
 import { useMediaQuery } from 'react-responsive';
+import { RawDataDetails } from './comp/LoadingImage';
 
 function uniq(a) { return [...new Set(a)]; }
 function uniqueValues(array, path) {
@@ -167,6 +168,7 @@ export function TitlesStoreView({ titles, langs }) {
   const [filterColor, setFilterColor] = useState('');
   const [openColor, setOpenColor] = useState(false);
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const filterSectionRef = useRef(null);
   const detailPanelRef = useRef(null);
   const isMobile = useMediaQuery({ query: '(max-width: 1023px)' });
@@ -396,7 +398,7 @@ export function TitlesStoreView({ titles, langs }) {
           <div className="flex-1 flex flex-col">
             <div className="flex flex-col gap-1">
               <div className="mt-1 flex justify-start font-bold text-lg">
-                <span className="truncate" style={{ color }}>{langs.content?.[getDisplayNameKey(item)] || item.monikerData?.MonikerName}</span>
+                <span className="" style={{ color }}>{langs.content?.[getDisplayNameKey(item)] || item.monikerData?.MonikerName}</span>
               </div>
               <div className="flex flex-wrap gap-1">
                 {item.bp && (
@@ -501,17 +503,21 @@ export function TitlesStoreView({ titles, langs }) {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-full" style={{ fontFamily: langs.font || 'BHLatinBold' }}>
-      {/* LIST/FILTER SIDE — 65% */}
-      <div className="flex-1 p-2 bg-gray-100 dark:bg-slate-900 lg:w-[65%] h-full lg:border-r lg:border-gray-300 lg:dark:border-slate-600">
-        <div ref={filterSectionRef} className="space-y-4 mb-4">
-          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4 items-center">
-            <div className="bg-gray-200 dark:bg-slate-800 p-2 rounded-lg flex flex-wrap gap-2 items-center">
+    <div className="flex flex-col lg:flex-row min-h-screen bg-gray-100 dark:bg-slate-900" style={{ fontFamily: langs.font || 'BHLatinBold' }}>
+      <div className="flex-1 p-3 lg:p-4 bg-gray-100 dark:bg-slate-900 lg:w-[65%] h-full">
+        <div ref={filterSectionRef} className="space-y-4 mb-4 rounded-xl bg-white/70 dark:bg-slate-800/70 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
+          <button onClick={() => setFiltersOpen((open) => !open)} className="flex w-full items-center justify-between rounded-lg bg-gray-100 dark:bg-slate-700 px-3 py-2 text-left text-sm font-bold text-gray-900 dark:text-white">
+            <span>Filters</span>
+            <span className="text-xs text-gray-500 dark:text-gray-300">{filtersOpen ? 'Hide' : 'Show'}</span>
+          </button>
+          {filtersOpen && (<>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
               {Object.values(optionCounts.Cohort).some(count => count > 0) && (
                 <select
                   value={filterCohort}
                   onChange={e => handleFilterChange(setFilterCohort, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Cohorts</option>
                   {cohorts.filter(c => optionCounts.Cohort[c] > 0).map(c => (
@@ -523,7 +529,7 @@ export function TitlesStoreView({ titles, langs }) {
                 <select
                   value={filterPromo}
                   onChange={e => handleFilterChange(setFilterPromo, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Promotions</option>
                   {promotions.filter(p => optionCounts.TimedPromotion[p] > 0).map(p => (
@@ -535,7 +541,7 @@ export function TitlesStoreView({ titles, langs }) {
                 <select
                   value={filterStoreLabel}
                   onChange={e => handleFilterChange(setFilterStoreLabel, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Store Label</option>
                   {storeLabels.filter(n => optionCounts.StoreLabel[n] > 0).map(n => (
@@ -547,7 +553,7 @@ export function TitlesStoreView({ titles, langs }) {
                 <select
                   value={filterPromoType}
                   onChange={e => handleFilterChange(setFilterPromoType, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Promo Codes</option>
                   {promoTypes.filter(n => optionCounts.PromoType[n] > 0).map(n => (
@@ -560,7 +566,7 @@ export function TitlesStoreView({ titles, langs }) {
                   <button
                     type="button"
                     onClick={() => setOpenColor(v => !v)}
-                    className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-3 py-1 border border-gray-300 dark:border-slate-600 min-w-[180px] text-left flex items-center gap-2"
+                    className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[180px] text-left flex items-center gap-2"
                   >
                     <span
                       className="inline-block w-4 h-4 rounded"
@@ -586,7 +592,7 @@ export function TitlesStoreView({ titles, langs }) {
                             onClick={() => { setFilterColor(c); setOpenColor(false); }}
                           >
                             <span className="inline-block w-4 h-4 rounded" style={{ backgroundColor: c }} />
-                            <span className="flex-1 truncate">{c}</span>
+                            <span className="flex-1">{c}</span>
                             <span className="">({optionCounts.Color[c] || 0})</span>
                           </button>
                         ))}
@@ -598,7 +604,7 @@ export function TitlesStoreView({ titles, langs }) {
                 <select
                   value={filterBPSeason}
                   onChange={e => handleFilterChange(setFilterBPSeason, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Battle Pass</option>
                   {optionCounts.AllBP > 0 && <option value="AllBP">All Battle Pass Items ({optionCounts.AllBP})</option>}
@@ -608,16 +614,16 @@ export function TitlesStoreView({ titles, langs }) {
                 </select>
               )}
             </div>
-            <div className="flex flex-wrap gap-4 lg:flex-row w-full items-center">
-              <label className="text-gray-900 dark:text-white flex items-center cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex items-center bg-gray-100 dark:bg-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
                 <input type="checkbox" checked={storeOnly} onChange={() => handleFilterChange(setStoreOnly, !storeOnly)} className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer" />
                 Store Titles Only ({optionCounts.StoreOnly || 0})
               </label>
-              <label className="text-gray-900 dark:text-white flex items-center cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
+              <label className="inline-flex items-center bg-gray-100 dark:bg-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
                 <input type="checkbox" checked={filterEntitlement} onChange={() => handleFilterChange(setFilterEntitlement, !filterEntitlement)} className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer" />
                 DLC Titles ({optionCounts.DLC || 0})
               </label>
-              <label className="text-gray-900 dark:text-white flex items-center cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
+              <label className="inline-flex items-center bg-gray-100 dark:bg-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
                 <input type="checkbox" checked={!!filterBundle} onChange={() => handleFilterChange(setFilterBundle, !filterBundle)} className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer" />
                 Bundles Only ({optionCounts.Bundle || 0})
               </label>
@@ -627,9 +633,9 @@ export function TitlesStoreView({ titles, langs }) {
               </button>
             </div>
           </div>
-        </div>
-        <div className="flex gap-4 flex-col mb-4">
-          <div className="lg:flex gap-4 items-center">
+          </>)}
+
+          <div className="lg:flex lg:flex-col gap-4">
             <div className="relative">
               <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
               <input
@@ -637,7 +643,7 @@ export function TitlesStoreView({ titles, langs }) {
                 value={searchQuery}
                 onChange={e => handleFilterChange(setSearchQuery, e.target.value)}
                 placeholder="Search Titles"
-                className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg pl-10 pr-4 py-1 border border-gray-300 dark:border-slate-600 w-full sm:w-64 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white text-sm font-semibold placeholder:font-semibold rounded-lg pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
               />
             </div>
             <div className="text-lg text-blue-600 dark:text-blue-400 font-bold">
@@ -647,7 +653,7 @@ export function TitlesStoreView({ titles, langs }) {
               <select
                 value={sortType}
                 onChange={e => setSortType(e.target.value)}
-                className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 w-full sm:min-w-[200px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none"
+                className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white text-sm font-semibold w-full sm:min-w-[200px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none"
               >
                 <option value="ArrayIndexDesc">Default Sorting (Desc)</option>
                 <option value="ArrayIndexAsc">Default Sorting (Asc)</option>
@@ -665,7 +671,6 @@ export function TitlesStoreView({ titles, langs }) {
           </div>
         </div>
 
-        {/* Wrapped list only. */}
         <div style={{ height: listHeight }} className="overflow-y-auto">
           <VirtuosoGrid
             data={filtered}
@@ -681,9 +686,8 @@ export function TitlesStoreView({ titles, langs }) {
         </div>
       </div>
 
-      {/* DETAIL SIDE — 35% */}
-      <div ref={detailPanelRef} className={`h-full lg:w-[35%] fixed inset-0 bg-black bg-opacity-50 z-50 lg:static lg:bg-transparent lg:border-l lg:border-gray-300 lg:dark:border-slate-600 lg:flex lg:flex-col lg:gap-4 lg:shadow-none ${selectedTitle ? 'block' : 'hidden lg:block'}`}>
-        <div className="bg-white dark:bg-slate-900 p-2 h-full overflow-y-auto relative">
+      <div ref={detailPanelRef} className={`h-full lg:w-[35%] fixed inset-0 bg-black bg-opacity-50 z-50 lg:static lg:bg-transparent lg:flex lg:flex-col lg:gap-4 lg:shadow-none ${selectedTitle ? 'block' : 'hidden lg:block'}`}>
+        <div className="bg-white dark:bg-slate-900 p-3 lg:p-4 h-full overflow-y-auto relative">
           <div className="flex items-center justify-between">
             <button className="lg:hidden text-gray-900 dark:text-white cursor-pointer" onClick={() => setSelectedTitle(null)}>
               <XMarkIcon className="w-6 h-6" />
@@ -917,6 +921,7 @@ export function TitlesStoreView({ titles, langs }) {
                   </div>
                 ))}
               </div>
+              <RawDataDetails data={selectedTitle} />
             </div>
           ) : (
             <div className="text-gray-900 dark:text-white">Select a Title</div>

@@ -7,7 +7,6 @@ import { ChevronUpIcon, ChevronDownIcon, XMarkIcon, Bars3Icon } from '@heroicons
 import { Transition } from '@headlessui/react';
 import '../../fonts/style.css';
 import { SkinStoreView } from '../components/game/database/skin';
-import { LegendStoreView } from '../components/game/database/legend';
 import { TauntStoreView } from '../components/game/database/taunt';
 import { WeaponStoreView } from '../components/game/database/weapon';
 import { SpawnBotStoreView } from '../components/game/database/spawnbot';
@@ -19,6 +18,16 @@ import { UIThemeStoreView } from '../components/game/database/ui';
 import { EmojiStoreView } from "../components/game/database/emoji";
 import { CompanionStoreView } from "../components/game/database/companion";
 import { TitlesStoreView } from "../components/game/database/moniker";
+import {
+  BattlePassStoreView,
+  BorderStoreView,
+  BundleStoreView,
+  ChestStoreView,
+  PromoStoreView,
+  PurchaseStoreView,
+  RawMetadataView,
+  SkirmishStoreView,
+} from "../components/game/database/metadata";
 const defaultAnim = 'Animation_Unarmed/a__KickAnimation/Ready';
 const fetchPostData = async (url, body, json) => {
   const res = await fetch(url, {
@@ -28,8 +37,81 @@ const fetchPostData = async (url, body, json) => {
   if (json == true) return await res.json();
   return res;
 };
-function Spinner() {
-  return <div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-500 dark:border-gray-300"></div></div>;
+const NAV_PAGES = [
+  'Skins',
+  'Weapon Skins',
+  'Colors',
+  'Avatars',
+  'Taunts',
+  'Podiums',
+  'UI Themes',
+  'Borders',
+  'Emojis',
+  'Companions',
+  'Sidekicks',
+  'KO Effects',
+  'Smoke Trails',
+  'Titles',
+  'Bundles',
+  'Entitlements/Purchases',
+  'Promo Rewards',
+  'Chests',
+  'Skirmishes',
+  'Battle Passes',
+];
+
+const STORE_DATA_SECTIONS = [
+  { key: 'legends', label: 'Legends' },
+  { key: 'skins', label: 'Skins' },
+  { key: 'weapons', label: 'Weapon Skins' },
+  { key: 'colors', label: 'Colors' },
+  { key: 'avatars', label: 'Avatars' },
+  { key: 'taunts', label: 'Taunts' },
+  { key: 'podiums', label: 'Podiums' },
+  { key: 'ui', label: 'UI Themes' },
+  { key: 'emojis', label: 'Emojis' },
+  { key: 'companions', label: 'Companions' },
+  { key: 'spawnBots', label: 'Sidekicks' },
+  { key: 'koeffects', label: 'KO Effects' },
+  { key: 'smokeTrails', label: 'Smoke Trails' },
+  { key: 'titles', label: 'Titles' },
+  { key: 'bundles', label: 'Bundles' },
+  { key: 'purchases', label: 'Entitlements/Purchases' },
+  { key: 'promos', label: 'Promo Rewards' },
+  { key: 'chests', label: 'Chests' },
+  { key: 'skirmishes', label: 'Skirmishes' },
+  { key: 'battlePasses', label: 'Battle Passes' },
+  { key: 'borders', label: 'Borders' },
+];
+
+const STORE_DATA_LABELS = Object.fromEntries(STORE_DATA_SECTIONS.map((section) => [section.key, section.label]));
+
+function Spinner({ stage, completed = [], steps = [] }) {
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-slate-900 p-4">
+      <div className="w-full max-w-2xl rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-5 shadow-sm" style={{ fontFamily: 'BHLatinBold' }}>
+        <div className="flex items-center gap-3">
+          <div className="animate-pulse rounded-full h-10 w-10 bg-slate-500/40"></div>
+          <div>
+            <div className="text-lg font-bold text-gray-900 dark:text-white">Loading Game Database</div>
+            <div className="text-sm text-blue-600 dark:text-blue-400">{stage || 'Preparing data requests...'}</div>
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[55vh] overflow-y-auto pr-1">
+          {steps.map((step) => {
+            const done = completed.includes(step);
+            const active = stage === `Loading ${step}`;
+            return (
+              <div key={step} className="flex items-center justify-between rounded-lg bg-gray-100 dark:bg-slate-900 px-3 py-2 text-sm">
+                <span className={done ? 'text-green-600 dark:text-green-400' : active ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}>{step}</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">{done ? 'Loaded' : active ? 'Loading' : 'Queued'}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 
@@ -72,23 +154,18 @@ function TitlesView() {
 }
 export default function GameDatabase() {
   const [storeData, setStoreData] = useState({});
+  const [metadataCatalog, setMetadataCatalog] = useState(null);
   const [langs, setLangs] = useState([]);
   const [selectedLang, setSelectedLang] = useState(0);
-  const [selectedCategory, setSelectedCategory] = useState("Store Data");
-  const [selectedSubcategory, setSelectedSubcategory] = useState("Legends");
+  const [selectedCategory, setSelectedCategory] = useState("Game Database");
+  const [selectedSubcategory, setSelectedSubcategory] = useState("Skins");
   const [loading, setLoading] = useState(true);
+  const [loadingStage, setLoadingStage] = useState('Preparing data requests...');
+  const [completedLoadingStages, setCompletedLoadingStages] = useState([]);
+  const [loadingSteps, setLoadingSteps] = useState(['Languages', 'Metadata catalog', ...STORE_DATA_SECTIONS.map((section) => section.label)]);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const categories = ['Store Data', 'Promo Codes', 'Titles'];
-  const subcategories = {
-    'Store Data': [
-      'Legends', 'Skins', 'Weapon Skins', 'Avatars',
-      'Taunts', 'Podiums', 'Player Themes', 'Emojis',
-      'Companions', 'Sidekicks', 'KO Effect', 'Colors',
-      'Titles','Bundles', 'Entitlements/Purchases', 'Chests', 'Skirmishes', ],
-    'Titles': null,
-    'Promo Codes': null,
-  };
+  const sidebarScrollRef = useRef(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -98,40 +175,41 @@ export default function GameDatabase() {
     const weaponId = params.get('weapon');
     const spawnbotId = params.get('spawnbot');
     const colorId = params.get('color');
-    const koEffectId = params.get('koeffect');
+    const koEffectId = params.get('koEffect') || params.get('koeffect');
+    const smokeTrailId = params.get('smoketrail') || params.get('smokeTrail');
     const avatarId = params.get('avatar');
     const podiumId = params.get('podium');
 
-    if (skinId) {
-      setSelectedCategory('Store Data');
+    if (skinId || legendId) {
+      setSelectedCategory('Game Database');
       setSelectedSubcategory('Skins');
-    } else if (legendId) {
-      setSelectedCategory('Store Data');
-      setSelectedSubcategory('Legends');
     } else if (tauntId) {
-      setSelectedCategory('Store Data');
+      setSelectedCategory('Game Database');
       setSelectedSubcategory('Taunts');
     } else if (weaponId) {
-      setSelectedCategory('Store Data');
+      setSelectedCategory('Game Database');
       setSelectedSubcategory('Weapon Skins');
     } else if (spawnbotId) {
-      setSelectedCategory('Store Data');
+      setSelectedCategory('Game Database');
       setSelectedSubcategory('Sidekicks');
     } else if (colorId) {
-      setSelectedCategory('Store Data');
+      setSelectedCategory('Game Database');
       setSelectedSubcategory('Colors');
     } else if (koEffectId) {
-      setSelectedCategory('Store Data');
-      setSelectedSubcategory('KO Effect');
+      setSelectedCategory('Game Database');
+      setSelectedSubcategory('KO Effects');
+    } else if (smokeTrailId) {
+      setSelectedCategory('Game Database');
+      setSelectedSubcategory('Smoke Trails');
     } else if (avatarId) {
-      setSelectedCategory('Store Data');
+      setSelectedCategory('Game Database');
       setSelectedSubcategory('Avatars');
     } else if (podiumId) {
-      setSelectedCategory('Store Data');
+      setSelectedCategory('Game Database');
       setSelectedSubcategory('Podiums');
     } else {
-      setSelectedCategory('Store Data');
-      setSelectedSubcategory('Legends');
+      setSelectedCategory('Game Database');
+      setSelectedSubcategory('Skins');
       const newUrl = window.location.pathname;
       window.history.pushState({}, '', newUrl);
     }
@@ -140,12 +218,51 @@ export default function GameDatabase() {
   useEffect(() => {
     async function loadAll() {
       setLoading(true);
+      setCompletedLoadingStages([]);
+      setLoadingSteps(['Languages', 'Metadata catalog', ...STORE_DATA_SECTIONS.map((section) => section.label)]);
+      const syncStoreStatus = async () => {
+        try {
+          const status = await fetch(`${host}/game/storeData/status`).then(res => res.json());
+          if (status?.stage) setLoadingStage(status.stage);
+          if (Array.isArray(status?.completedSections)) {
+            setCompletedLoadingStages((current) => {
+              const base = current.filter((step) => step === 'Languages' || step === 'Metadata catalog');
+              const completed = status.completedSections.map((key) => STORE_DATA_LABELS[key] || key);
+              return [...new Set([...base, ...completed])];
+            });
+          }
+        } catch (error) {
+          console.error(error);
+        }
+      };
+      const fetchStoreSection = async (section) => {
+        setLoadingStage(`Requesting ${section.label}`);
+        const poller = window.setInterval(syncStoreStatus, 250);
+        try {
+          const payload = await fetch(`${host}/game/storeData/${section.key}`).then(res => res.json());
+          await syncStoreStatus();
+          return payload;
+        } finally {
+          window.clearInterval(poller);
+        }
+      };
       try {
-        const storeD = await fetch(`${host}/game/storeData`).then(res => res.json());
+        setLoadingStage('Loading Languages');
         const langs = await fetch(`${host}/game/langs`).then(res => res.json());
-        setStoreData(storeD);
-        console.log(storeD)
+        setCompletedLoadingStages((current) => [...current, 'Languages']);
+        setLoadingStage('Loading Metadata catalog');
+        const catalog = await fetch(`${host}/game/metadata/catalog`).then(res => res.json());
+        setCompletedLoadingStages((current) => [...current, 'Metadata catalog']);
+        setMetadataCatalog(catalog);
         setLangs(langs);
+        const nextStoreData = {};
+        for (const section of STORE_DATA_SECTIONS) {
+          const payload = await fetchStoreSection(section);
+          nextStoreData[section.key] = payload.items || [];
+          setStoreData((current) => ({ ...current, [section.key]: payload.items || [] }));
+          setCompletedLoadingStages((current) => [...current, section.label]);
+        }
+        setStoreData(nextStoreData);
       } catch (err) {
         console.error(err);
       } finally {
@@ -155,33 +272,67 @@ export default function GameDatabase() {
     loadAll();
   }, []);
 
-  if (loading || langs.length === 0 || !storeData?.legends) {
-    return <Spinner />;
+  if (loading || langs.length === 0 || !storeData?.legends || !metadataCatalog) {
+    return <Spinner stage={loadingStage} completed={completedLoadingStages} steps={loadingSteps} />;
   }
 
-  const handleCategoryChange = (category) => {
+  const handlePageChange = (category, subcategory = null) => {
+    const scrollTop = sidebarScrollRef.current?.scrollTop ?? 0;
     setSelectedCategory(category);
-    setIsMenuOpen(false);
-    if (subcategories[category]) {
-      setSelectedSubcategory(subcategories[category][0]);
-    } else {
-      setSelectedSubcategory(null);
-    }
-    const newUrl = window.location.pathname;
-    window.history.pushState({}, '', newUrl);
-  };
-
-  const handleSubcategoryChange = (subcategory) => {
     setSelectedSubcategory(subcategory);
     setIsMenuOpen(false);
     const newUrl = window.location.pathname;
     window.history.pushState({}, '', newUrl);
+    requestAnimationFrame(() => {
+      if (sidebarScrollRef.current) sidebarScrollRef.current.scrollTop = scrollTop;
+    });
   };
+
+  const SidebarContent = () => (
+    <div className="flex h-full flex-col gap-4">
+      <div>
+        <div className="text-2xl font-bold text-gray-900 dark:text-white">Game Database</div>
+        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">Browse game data, cosmetics, store, events, and raw metadata.</div>
+      </div>
+      <select
+        value={selectedLang}
+        onChange={(e) => setSelectedLang(parseInt(e.target.value))}
+        className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white text-sm font-semibold rounded-lg px-3 py-2 border border-gray-300 dark:border-slate-600 w-full"
+      >
+        {langs.map((lang, idx) => (
+          <option key={idx} value={idx}>{lang.name}</option>
+        ))}
+      </select>
+      <div ref={sidebarScrollRef} className="flex-1 overflow-y-auto overscroll-contain pr-1 space-y-1">
+        {NAV_PAGES.map((page) => {
+          const active = selectedCategory === 'Game Database' && selectedSubcategory === page;
+          return (
+            <button
+              key={page}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => handlePageChange('Game Database', page)}
+              className={`${active ? 'bg-blue-500 text-white shadow-sm' : 'bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-slate-600'} flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-semibold transition`}
+            >
+              <span>{page}</span>
+              {active && <span className="h-2 w-2 rounded-full bg-white" />}
+            </button>
+          );
+        })}
+        <div className="h-3" />
+        <button
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => handlePageChange('Raw Metadata', null)}
+          className={`${selectedCategory === 'Raw Metadata' ? 'bg-blue-500 text-white' : 'bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-slate-600'} w-full rounded-lg px-3 py-2 text-left text-sm font-bold transition`}
+        >
+          Raw Metadata
+        </button>
+      </div>
+    </div>
+  );
+
   const renderContent = () => {
-    if (selectedCategory === 'Store Data') {
+    if (selectedCategory === 'Game Database') {
       switch (selectedSubcategory) {
-        case 'Legends':
-          return <LegendStoreView legends={storeData.legends} langs={langs[selectedLang]} />;
         case 'Skins':
           return <SkinStoreView skins={storeData.skins} legends={storeData.legends} langs={langs[selectedLang]} />;
         case 'Taunts':
@@ -192,14 +343,18 @@ export default function GameDatabase() {
           return <SpawnBotStoreView spawnbots={storeData.spawnBots} langs={langs[selectedLang]} />;
         case 'Colors':
           return <ColorSchemeStoreView colors={storeData.colors} langs={langs[selectedLang]} />;
-        case 'KO Effect':
+        case 'KO Effects':
           return <KOEffectStoreView koEffects={storeData.koeffects} langs={langs[selectedLang]} />;
+        case 'Smoke Trails':
+          return <KOEffectStoreView koEffects={storeData.smokeTrails} langs={langs[selectedLang]} title="Smoke Trails" singular="Smoke Trail" queryParam="smoketrail" animationEndpoint="animSmokeTrail" dataField="emitterTrailData" />;
         case 'Avatars':
           return <AvatarStoreView avatars={storeData.avatars} langs={langs[selectedLang]} />;
         case 'Podiums':
           return <PodiumStoreView podiums={storeData.podiums} langs={langs[selectedLang]} />;
-        case 'Player Themes':
+        case 'UI Themes':
           return <UIThemeStoreView themes={storeData.ui} langs={langs[selectedLang]} />;
+        case 'Borders':
+          return <BorderStoreView borders={storeData.borders} langs={langs[selectedLang]} />;
         case 'Emojis':
           return <EmojiStoreView emojis={storeData.emojis} langs={langs[selectedLang]} />;
         case 'Companions':
@@ -207,126 +362,70 @@ export default function GameDatabase() {
         case 'Titles':
           return <TitlesStoreView titles={storeData.titles} langs={langs[selectedLang]} />;
         case 'Bundles':
+          return <BundleStoreView bundles={storeData.bundles} langs={langs[selectedLang]} />;
         case 'Entitlements/Purchases':
+          return <PurchaseStoreView purchases={storeData.purchases} langs={langs[selectedLang]} />;
+        case 'Promo Rewards':
+          return <PromoStoreView promos={storeData.promos} langs={langs[selectedLang]} />;
         case 'Chests':
+          return <ChestStoreView chests={storeData.chests} langs={langs[selectedLang]} />;
+        case 'Skirmishes':
+          return <SkirmishStoreView skirmishes={storeData.skirmishes} langs={langs[selectedLang]} />;
+        case 'Battle Passes':
+          return <BattlePassStoreView battlePasses={storeData.battlePasses} langs={langs[selectedLang]} />;
         default:
           return <div className="text-white text-sm italic p-4 bg-slate-900">Select a subcategory to view items.</div>;
       }
     }
 
     switch (selectedCategory) {
-      case 'Promo Codes':
-        return <PromoCodesView />;
-      case 'Titles':
-        return <TitlesView />;
+      case 'Raw Metadata':
+        return <RawMetadataView catalog={metadataCatalog} />;
       default:
         return null;
     }
   };
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-slate-900">
-      <nav className="bg-white dark:bg-slate-800 shadow">
-        <div className="mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex">
-              <div className="flex-shrink-0 flex items-center">
-                <span className="text-2xl font-bold text-gray-900 dark:text-white">Game Database</span>
-              </div>
-              <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                {categories.map((category) => (
-                  <button
-                    key={category}
-                    onClick={() => handleCategoryChange(category)}
-                    className={`${selectedCategory === category
-                      ? 'border-blue-500 text-gray-900 dark:text-white'
-                      : 'border-transparent text-gray-500 dark:text-gray-300 hover:border-gray-300 hover:text-gray-700 dark:hover:text-gray-100'
-                      } inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}
-                  >
-                    {category}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="hidden sm:ml-6 sm:flex sm:items-center">
-              <select
-                value={selectedLang}
-                onChange={(e) => setSelectedLang(parseInt(e.target.value))}
-                className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded px-2 py-1 border border-gray-300 dark:border-slate-600"
-              >
-                {langs.map((lang, idx) => (
-                  <option key={idx} value={idx}>{lang.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="-mr-2 flex items-center sm:hidden">
-              <button
-                onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 dark:text-gray-300 hover:text-gray-500 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-slate-700 focus:outline-none"
-              >
-                <span className="sr-only">Open main menu</span>
-                {isMenuOpen ? (
-                  <XMarkIcon className="block h-6 w-6" aria-hidden="true" />
-                ) : (
-                  <Bars3Icon className="block h-6 w-6" aria-hidden="true" />
-                )}
-              </button>
-            </div>
-          </div>
+    <div className="min-h-screen bg-gray-100 dark:bg-slate-900 text-gray-900 dark:text-white" style={{ fontFamily: langs[selectedLang]?.font || 'BHLatinBold' }}>
+      <div className="lg:hidden sticky top-0 z-40 flex items-center justify-between bg-white/95 dark:bg-slate-800/95 px-4 py-3 shadow-sm backdrop-blur">
+        <div>
+          <div className="text-lg font-bold text-gray-900 dark:text-white">Game Database</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">{selectedCategory}{selectedSubcategory ? ` / ${selectedSubcategory}` : ''}</div>
         </div>
-        {isMenuOpen && (
-          <div className="sm:hidden">
-            <div className="pt-2 pb-3 space-y-1">
-              {categories.map((category) => (
-                <button
-                  key={category}
-                  onClick={() => handleCategoryChange(category)}
-                  className={`${selectedCategory === category
-                    ? 'bg-blue-50 dark:bg-blue-900 border-blue-500 text-blue-700 dark:text-blue-300'
-                    : 'border-transparent text-gray-500 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 hover:border-gray-300 hover:text-gray-700 dark:hover:text-gray-100'
-                    } block pl-3 pr-4 py-2 border-l-4 text-base font-medium w-full text-left`}
-                >
-                  {category}
-                </button>
-              ))}
-            </div>
-            <div className="pt-4 pb-3 border-t border-gray-200 dark:border-slate-600">
-              <div className="px-2">
-                <select
-                  value={selectedLang}
-                  onChange={(e) => setSelectedLang(parseInt(e.target.value))}
-                  className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded px-2 py-1 border border-gray-300 dark:border-slate-600 w-full"
-                >
-                  {langs.map((lang, idx) => (
-                    <option key={idx} value={idx}>{lang.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-        )}
-      </nav>
-      {selectedCategory === 'Store Data' && subcategories['Store Data'] && (
-        <div className="bg-white dark:bg-slate-800 shadow">
-          <div className="mx-auto px-4 sm:px-6 lg:px-8 py-4">
-            <div className="flex flex-wrap gap-2">
-              {subcategories['Store Data'].map((subcategory) => (
-                <button
-                  key={subcategory}
-                  onClick={() => handleSubcategoryChange(subcategory)}
-                  className={`${selectedSubcategory === subcategory
-                    ? 'bg-blue-500 dark:bg-blue-400 text-white'
-                    : 'bg-gray-200 dark:bg-slate-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-slate-600'
-                    } px-4 py-2 rounded-md text-sm font-medium`}
-                >
-                  {subcategory}
-                </button>
-              ))}
-            </div>
-          </div>
+        <button
+          onClick={() => setIsMenuOpen(true)}
+          className="inline-flex items-center justify-center rounded-lg bg-gray-100 dark:bg-slate-700 p-2 text-gray-700 dark:text-gray-200"
+        >
+          <Bars3Icon className="block h-6 w-6" aria-hidden="true" />
+        </button>
+      </div>
+
+      {isMenuOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <button className="absolute inset-0 bg-black/50" onClick={() => setIsMenuOpen(false)} aria-label="Close navigation" />
+          <aside className="relative h-full w-[85vw] max-w-sm bg-white dark:bg-slate-800 p-4 shadow-xl">
+            <button
+              className="absolute right-3 top-3 rounded-lg bg-gray-100 dark:bg-slate-700 p-2 text-gray-700 dark:text-gray-200"
+              onClick={() => setIsMenuOpen(false)}
+            >
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+            <SidebarContent />
+          </aside>
         </div>
       )}
-      <div>
-        {renderContent()}
+
+      <div className="lg:grid lg:grid-cols-[18rem_minmax(0,1fr)] bg-gray-100 dark:bg-slate-900">
+        <aside className="hidden lg:sticky lg:top-0 lg:z-20 lg:flex lg:h-screen lg:w-72 lg:shrink-0 lg:flex-col bg-white dark:bg-slate-800 p-4 shadow-sm overflow-hidden">
+          <SidebarContent />
+        </aside>
+        <main className="min-w-0 bg-gray-100 dark:bg-slate-900">
+          <div className="bg-white/80 dark:bg-slate-800/80 px-4 py-3 shadow-sm backdrop-blur">
+          <div className="text-xs font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">{selectedCategory}</div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{selectedSubcategory || selectedCategory}</h1>
+          </div>
+          {renderContent()}
+        </main>
       </div>
     </div>
   );

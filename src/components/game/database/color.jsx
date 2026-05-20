@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { XMarkIcon } from '@heroicons/react/20/solid';
 import { Virtuoso, VirtuosoGrid } from 'react-virtuoso';
 import { useMediaQuery } from 'react-responsive';
+import { ImageWithLoader, RawDataDetails } from './comp/LoadingImage';
 
 function uniq(a) { return [...new Set(a)]; }
 function uniqueValues(array, path) {
@@ -153,6 +154,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
   const [filterBPSeason, setFilterBPSeason] = useState('');
   const [filterEntitlement, setFilterEntitlement] = useState(false);
   const [viewMode, setViewMode] = useState('list');
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const filterSectionRef = useRef(null);
   const detailPanelRef = useRef(null);
@@ -360,26 +362,18 @@ export function ColorSchemeStoreView({ colors, langs }) {
     const textColor = luminance > 128 ? '#000000' : '#ffffff';
     return (
       <div
-        className={viewMode === 'grid' ? 'p-1 w-full h-[245px]' : 'p-0 px-2 h-[160px]'}
+        className={viewMode === 'grid' ? 'p-1 w-full h-[245px]' : 'p-0 px-2 min-h-[160px]'}
         onClick={() => { setSelectedColor(item); filtersChanged.current = false; }}
       >
         <div
           className={`rounded-lg cursor-pointer p-3 transition-all duration-200 ${isSelected ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} ${viewMode === 'grid' ? 'flex flex-col items-center text-center' : 'flex'}`}
           style={{ backgroundColor: bgColor, color: textColor }}
         >
-          <div className="flex rounded-lg items-center justify-center relative">
-            <img
-              src={`${host}/game/getGfx/UI_Icons/${item.colorData?.IconName}`}
-              className="h-32 w-32 object-contain"
-              onError={handleImgError}
-              alt=""
-              loading="lazy"
-            />
-          </div>
+          <ImageWithLoader src={`${host}/game/getGfx/UI_Icons/${item.colorData?.IconName}`} alt="" className="h-32 w-32 rounded-lg bg-slate-900/80" />
           <div className={`flex-1 flex flex-col ${viewMode === 'grid' ? 'items-center mt-2' : 'ml-4'}`}>
             <div className={`flex flex-col gap-1 ${viewMode === 'grid' ? 'items-center text-center' : ''}`}>
               <div className={`mt-1 flex justify-start font-bold ${viewMode === 'grid' ? 'text-base' : 'text-lg'}`}>
-                <span className={viewMode === 'grid' ? 'truncate max-w-[11rem]' : ''}>
+                <span >
                   {langs.content?.[getDisplayNameKey(item)] || item.colorData?.ColorSchemeName}
                 </span>
               </div>
@@ -454,16 +448,21 @@ export function ColorSchemeStoreView({ colors, langs }) {
     );
   };
   return (
-    <div className="flex flex-col lg:flex-row h-full" style={{ fontFamily: langs.font || 'BHLatinBold' }}>
-      <div className="flex-1 p-2 bg-gray-100 dark:bg-slate-900 lg:w-[35%] h-full lg:border-r lg:border-gray-300 lg:dark:border-slate-600">
-        <div ref={filterSectionRef} className="space-y-4 mb-4">
-          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4 items-center">
-            <div className="bg-gray-200 dark:bg-slate-800 p-2 rounded-lg flex flex-wrap gap-2 items-center">
+    <div className="flex flex-col lg:flex-row min-h-screen bg-gray-100 dark:bg-slate-900" style={{ fontFamily: langs.font || 'BHLatinBold' }}>
+      <div className="flex-1 p-3 lg:p-4 bg-gray-100 dark:bg-slate-900 lg:w-[35%] h-full">
+        <div ref={filterSectionRef} className="space-y-4 mb-4 rounded-xl bg-white/70 dark:bg-slate-800/70 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
+          <button onClick={() => setFiltersOpen((open) => !open)} className="flex w-full items-center justify-between rounded-lg bg-gray-100 dark:bg-slate-700 px-3 py-2 text-left text-sm font-bold text-gray-900 dark:text-white">
+            <span>Filters</span>
+            <span className="text-xs text-gray-500 dark:text-gray-300">{filtersOpen ? 'Hide' : 'Show'}</span>
+          </button>
+          {filtersOpen && (<>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
               {Object.values(optionCounts.Cohort).some(count => count > 0) && (
                 <select
                   value={filterCohort}
                   onChange={e => handleFilterChange(setFilterCohort, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Cohorts</option>
                   {cohorts.filter(c => optionCounts.Cohort[c] > 0).map(c => (
@@ -475,7 +474,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                 <select
                   value={filterPromo}
                   onChange={e => handleFilterChange(setFilterPromo, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Promotions</option>
                   {promotions.filter(p => optionCounts.TimedPromotion[p] > 0).map(p => (
@@ -487,7 +486,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                 <select
                   value={filterStoreLabel}
                   onChange={e => handleFilterChange(setFilterStoreLabel, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Store Label</option>
                   {storeLabels.filter(n => optionCounts.StoreLabel[n] > 0).map(n => (
@@ -499,7 +498,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                 <select
                   value={filterPromoType}
                   onChange={e => handleFilterChange(setFilterPromoType, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Promo Codes</option>
                   {promoTypes.filter(n => optionCounts.PromoType[n] > 0).map(n => (
@@ -511,7 +510,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                 <select
                   value={filterBPSeason}
                   onChange={e => handleFilterChange(setFilterBPSeason, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Battle Pass</option>
                   {optionCounts.AllBP > 0 && <option value="AllBP">All Battle Pass Colors ({optionCounts.AllBP})</option>}
@@ -521,30 +520,16 @@ export function ColorSchemeStoreView({ colors, langs }) {
                 </select>
               )}
             </div>
-            <div className="flex flex-wrap gap-4 lg:flex-row w-full items-center">
-              <label className="text-gray-900 dark:text-white flex items-center cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex items-center bg-gray-100 dark:bg-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
                 <input type="checkbox" checked={storeOnly} onChange={() => handleFilterChange(setStoreOnly, !storeOnly)} className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer" />
                 Store Colors Only ({optionCounts.StoreOnly || 0})
               </label>
-              <label className="text-gray-900 dark:text-white flex items-center cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
+              <label className="inline-flex items-center bg-gray-100 dark:bg-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
                 <input type="checkbox" checked={filterEntitlement} onChange={() => handleFilterChange(setFilterEntitlement, !filterEntitlement)} className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer" />
                 DLC Colors ({optionCounts.DLC || 0})
               </label>
               <div className="flex items-center gap-2 ml-auto">
-                <button
-                  onClick={() => setViewMode('list')}
-                  className={`cursor-pointer p-2 rounded-lg ${viewMode === 'list' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-900 dark:text-white'}`}
-                  title="List View"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-                </button>
-                <button
-                  onClick={() => setViewMode('grid')}
-                  className={`cursor-pointer p-2 rounded-lg ${viewMode === 'grid' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-900 dark:text-white'}`}
-                  title="Grid View"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 0h6v6h-6v-6z"></path></svg>
-                </button>
                 <button
                   onClick={resetFilters}
                   aria-label="Reset all filters"
@@ -556,8 +541,30 @@ export function ColorSchemeStoreView({ colors, langs }) {
               </div>
             </div>
           </div>
-          <div className="flex gap-4 flex-col mb-4">
-            <div className="lg:flex gap-4 items-center">
+          </>)}
+          <div className="flex gap-4 flex-col">
+            <div className="lg:flex lg:flex-col gap-4">
+              <div className="order-first flex justify-between items-center w-full sm:w-auto py-2 gap-4">
+                <div className="text-lg text-blue-600 dark:text-blue-400 font-bold">
+                  Showing {filtered.length} Color{filtered.length !== 1 ? 's' : ''}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={`cursor-pointer p-2 rounded-lg ${viewMode === 'list' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-900 dark:text-white'}`}
+                    title="List View"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                  </button>
+                  <button
+                    onClick={() => setViewMode('grid')}
+                    className={`cursor-pointer p-2 rounded-lg ${viewMode === 'grid' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-900 dark:text-white'}`}
+                    title="Grid View"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4h6v6H4V4zm10 0h6v6h-6V4zM4 14h6v6H4v-6zm10 0h6v6h-6v-6z"></path></svg>
+                  </button>
+                </div>
+              </div>
               <div className="relative">
                 <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M10 18a8 8 0 110-16 8 8 0 010 16z"></path></svg>
                 <input
@@ -565,14 +572,14 @@ export function ColorSchemeStoreView({ colors, langs }) {
                   value={searchQuery}
                   onChange={e => handleFilterChange(setSearchQuery, e.target.value)}
                   placeholder="Search Colors"
-                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg pl-10 pr-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[260px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white text-sm font-semibold placeholder:font-semibold rounded-lg pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 />
               </div>
               <div className="relative">
                 <select
                   value={sortType}
                   onChange={e => setSortType(e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[220px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none pr-8"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white text-sm font-semibold w-full sm:min-w-[220px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none pr-8"
                 >
                   <option value="OrderIDDesc">Order ID (Desc)</option>
                   <option value="OrderIDAsc">Order ID (Asc)</option>
@@ -580,8 +587,8 @@ export function ColorSchemeStoreView({ colors, langs }) {
                   <option value="ColorSchemeIDAsc">Color ID (Asc)</option>
                   <option value="StoreIDDesc">Store ID (Desc)</option>
                   <option value="StoreIDAsc">Store ID (Asc)</option>
-                  <option value="AlphaAsc">Alphabetical (A–Z)</option>
-                  <option value="AlphaDesc">Alphabetical (Z–A)</option>
+                  <option value="AlphaAsc">Alphabetical (A-Z)</option>
+                  <option value="AlphaDesc">Alphabetical (Z-A)</option>
                   <option value="CostAsc">Mammoth Cost (Asc)</option>
                   <option value="CostDesc">Mammoth Cost (Desc)</option>
                 </select>
@@ -601,15 +608,15 @@ export function ColorSchemeStoreView({ colors, langs }) {
             <VirtuosoGrid
               data={filtered}
               totalCount={filtered.length}
-              listClassName="grid grid-cols-2 lg:grid-cols-3"
+              listClassName="grid grid-cols-2 2xl:grid-cols-3 gap-2"
               itemContent={(index) => <Row index={index} data={filtered} />}
               useWindowScroll={false}
             />
           )}
         </div>
       </div>
-      <div ref={detailPanelRef} className={`h-full lg:w-[65%] fixed inset-0 bg-black bg-opacity-50 z-50 lg:static lg:bg-transparent lg:border-l lg:border-gray-300 lg:dark:border-slate-600 lg:flex lg:flex-col lg:gap-4 lg:shadow-none ${selectedColor ? 'block' : 'hidden lg:block'}`}>
-        <div className="bg-white dark:bg-slate-900 p-2 h-full overflow-y-auto relative">
+      <div ref={detailPanelRef} className={`h-full lg:w-[65%] fixed inset-0 bg-black bg-opacity-50 z-50 lg:static lg:bg-transparent lg:flex lg:flex-col lg:gap-4 lg:shadow-none ${selectedColor ? 'block' : 'hidden lg:block'}`}>
+        <div className="bg-white dark:bg-slate-900 p-3 lg:p-4 h-full overflow-y-auto relative">
           <div className="flex items-center justify-between">
             <button className="lg:hidden text-gray-900 dark:text-white cursor-pointer" onClick={() => setSelectedColor(null)}>
               <XMarkIcon className="w-6 h-6" />
@@ -682,8 +689,8 @@ export function ColorSchemeStoreView({ colors, langs }) {
                   )}
                 </div>
               </div>
-              <div className="flex flex-col lg:flex-row gap-2">
-                <div className="lg:w-1/2 flex flex-col gap-2">
+              <div className="flex flex-col gap-2">
+                <div className="order-2 w-full flex flex-col gap-2">
                   <div className="dark:bg-slate-800 bg-gray-100 p-2 rounded-lg">
                     <span className="text-lg text-gray-900 dark:text-white">Color Scheme Data</span>
                     <div className="grid grid-cols-2 gap-2 text-lg mt-2">
@@ -887,10 +894,10 @@ export function ColorSchemeStoreView({ colors, langs }) {
                     </div>
                   ))}
                 </div>
-                <div className="lg:w-1/2 flex flex-col gap-2">
-                  <div className="flex flex-col gap-2 bg-slate-100 dark:bg-slate-800 p-4 rounded-lg">
+                <div className="order-1 w-full flex flex-col gap-2  rounded-lg">
+                  <div className="flex flex-col gap-3 bg-slate-100 dark:bg-slate-800 p-4 rounded-lg">
                     <span className="text-2xl text-gray-900 dark:text-white">Color Details</span>
-                    <div className="flex flex-col text-sm gap-4 overflow-y-auto h-72">
+                    <div className="flex flex-col text-sm gap-4">
                       {[
                         { category: 'Hair', items: [
                           { label: 'Light', key: 'HairLt_Swap' },
@@ -935,10 +942,10 @@ export function ColorSchemeStoreView({ colors, langs }) {
                           { label: 'Accent', key: 'WeaponAcc_Swap' },
                         ]},
                       ].map(({ category, items }) => (
-                        <div key={category} className="bg-white dark:bg-slate-900 p-2 rounded-2xl">
-                          <div className="bg-gray-100 dark:bg-slate-800 p-2 rounded-2xl">
+                        <div key={category} className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3 rounded-2xl">
+                          <div className="flex flex-col gap-3">
                             <span className="text-lg text-gray-900 dark:text-white">{category}</span>
-                            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2 mt-2">
+                            <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 mt-2">
                               {items.map(({ label, key }) => {
                                 const hexColor = selectedColor.colorData?.[key];
                                 if (!hexColor || hexColor.length < 8) return null;
@@ -948,7 +955,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                                 const luminance = (0.299 * r + 0.587 * g + 0.114 * b);
                                 const tc = luminance > 128 ? '#000000' : '#ffffff';
                                 return (
-                                  <div key={key} className="flex flex-col p-2 rounded-2xl" style={{ backgroundColor: `#${hexColor.substr(2)}`, color: tc }}>
+                                  <div key={key} className="flex flex-col p-3 rounded-2xl border border-black/10 dark:border-white/10 shadow-sm" style={{ backgroundColor: `#${hexColor.substr(2)}`, color: tc }}>
                                     <span className="font-bold text-base">{category} {label}</span>
                                     <code className="font-bold break-all text-lg">{hexColor}</code>
                                   </div>
@@ -961,9 +968,9 @@ export function ColorSchemeStoreView({ colors, langs }) {
                     </div>
                   </div>
                   {selectedColor.colorData?.ExcludeOpponentTeamColor && (
-                    <div className="flex flex-col gap-2 mt-2 bg-slate-100 dark:bg-slate-800 p-4 rounded-lg">
+                    <div className="flex flex-col gap-3 mt-2 bg-slate-100 dark:bg-slate-800  p-4 rounded-lg">
                       <span className="text-2xl text-gray-900 dark:text-white">Opponent Color Exclusions</span>
-                      <div className="flex items-center text-sm text-gray-600 dark:text-gray-300">
+                      <div className="flex items-center text-sm text-gray-600 dark:text-gray-300 rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3">
                         <span>
                           If your opponent(s) are using any of these colors while you're using{' '}
                           <span className="inline-flex gap-2">
@@ -974,9 +981,9 @@ export function ColorSchemeStoreView({ colors, langs }) {
                           , they will use a fallback color scheme, to prevent some skins blending into the map, and/or to prevent confusion on who is the enemy when playing gamemodes other than 1v1.
                         </span>
                       </div>
-                      <div className="flex gap-2">
-                        <span className="text-lg text-gray-700 dark:text-gray-200">Fallback Color: </span>
-                        <div className="flex items-center gap-2">
+                      <div className="flex flex-col gap-2 rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3">
+                        <span className="text-lg text-gray-700 dark:text-gray-200">Fallback Color</span>
+                        <div className="flex items-center gap-2 rounded-lg bg-gray-100 dark:bg-slate-800 p-2">
                           <img
                             src={`${host}/game/getGfx/UI_Icons/${(colors.find(r => r.colorData.ColorSchemeName == selectedColor.colorData.FallbackOpponentTeamColor) || {}).colorData?.IconName}`}
                             className="h-7"
@@ -991,32 +998,33 @@ export function ColorSchemeStoreView({ colors, langs }) {
                           </span>
                         </div>
                       </div>
-                      <hr className="my-0.5" />
-                      <span className="text-lg text-gray-700 dark:text-gray-200">Color List</span>
-                      <div className="col-span-2 flex flex-wrap gap-2 mt-1">
-                        {selectedColor.colorData.ExcludeOpponentTeamColor.split(',').map((colorName, idx) => {
-                          const colorData = colors.find(r => r.colorData.ColorSchemeName == colorName);
-                          if (!colorData) return null;
-                          const bg = `#${colorData.colorData.IndicatorColor.slice(2)}`;
-                          const rr = parseInt(bg.substr(1, 2), 16);
-                          const gg = parseInt(bg.substr(3, 2), 16);
-                          const bb = parseInt(bg.substr(5, 2), 16);
-                          const lum = (0.299 * rr + 0.587 * gg + 0.114 * bb);
-                          const tc = lum > 128 ? '#000000' : '#ffffff';
-                          return (
-                            <div key={idx} className="flex items-center gap-2 rounded-lg p-2" style={{ backgroundColor: bg, color: tc }}>
-                              <img src={`${host}/game/getGfx/UI_Icons/${colorData.colorData.IconName}`} className="h-6" loading="lazy" />
-                              <span className="text-lg font-bold">{langs.content[getDisplayNameKey(colorData)] || colorData.colorData.ColorSchemeName}</span>
-                            </div>
-                          );
-                        })}
+                      <div className="rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3">
+                        <span className="text-lg text-gray-700 dark:text-gray-200">Color List</span>
+                        <div className="col-span-2 flex flex-wrap gap-2 mt-2">
+                          {selectedColor.colorData.ExcludeOpponentTeamColor.split(',').map((colorName, idx) => {
+                            const colorData = colors.find(r => r.colorData.ColorSchemeName == colorName);
+                            if (!colorData) return null;
+                            const bg = `#${colorData.colorData.IndicatorColor.slice(2)}`;
+                            const rr = parseInt(bg.substr(1, 2), 16);
+                            const gg = parseInt(bg.substr(3, 2), 16);
+                            const bb = parseInt(bg.substr(5, 2), 16);
+                            const lum = (0.299 * rr + 0.587 * gg + 0.114 * bb);
+                            const tc = lum > 128 ? '#000000' : '#ffffff';
+                            return (
+                              <div key={idx} className="flex items-center gap-2 rounded-lg p-2 border border-black/10 dark:border-white/10 shadow-sm" style={{ backgroundColor: bg, color: tc }}>
+                                <img src={`${host}/game/getGfx/UI_Icons/${colorData.colorData.IconName}`} className="h-6" loading="lazy" />
+                                <span className="text-lg font-bold">{langs.content[getDisplayNameKey(colorData)] || colorData.colorData.ColorSchemeName}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   )}
                   {Array.isArray(selectedColor.levelExclusion) && selectedColor.levelExclusion.length > 0 && (
-                    <div className="flex flex-col gap-2 mt-2 bg-slate-100 dark:bg-slate-800 p-4 rounded-lg">
+                    <div className="flex flex-col gap-3 mt-2 bg-slate-100 dark:bg-slate-800 p-4 rounded-lg">
                       <span className="text-2xl text-gray-900 dark:text-white">Level Exclusions</span>
-                      <div className="flex items-center text-sm text-gray-600 dark:text-gray-300 ">
+                      <div className="flex items-center text-sm text-gray-600 dark:text-gray-300 rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3">
                         <span>
                           If you are using{' '}
                           <span className="inline-flex gap-2">
@@ -1027,9 +1035,9 @@ export function ColorSchemeStoreView({ colors, langs }) {
                           {' '} on these maps, your opponent(s) will see you with the fallback color scheme.
                         </span>
                       </div>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-lg text-center items-stretch max-h-64 overflow-y-auto mt-2">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-lg text-center items-stretch mt-2">
                         {selectedColor.levelExclusion.map((exclusion, idx) => (
-                          <div key={idx} className="flex flex-col bg-gray-200 dark:bg-slate-900 p-2 rounded-2xl h-full items-center">
+                          <div key={idx} className="flex flex-col bg-gray-200 dark:bg-slate-900 border border-gray-300 dark:border-slate-700 p-2 rounded-2xl h-full items-center">
                             <span className="text-gray-900 dark:text-white flex-grow flex items-center">{exclusion.DisplayName}</span>
                             <img
                               src={`${host}/game/images/images/thumbnails/${exclusion.ThumbnailPNGFile}`}
@@ -1044,6 +1052,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                   )}
                 </div>
               </div>
+              <RawDataDetails data={selectedColor} />
             </div>
           ) : (
             <div className="text-center text-gray-600 dark:text-gray-300 italic">Select a Color Scheme to see details</div>

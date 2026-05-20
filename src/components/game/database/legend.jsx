@@ -6,6 +6,7 @@ import { ChevronUpIcon, ChevronDownIcon, XMarkIcon, Bars3Icon } from '@heroicons
 import { Transition } from '@headlessui/react';
 import { Pagination } from './comp/pagination';
 import { SvgArrayFlipbook } from './comp/svg';
+import { ImageWithLoader, RawDataDetails } from './comp/LoadingImage';
 
 const splitTags = (tags) => {
   if (!tags) return [];
@@ -24,6 +25,24 @@ const splitTags = (tags) => {
   if (buffer.length > 0) result.push(buffer.trim().replace(/^'+|'+$/g, ''));
   return result;
 };
+
+const legendName = (legend, langs) => langs.content[legend.DisplayNameKey] || legend.DisplayNameKey;
+
+const legendPortraitSources = (legend) => {
+  const file = legend.heroData?.PortraitFileName || 'UI_Icons';
+  const portrait = legend.heroData?.Portrait;
+  return [
+    `${host}/game/getGfx/${file}/${portrait}M`,
+    `${host}/game/getGfx/${file}/${portrait}`,
+  ];
+};
+
+const legendSkinAnimation = (legend, skin, index) => {
+  const skinInt = skin.SkinInt || skin.costumeData?.SkinInt || index + 1;
+  const anim = skin.animTypes?.selectedOther || skin.animTypes?.selected || `Selected${skin.CrossoverGem ? skin.CostumeName : legend.heroData.HeroName}`;
+  return `${host}/game/anim/char/${legend.heroData.HeroID}-${skinInt}/Animation_CharacterSelect/a__CharacterSelectAnimation/${anim}/loop`;
+};
+
 export function LegendStoreView({ legends, langs }) {
   const [selectedLegend, setSelectedLegend] = useState(null);
   const [currentAnimation, setCurrentAnimation] = useState('Idle');
@@ -196,33 +215,42 @@ export function LegendStoreView({ legends, langs }) {
   };
 
   return (
-    <div className="h-full w-full flex" style={{ fontFamily: langs.font || 'BHLatinBold' }}>
-      {/* Left Side: Grid */}
-      <div ref={topRef} className="flex-1 p-4 bg-gray-100 dark:bg-slate-900">
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-4 mb-4">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-            placeholder="Search Legends"
-            className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-2xl px-2 py-1 mt-2 sm:mt-0 border border-gray-300 dark:border-slate-600 w-full sm:w-auto"
-          />
-          <select
-            value={sortType}
-            onChange={(e) => { setSortType(e.target.value); setCurrentPage(1); }}
-            className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-2xl px-4 py-1 border border-gray-300 dark:border-slate-600 w-full sm:w-auto"
-          >
-            <option value="ReleaseAsc">Release Order (Asc)</option>
-            <option value="ReleaseDesc">Release Order (Desc)</option>
-            <option value="SkinsAsc">Skins (Asc)</option>
-            <option value="SkinsDesc">Skins (Desc)</option>
-            <option value="GoldAsc">Gold Cost (Asc)</option>
-            <option value="GoldDesc">Gold Cost (Desc)</option>
-            <option value="AlphaAsc">Alphabetical (A-Z)</option>
-            <option value="AlphaDesc">Alphabetical (Z-A)</option>
-          </select>
-          <div className="flex justify-center space-x-2 bg-white dark:bg-slate-900 py-2 shadow dark:shadow-none">
+    <div className="min-h-screen w-full flex bg-gray-100 dark:bg-slate-900" style={{ fontFamily: langs.font || 'BHLatinBold' }}>
+      <div ref={topRef} className="flex-1 p-3 bg-gray-100 dark:bg-slate-900">
+        <div className="mb-4 space-y-4 rounded-xl bg-white/70 dark:bg-slate-800/70 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
+          <div className="flex justify-between items-center w-full sm:w-auto py-2 gap-4">
+            <div className="text-lg text-blue-600 dark:text-blue-400 font-bold">
+              Showing {filteredLegends.length} of {legends.length}
+            </div>
+          </div>
+          <div className="relative">
+            <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+              placeholder="Search Legends"
+              className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white text-sm font-semibold placeholder:font-semibold rounded-lg pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+            />
+          </div>
+          <div className="relative">
+            <select
+              value={sortType}
+              onChange={(e) => { setSortType(e.target.value); setCurrentPage(1); }}
+              className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white text-sm font-semibold rounded-lg px-4 py-2 border border-gray-300 dark:border-slate-600 w-full sm:min-w-[220px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none cursor-pointer"
+            >
+              <option value="ReleaseAsc">Release Order (Asc)</option>
+              <option value="ReleaseDesc">Release Order (Desc)</option>
+              <option value="SkinsAsc">Skins (Asc)</option>
+              <option value="SkinsDesc">Skins (Desc)</option>
+              <option value="GoldAsc">Gold Cost (Asc)</option>
+              <option value="GoldDesc">Gold Cost (Desc)</option>
+              <option value="AlphaAsc">Alphabetical (A-Z)</option>
+              <option value="AlphaDesc">Alphabetical (Z-A)</option>
+            </select>
+            <svg className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+          </div>
+          <div className="flex justify-center flex-wrap gap-2">
             {Pagination(currentPage, totalPages).map((page, idx) => (
               <button
                 key={idx}
@@ -236,12 +264,11 @@ export function LegendStoreView({ legends, langs }) {
           </div>
         </div>
 
-        {/* Grid */}
-        <div className={`grid gap-3 grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6`}>
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {displayedLegends.map((legend) => (
             <div
               key={legend.heroData.HeroID}
-              className={`relative bg-white dark:bg-slate-800 rounded-lg text-center cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-700 hover:scale-105 transform transition-all p-2.5 shadow ${selectedLegend.heroData.HeroID === legend.heroData.HeroID ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''}`}
+              className={`relative bg-white dark:bg-slate-800 rounded-lg text-center cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-700 transition-all p-3 shadow border border-gray-200 dark:border-slate-700 ${selectedLegend.heroData.HeroID === legend.heroData.HeroID ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''}`}
               onClick={() => { setSelectedLegend(legend); setIsDetailOpen(true); }}
             >
               {legend.Label && (
@@ -249,12 +276,9 @@ export function LegendStoreView({ legends, langs }) {
                   {legend.Label}
                 </div>
               )}
-              <img
-                src={`${host}/game/getGfx/${legend.heroData.PortraitFileName}/${legend.heroData.Portrait}M`}
-                className="w-full h-32 object-contain mx-auto"
-              />
+              <ImageWithLoader src={legendPortraitSources(legend)} alt={legendName(legend, langs)} className="mx-auto h-32 w-full rounded-xl bg-slate-900/80" />
               <div className="mt-2 text-gray-900 dark:text-white font-bold text-lg">
-                {langs.content[legend.DisplayNameKey] || legend.DisplayNameKey}
+                {legendName(legend, langs)}
               </div>
               <div className="flex justify-center gap-2 text-gray-600 dark:text-gray-300 text-base">
                 <div>
@@ -268,12 +292,11 @@ export function LegendStoreView({ legends, langs }) {
           ))}
         </div>
 
-        {/* Pagination */}
-        <div className="flex justify-center mt-4 space-x-2 bg-white dark:bg-slate-900 py-2 shadow dark:shadow-none">
+        <div className="flex justify-center flex-wrap gap-2 mt-4 rounded-xl bg-white/70 dark:bg-slate-800/70 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
           {Pagination(currentPage, totalPages).map((page, idx) => (
             <button
               key={idx}
-              className={`px-3 py-1 rounded-md text-base font-bold ${currentPage === page ? 'bg-blue-500 dark:bg-blue-400 text-white' : 'bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 dark:hover:bg-slate-600 text-gray-900 dark:text-white'} ${page === '...' ? 'cursor-default' : ''}`}
+              className={`px-3 py-1 rounded-lg text-sm font-semibold ${currentPage === page ? 'bg-blue-500 dark:bg-blue-400 text-white' : 'bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 dark:hover:bg-slate-600 text-gray-900 dark:text-white'} ${page === '...' ? 'cursor-default' : 'cursor-pointer'}`}
               onClick={() => handlePageChange(page)}
               disabled={page === '...'}
             >
@@ -282,10 +305,8 @@ export function LegendStoreView({ legends, langs }) {
           ))}
         </div>
       </div>
-
-      {/* Right Side: Legend Detail (Modal on Mobile) */}
-      <div className={`fixed inset-0 bg-black bg-opacity-50 z-50 lg:static lg:bg-transparent lg:w-[40%] lg:border-l lg:border-gray-300 lg:dark:border-slate-600 lg:flex lg:flex-col lg:gap-4 lg:p-4 lg:shadow-none ${isDetailOpen ? 'block' : 'hidden lg:block'}`}>
-        <div className="bg-white dark:bg-slate-900 h-full w-full p-4 overflow-y-auto relative">
+      <div className={`fixed inset-0 bg-black bg-opacity-50 z-50 lg:static lg:bg-transparent lg:w-[40%] lg:flex lg:flex-col lg:gap-4 lg:p-3 lg:shadow-none ${isDetailOpen ? 'block' : 'hidden lg:block'}`}>
+        <div className="bg-white dark:bg-slate-900 h-full w-full p-3 overflow-y-auto relative">
           <button
             className="lg:hidden absolute top-4 right-4 text-gray-900 dark:text-white"
             onClick={() => setIsDetailOpen(false)}
@@ -295,18 +316,12 @@ export function LegendStoreView({ legends, langs }) {
           {selectedLegend && (
             <div className='w-full'>
               <div className="flex items-center gap-2">
-                <img
-                  src={`${host}/game/getGfx/${selectedLegend.heroData.PortraitFileName}/${selectedLegend.heroData.Portrait}M`}
-                  className="h-16"
-                />
+                <ImageWithLoader src={legendPortraitSources(selectedLegend)} alt={legendName(selectedLegend, langs)} className="h-16 w-16 rounded-xl bg-slate-900/80 shrink-0" small />
                 <div>
                   <span className="text-2xl font-bold text-gray-900 dark:text-white">{langs.content[selectedLegend.DisplayNameKey] || selectedLegend.DisplayNameKey}</span>
                   {langs.content[selectedLegend.heroData.BioAKAKey] && (
                     <div className='flex items-center'>
-                      <img
-                        src={`${host}/game/getGfx/${selectedLegend.costumeType.CostumeIconFileName}/${selectedLegend.costumeType.CostumeIcon}`}
-                        className="h-8 w-8 object-contain"
-                      />
+                      <ImageWithLoader src={`${host}/game/getGfx/${selectedLegend.costumeType.CostumeIconFileName}/${selectedLegend.costumeType.CostumeIcon}`} alt="" className="h-8 w-8 rounded-lg bg-slate-900/80 shrink-0" small />
                       <span className="text-gray-600 dark:text-gray-300 text-base italic">{langs.content[selectedLegend.heroData.BioAKAKey]}</span>
                     </div>
                   )}
@@ -402,10 +417,13 @@ export function LegendStoreView({ legends, langs }) {
                   {selectedLegend.skins.map((r, i) => (
                     <div className='bg-gray-100 dark:bg-slate-800 rounded-lg flex flex-col text-center justify-center'>
                       <span className="text-gray-900 dark:text-white">{langs.content[r.DisplayNameKey]}</span>
-                      <img src={`${host}/game/anim/char/${selectedLegend.heroData.HeroID}-${i + 1}/Animation_CharacterSelect/a__CharacterSelectAnimation/Selected${r.CrossoverGem ? r.CostumeName : selectedLegend.heroData.HeroName}/last`} className="h-32" />
+                      <ImageWithLoader src={legendSkinAnimation(selectedLegend, r, i)} alt={langs.content[r.DisplayNameKey] || r.CostumeName} className="mx-auto h-32 w-full rounded-lg bg-slate-900/80" />
                     </div>
                   ))}
                 </div>
+              </div>
+              <div className="mt-4">
+                <RawDataDetails data={selectedLegend} />
               </div>
             </div>
           )}

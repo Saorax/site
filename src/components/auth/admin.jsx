@@ -386,7 +386,7 @@ function AdminPanel() {
                 <div className="h-[25rem] overflow-y-auto scrollbar-thin scrollbar-track-gray-800 border border-gray-700 rounded-lg p-4 bg-gray-900">
                   {loadingTournaments ? (
                     <div className="flex justify-center">
-                      <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-gray-400"></div>
+                      <div className="animate-pulse rounded-full h-6 w-6 bg-gray-400/40"></div>
                       <p className="pl-2 text-gray-400">Loading tournaments...</p>
                     </div>
                   ) : (
@@ -416,7 +416,7 @@ function AdminPanel() {
                     <h3 className="text-center text-3xl font-bold mb-3">Events</h3>
                     {loadingEvents ? (
                       <div className="flex justify-center">
-                        <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-gray-400"></div>
+                        <div className="animate-pulse rounded-full h-6 w-6 bg-gray-400/40"></div>
                         <p className="pl-2 text-gray-400">Loading events...</p>
                       </div>
                     ) : (
@@ -438,7 +438,7 @@ function AdminPanel() {
                     <h3 className="text-3xl text-center font-bold mb-3">Phases</h3>
                     {loadingPhases ? (
                       <div className="flex justify-center">
-                        <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-gray-400"></div>
+                        <div className="animate-pulse rounded-full h-6 w-6 bg-gray-400/40"></div>
                         <p className="pl-2 text-gray-400">Loading phases...</p>
                       </div>
                     ) : (
@@ -506,21 +506,21 @@ function AdminPanel() {
                 <div className="h-[37rem] overflow-y-auto scrollbar-thin scrollbar-track-gray-800 rounded-lg p-4 bg-gray-900">
                   {loadingSeedingList ? (
                     <div className="flex justify-center items-center h-full">
-                      <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-gray-400"></div>
+                      <div className="animate-pulse rounded-full h-8 w-8 bg-gray-400/40"></div>
                       <p className="ml-4 text-gray-400">Loading seeding...</p>
                     </div>
                   ) : (<table className="table-auto text-left rounded-lg w-full">
                     <thead>
                       <tr className="bg-gray-800">
-                        <th className="px-4 py-2 border-b border-gray-600">Seed #</th>
-                        <th className="px-4 py-2 border-b border-gray-600">Entrants</th>
+                        <th className="px-4 py-2 ring-1 ring-gray-600/40">Seed #</th>
+                        <th className="px-4 py-2 ring-1 ring-gray-600/40">Entrants</th>
                       </tr>
                     </thead>
                     <tbody>
                       {seeding.map((seed) => (
                         <tr key={seed.seedId} className="hover:bg-gray-700 transition-all">
-                          <td className="px-4 py-2 border-b border-gray-600">{seed.seedNum}</td>
-                          <td className="px-4 py-2 border-b border-gray-600">
+                          <td className="px-4 py-2 ring-1 ring-gray-600/40">{seed.seedNum}</td>
+                          <td className="px-4 py-2 ring-1 ring-gray-600/40">
                             {seed.entrant.participants
                               .map((participant) => participant.player.gamerTag)
                               .join(" / ")}
@@ -544,9 +544,9 @@ function AdminPanel() {
                         >
                           <thead>
                             <tr className="bg-gray-800">
-                              <th className="px-4 py-2 border-b border-gray-600">Seed #</th>
-                              <th className="px-4 py-2 border-b border-gray-600">Name</th>
-                              <th className="px-4 py-2 border-b border-gray-600">Power Ranking</th>
+                              <th className="px-4 py-2 ring-1 ring-gray-600/40">Seed #</th>
+                              <th className="px-4 py-2 ring-1 ring-gray-600/40">Name</th>
+                              <th className="px-4 py-2 ring-1 ring-gray-600/40">Power Ranking</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -563,7 +563,7 @@ function AdminPanel() {
                                     {...provided.dragHandleProps}
                                     className="hover:bg-gray-700 transition-all"
                                   >
-                                    <td className="px-4 py-2 border-b border-gray-600">
+                                    <td className="px-4 py-2 ring-1 ring-gray-600/40">
                                       <input
                                         type="number"
                                         value={seed.seedNum}
@@ -577,10 +577,10 @@ function AdminPanel() {
                                         className="w-16 bg-transparent border border-gray-600 rounded px-2 py-1 text-center"
                                       />
                                     </td>
-                                    <td className="px-4 py-2 border-b border-gray-600">
+                                    <td className="px-4 py-2 ring-1 ring-gray-600/40">
                                       {seed.displayName}
                                     </td>
-                                    <td className="px-4 py-2 border-b border-gray-600">
+                                    <td className="px-4 py-2 ring-1 ring-gray-600/40">
                                       {seed.prData?.length > 0 ? (
                                         <div className="flex space-x-4">
                                           {seed.prData.map((participantPr, i) => (

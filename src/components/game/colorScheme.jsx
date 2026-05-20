@@ -74,7 +74,7 @@ const saveAsPng = async () => {
 function LoadingSpinner() {
   return (
     <div className="flex justify-center items-center">
-      <div className="w-16 h-16 border-t-4 border-b-4 border-cyan-500 rounded-full animate-spin"></div>
+      <div className="w-16 h-16 rounded-full bg-cyan-500/30 animate-pulse"></div>
     </div>
   );
 }

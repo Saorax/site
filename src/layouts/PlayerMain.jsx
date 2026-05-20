@@ -69,7 +69,7 @@ function BcxTabs({ data, type }) {
         ))}
       </div>
 
-      <h2 className="text-center text-2xl font-semibold text-slate-200 mb-3 border-b border-slate-700 pb-1">
+      <h2 className="text-center text-2xl font-semibold text-slate-200 mb-3 pb-1">
         {tab} World Champions
       </h2>
 

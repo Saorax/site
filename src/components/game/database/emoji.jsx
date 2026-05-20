@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { XMarkIcon } from '@heroicons/react/20/solid';
 import { Virtuoso, VirtuosoGrid } from 'react-virtuoso';
 import { useMediaQuery } from 'react-responsive';
+import { ImageWithLoader, RawDataDetails } from './comp/LoadingImage';
 
 function uniq(a) { return [...new Set(a)]; }
 function uniqueValues(array, path) {
@@ -169,6 +170,7 @@ export function EmojiStoreView({ emojis, langs }) {
   const [filterBundle, setFilterBundle] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState('');
   const [viewMode, setViewMode] = useState('list');
+  const [filtersOpen, setFiltersOpen] = useState(true);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const topRef = useRef(null);
   const filterSectionRef = useRef(null);
@@ -400,22 +402,15 @@ export function EmojiStoreView({ emojis, langs }) {
     const isSelected = selectedEmoji?.emojiData?.EmojiID === emoji.emojiData?.EmojiID;
     return (
       <div
-        className={viewMode === 'grid' ? 'p-1 w-full h-[245px]' : 'p-0 px-2 h-[160px]'}
+        className={viewMode === 'grid' ? 'p-1 w-full h-[245px]' : 'p-0 px-2 min-h-[160px]'}
         onClick={() => { setSelectedEmoji(emoji); filtersChanged.current = false; }}
       >
         <div className={`bg-white dark:bg-slate-800 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-700 p-3 transition-all duration-200 ${isSelected ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} ${viewMode === 'grid' ? 'flex flex-col items-center text-center' : 'flex'}`}>
-          <div className="flex rounded-lg items-center justify-center relative">
-            <img
-              src={`${host}/game/animEmoji/${emoji.emojiData?.EmojiID}`}
-              className="h-32 w-32 object-contain"
-              onError={handleImgError}
-              alt=""
-            />
-          </div>
+          <ImageWithLoader src={`${host}/game/animEmoji/${emoji.emojiData?.EmojiID}`} alt="" className="h-32 w-32 rounded-lg bg-slate-900/80" />
           <div className={`flex-1 flex flex-col ${viewMode === 'grid' ? 'items-center mt-2' : 'ml-4'}`}>
             <div className={`flex flex-col gap-1 ${viewMode === 'grid' ? 'items-center text-center' : ''}`}>
               <div className={`mt-1 flex justify-start text-gray-900 dark:text-white font-bold ${viewMode === 'grid' ? 'text-base' : 'text-lg'}`}>
-                <span className={viewMode === 'grid' ? 'truncate max-w-[11rem]' : ''}>{langs.content?.[getDisplayNameKey(emoji)] || emoji.emojiData?.EmojiName}</span>
+                <span >{langs.content?.[getDisplayNameKey(emoji)] || emoji.emojiData?.EmojiName}</span>
               </div>
               {viewMode !== 'grid' && (
                 <div className="flex flex-wrap gap-1">
@@ -528,9 +523,14 @@ export function EmojiStoreView({ emojis, langs }) {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-full" style={{ fontFamily: langs.font || 'BHLatinBold' }}>
-      <div ref={topRef} className="flex-1 p-2 bg-gray-100 dark:bg-slate-900 lg:w-[35%] h-full lg:border-r lg:border-gray-300 lg:dark:border-slate-600">
-        <div ref={filterSectionRef} className="space-y-4 mb-4">
+    <div className="flex flex-col lg:flex-row min-h-screen bg-gray-100 dark:bg-slate-900" style={{ fontFamily: langs.font || 'BHLatinBold' }}>
+      <div ref={topRef} className="flex-1 p-3 lg:p-4 bg-gray-100 dark:bg-slate-900 lg:w-[35%] h-full">
+        <div ref={filterSectionRef} className="space-y-4 mb-4 rounded-xl bg-white/70 dark:bg-slate-800/70 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
+          <button onClick={() => setFiltersOpen((open) => !open)} className="flex w-full items-center justify-between rounded-lg bg-gray-100 dark:bg-slate-700 px-3 py-2 text-left text-sm font-bold text-gray-900 dark:text-white">
+            <span>Filters</span>
+            <span className="text-xs text-gray-500 dark:text-gray-300">{filtersOpen ? 'Hide' : 'Show'}</span>
+          </button>
+          {filtersOpen && (<>
           <div className="flex flex-wrap gap-2 items-center overflow-x-auto pt-2">
             {categories
               .filter(cat => optionCounts.Category[cat] > 0)
@@ -551,13 +551,13 @@ export function EmojiStoreView({ emojis, langs }) {
                 );
               })}
           </div>
-          <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4 items-center">
-            <div className="bg-gray-200 dark:bg-slate-800 p-2 rounded-lg flex flex-wrap gap-2 items-center">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
               {Object.values(optionCounts.Cohort).some(count => count > 0) && (
                 <select
                   value={filterCohort}
                   onChange={e => handleFilterChange(setFilterCohort, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Cohorts</option>
                   {cohorts.filter(c => optionCounts.Cohort[c] > 0).map(c => (
@@ -569,7 +569,7 @@ export function EmojiStoreView({ emojis, langs }) {
                 <select
                   value={filterPromo}
                   onChange={e => handleFilterChange(setFilterPromo, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Promotions</option>
                   {promotions.filter(p => optionCounts.TimedPromotion[p] > 0).map(p => (
@@ -581,7 +581,7 @@ export function EmojiStoreView({ emojis, langs }) {
                 <select
                   value={filterStoreLabel}
                   onChange={e => handleFilterChange(setFilterStoreLabel, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Store Label</option>
                   {storeLabels.filter(n => optionCounts.StoreLabel[n] > 0).map(n => (
@@ -593,7 +593,7 @@ export function EmojiStoreView({ emojis, langs }) {
                 <select
                   value={filterPromoType}
                   onChange={e => handleFilterChange(setFilterPromoType, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Promo Codes</option>
                   {promoTypes.filter(n => optionCounts.PromoType[n] > 0).map(n => (
@@ -605,7 +605,7 @@ export function EmojiStoreView({ emojis, langs }) {
                 <select
                   value={filterBPSeason}
                   onChange={e => handleFilterChange(setFilterBPSeason, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Battle Pass</option>
                   {optionCounts.AllBP > 0 && <option value="AllBP">All Battle Pass Emojis ({optionCounts.AllBP})</option>}
@@ -615,16 +615,16 @@ export function EmojiStoreView({ emojis, langs }) {
                 </select>
               )}
             </div>
-            <div className="flex flex-wrap gap-4 lg:flex-row w-full items-center">
-              <label className="text-gray-900 dark:text-white flex items-center cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex items-center bg-gray-100 dark:bg-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
                 <input type="checkbox" checked={storeOnly} onChange={() => handleFilterChange(setStoreOnly, !storeOnly)} className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer" />
                 Store Emojis Only ({optionCounts.StoreOnly || 0})
               </label>
-              <label className="text-gray-900 dark:text-white flex items-center cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
+              <label className="inline-flex items-center bg-gray-100 dark:bg-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
                 <input type="checkbox" checked={filterEntitlement} onChange={() => handleFilterChange(setFilterEntitlement, !filterEntitlement)} className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer" />
                 DLC Emojis ({optionCounts.DLC || 0})
               </label>
-              <label className="text-gray-900 dark:text-white flex items-center cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
+              <label className="inline-flex items-center bg-gray-100 dark:bg-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
                 <input type="checkbox" checked={!!filterBundle} onChange={() => handleFilterChange(setFilterBundle, !filterBundle)} className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer" />
                 Bundles Only ({optionCounts.Bundle || 0})
               </label>
@@ -634,19 +634,10 @@ export function EmojiStoreView({ emojis, langs }) {
               </button>
             </div>
           </div>
-        </div>
-        <div className="flex gap-4 flex-col mb-4">
-          <div className="lg:flex gap-4 items-center">
-            <div className="relative">
-              <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => handleFilterChange(setSearchQuery, e.target.value)}
-                placeholder="Search Emojis"
-                className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg pl-10 pr-4 py-1 border border-gray-300 dark:border-slate-600 w-full sm:w-64 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
-              />
-            </div>
+          </>)}
+
+          <div className="lg:flex lg:flex-col gap-4">
+            <div className="order-first flex justify-between items-center w-full sm:w-auto py-2 gap-4">
             <div className="text-lg text-blue-600 dark:text-blue-400 font-bold">
               Showing {filtered.length} Emoji{filtered.length !== 1 ? 's' : ''}
             </div>
@@ -666,12 +657,23 @@ export function EmojiStoreView({ emojis, langs }) {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h6v6H4V6zm10 0h6v6h-6V6zm-10 10h6v6H4v-6zm10 0h6v6h-6v-6z"></path></svg>
               </button>
             </div>
+            </div>
+            <div className="relative">
+              <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => handleFilterChange(setSearchQuery, e.target.value)}
+                placeholder="Search Emojis"
+                className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white text-sm font-semibold placeholder:font-semibold rounded-lg pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+              />
+            </div>
           </div>
           <div className="relative">
             <select
               value={sortType}
               onChange={e => setSortType(e.target.value)}
-              className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-1 border border-gray-300 dark:border-slate-600 w-full sm:min-w-[200px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none"
+              className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white text-sm font-semibold w-full sm:min-w-[200px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none"
             >
               <option value="ArrayIndexDesc">Default Sorting (Desc)</option>
               <option value="ArrayIndexAsc">Default Sorting (Asc)</option>
@@ -698,15 +700,15 @@ export function EmojiStoreView({ emojis, langs }) {
             <VirtuosoGrid
               data={filtered}
               totalCount={filtered.length}
-              listClassName="grid grid-cols-2 lg:grid-cols-3"
+              listClassName="grid grid-cols-2 2xl:grid-cols-3 gap-2"
               itemContent={(index) => <Row index={index} data={filtered} />}
               useWindowScroll={false}
             />
           )}
         </div>
       </div>
-      <div ref={detailPanelRef} className={`h-full lg:w-[65%] fixed inset-0 bg-black bg-opacity-50 z-50 lg:static lg:bg-transparent lg:border-l lg:border-gray-300 lg:dark:border-slate-600 lg:flex lg:flex-col lg:gap-4 lg:shadow-none ${selectedEmoji ? 'block' : 'hidden lg:block'}`}>
-        <div className="bg-white dark:bg-slate-900 p-2 h-full overflow-y-auto relative">
+      <div ref={detailPanelRef} className={`h-full lg:w-[65%] fixed inset-0 bg-black bg-opacity-50 z-50 lg:static lg:bg-transparent lg:flex lg:flex-col lg:gap-4 lg:shadow-none ${selectedEmoji ? 'block' : 'hidden lg:block'}`}>
+        <div className="bg-white dark:bg-slate-900 p-3 lg:p-4 h-full overflow-y-auto relative">
           <div className="flex items-center justify-between">
             <button className="lg:hidden text-gray-900 dark:text-white cursor-pointer" onClick={() => setSelectedEmoji(null)}>
               <XMarkIcon className="w-6 h-6" />
@@ -771,8 +773,8 @@ export function EmojiStoreView({ emojis, langs }) {
                   ))}
                 </div>
               </div>
-              <div className="flex flex-col lg:flex-row gap-2">
-                <div className="lg:w-1/2 flex flex-col gap-2">
+              <div className="flex flex-col gap-2">
+                <div className="order-2 w-full flex flex-col gap-2">
                   <div className="dark:bg-slate-800 bg-gray-100 p-2 rounded-lg">
                     <span className="text-lg text-gray-900 dark:text-white">Emoji Data</span>
                     <div className="grid grid-cols-2 gap-2 text-lg mt-2">
@@ -1020,7 +1022,7 @@ export function EmojiStoreView({ emojis, langs }) {
                     </div>
                   )}
                 </div>
-                <div className="lg:w-1/2 flex flex-col gap-2 dark:bg-slate-800 bg-gray-100 p-2 rounded-lg">
+                <div className="order-1 w-full flex flex-col gap-2 dark:bg-slate-800 bg-gray-100 p-2 rounded-lg">
                   <span className="text-gray-900 dark:text-white text-lg">Image Data</span>
                   <div className="mt-2 flex justify-center bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
                     <img
@@ -1032,6 +1034,7 @@ export function EmojiStoreView({ emojis, langs }) {
                   </div>
                 </div>
               </div>
+              <RawDataDetails data={selectedEmoji} />
             </div>
           ) : (
             <div className="text-center text-gray-600 dark:text-gray-300 italic">Select an emoji to view details</div>

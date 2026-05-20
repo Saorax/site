@@ -317,7 +317,7 @@ export default function AnimDatabase() {
 
   return (
     <div className="min-h-screen flex bg-slate-950 text-slate-100">
-      <aside className=" w-80 border-r border-slate-800 bg-slate-900/80 flex flex-col">
+      <aside className=" w-80 ring-1 ring-slate-800 bg-slate-900/80 flex flex-col">
         <div className="max-h-96 flex flex-col">
           <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
             Animations
@@ -341,7 +341,7 @@ export default function AnimDatabase() {
             />
           </div>
         </div>
-        <div className="flex-1 border-t border-slate-800 bg-slate-950/80 overflow-y-auto px-3 py-2 text-xs space-y-3">
+        <div className="flex-1 ring-1 ring-slate-800/70 bg-slate-950/80 overflow-y-auto px-3 py-2 text-xs space-y-3">
           <div>
             <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
               Selected
@@ -385,7 +385,7 @@ export default function AnimDatabase() {
       </aside>
 
       <main className="flex-1 flex">
-        <section className="flex-1 border-r border-slate-800 bg-slate-950/80 flex items-center justify-center">
+        <section className="flex-1 ring-1 ring-slate-800 bg-slate-950/80 flex items-center justify-center">
           {!selected && (
             <div className="text-xs text-slate-500">Select an animation</div>
           )}
@@ -399,7 +399,7 @@ export default function AnimDatabase() {
           )}
         </section>
 
-        <section className="w-96 bg-slate-900/80 flex flex-col border-l border-slate-800">
+        <section className="w-96 bg-slate-900/80 flex flex-col ring-1 ring-slate-800">
           <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
             Frame Data
           </div>
