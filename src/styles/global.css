@@ -3,3 +3,39 @@
 /* ... */
 
 @plugin 'tailwind-scrollbar';
+
+@utility app-scrollbar {
+  @apply scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-400/60 hover:scrollbar-thumb-blue-500/80 dark:scrollbar-thumb-slate-600 dark:hover:scrollbar-thumb-blue-400;
+}
+
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+body * {
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  button,
+  input,
+  select,
+  textarea {
+    max-width: 100%;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  p,
+  span,
+  code,
+  pre,
+  div,
+  button {
+    overflow-wrap: anywhere;
+  }
+}

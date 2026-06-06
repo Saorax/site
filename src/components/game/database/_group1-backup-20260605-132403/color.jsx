@@ -1,9 +1,9 @@
 import { host } from '../../../stuff';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { XMarkIcon } from '@heroicons/react/20/solid';
+import { Virtuoso, VirtuosoGrid } from 'react-virtuoso';
 import { useMediaQuery } from 'react-responsive';
-import { AddedBadge, ImageWithLoader, RawDataDetails, getAddedPatch, getPatchFilterCounts, getPatchGroups, patchFilterMatches, PatchFilterSelect } from './comp/LoadingImage';
-import { VirtualCardGrid } from './comp/VirtualCardGrid';
+import { AddedBadge, ImageWithLoader, RawDataDetails, AppScroller, getAddedPatch, getPatchFilterCounts, getPatchGroups, patchFilterMatches, PatchFilterSelect } from './comp/LoadingImage';
 
 function uniq(a) { return [...new Set(a)]; }
 function uniqueValues(array, path) {
@@ -370,22 +370,22 @@ export function ColorSchemeStoreView({ colors, langs }) {
     };
     return (
       <div
-        className={viewMode === 'grid' ? 'h-full w-full p-1' : 'p-0 px-2 min-h-[160px]'}
+        className={viewMode === 'grid' ? 'p-1 w-full' : 'p-0 px-2 min-h-[160px]'}
         onClick={() => { setSelectedColor(item); filtersChanged.current = false; }}
       >
         <div
-          className={`relative h-full self-start text-left rounded-xl cursor-pointer p-3 pt-10 transition border border-gray-200 dark:border-slate-700 min-h-52 shadow-sm hover:-translate-y-0.5 hover:brightness-110 dark:hover:brightness-125 ${isSelected ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} flex flex-col`}
+          className={`relative self-start text-left rounded-xl cursor-pointer p-3 pt-10 transition border border-gray-200 dark:border-slate-700 min-h-52 shadow-sm hover:-translate-y-0.5 hover:brightness-110 dark:hover:brightness-125 ${isSelected ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} flex flex-col`}
           style={{ backgroundColor: bgColor, color: textColor }}
         >
           {viewMode === 'grid' && (
-            <div className="mb-2 flex max-w-full justify-center px-1 text-sm font-bold leading-tight sm:px-2 sm:text-base">
+            <div className="mb-2 flex max-w-full justify-center px-2 text-base font-bold">
               <span className="break-words">{langs.content?.[getDisplayNameKey(item)] || item.colorData?.ColorSchemeName}</span>
             </div>
           )}
           <ImageWithLoader
             src={`${host}/game/getGfx/UI_Icons/${item.colorData?.IconName}`}
             alt=""
-            className="h-28 w-28 self-center rounded-lg bg-slate-900/80 sm:h-40 sm:w-40"
+            className="h-40 w-40 self-center rounded-lg bg-slate-900/80"
             imgClassName="h-full w-full object-contain"
           />
           <div className="flex-1 flex w-full flex-col items-center text-center mt-2 min-w-0">
@@ -397,7 +397,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
               </div>
               <AddedBadge item={item} className="absolute left-1/2 top-2 z-10 -translate-x-1/2 pointer-events-none" style={badgeStyle} />
               {viewMode !== 'grid' && (
-                <div className="hidden max-w-full flex-wrap justify-center gap-1 pb-1 sm:flex">
+                <div className="flex max-w-full flex-nowrap justify-center gap-1 overflow-x-auto app-scrollbar pb-1 [&>*]:shrink-0">
                   {!item.store?.length && !item.bp && !item.promo && !item.entitlement && (
                     <div className="bg-gray-500/70 text-white text-xs font-bold px-2 py-0.5 rounded-lg">Not Obtainable</div>
                   )}
@@ -424,7 +424,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                 </div>
               )}
               {viewMode === 'grid' && (
-                <div className="hidden max-w-full flex-wrap justify-center gap-1 pb-1 sm:flex">
+                <div className="flex max-w-full flex-nowrap justify-center gap-1 overflow-x-auto app-scrollbar pb-1 [&>*]:shrink-0">
                   {item.bp && (
                     <div className="bg-emerald-600 text-black text-[10px] font-bold px-2 py-0.5 rounded-lg">{`Battle Pass Season ${String(item.bp.ID).replace('BP', '').replace('-', ' ')}`}</div>
                   )}
@@ -481,7 +481,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                 <select
                   value={filterCohort}
                   onChange={e => handleFilterChange(setFilterCohort, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Cohorts</option>
                   {cohorts.filter(c => optionCounts.Cohort[c] > 0).map(c => (
@@ -493,7 +493,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                 <select
                   value={filterPromo}
                   onChange={e => handleFilterChange(setFilterPromo, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Promotions</option>
                   {promotions.filter(p => optionCounts.TimedPromotion[p] > 0).map(p => (
@@ -505,7 +505,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                 <select
                   value={filterStoreLabel}
                   onChange={e => handleFilterChange(setFilterStoreLabel, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Store Label</option>
                   {storeLabels.filter(n => optionCounts.StoreLabel[n] > 0).map(n => (
@@ -517,7 +517,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                 <select
                   value={filterPromoType}
                   onChange={e => handleFilterChange(setFilterPromoType, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Promo Codes</option>
                   {promoTypes.filter(n => optionCounts.PromoType[n] > 0).map(n => (
@@ -529,7 +529,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                 <select
                   value={filterBPSeason}
                   onChange={e => handleFilterChange(setFilterBPSeason, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
                 >
                   <option value="">Battle Pass</option>
                   {optionCounts.AllBP > 0 && <option value="AllBP">All Battle Pass Colors ({optionCounts.AllBP})</option>}
@@ -572,7 +572,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
           <div className="flex gap-4 flex-col">
             <div className="lg:flex lg:flex-col gap-4">
               <div className="order-first flex justify-between items-center w-full sm:w-auto py-2 gap-4">
-              <div className="text-sm font-bold text-blue-600 dark:text-blue-400 sm:text-lg">
+                <div className="text-lg text-blue-600 dark:text-blue-400 font-bold">
                   Showing {filtered.length} Color{filtered.length !== 1 ? 's' : ''}
                 </div>
               </div>
@@ -608,14 +608,16 @@ export function ColorSchemeStoreView({ colors, langs }) {
             </div>
           </div>
         </div>
-        <VirtualCardGrid
-          items={filtered}
-          rowHeight={315}
-          rowHeightMobile={270}
-          className="h-[calc(100dvh-9rem)] min-h-[22rem] app-scrollbar"
-          getKey={(item, index) => item?.colorData?.ColorSchemeID || index}
-          renderItem={(item, index) => <Row key={item?.colorData?.ColorSchemeID || index} index={index} data={filtered} />}
-        />
+        <div className="h-[calc(100dvh-9rem)] min-h-[22rem] overflow-y-auto app-scrollbar">
+          <VirtuosoGrid
+              data={filtered}
+              totalCount={filtered.length}
+              listClassName="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2"
+              itemContent={(index) => <Row index={index} data={filtered} />}
+              components={{ Scroller: AppScroller }}
+              useWindowScroll={false}
+            />
+        </div>
       </div>
       <div ref={detailPanelRef} className={`fixed inset-0 bg-black/70 z-50 ${selectedColor ? 'flex items-stretch justify-center p-0 sm:items-center sm:p-4' : 'hidden'}`} onClick={() => setSelectedColor(null)}> 
         <div className="relative flex h-dvh max-h-dvh w-full max-w-[min(96vw,100rem)] flex-col gap-3 overflow-y-auto app-scrollbar rounded-none border border-gray-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:h-auto sm:max-h-[92vh] sm:rounded-xl sm:p-3 lg:gap-4 lg:p-4" onClick={(event) => event.stopPropagation()}>
@@ -653,7 +655,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                     alt=""
                     loading="lazy"
                   />
-                  <span className="text-xl font-bold sm:text-2xl">
+                  <span className="text-2xl font-bold">
                     {langs.content?.[getDisplayNameKey(selectedColor)] || selectedColor.colorData?.ColorSchemeName}
                   </span>
                 </div>
@@ -662,7 +664,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                     <div>{langs.content[getDescriptionKey(selectedColor)]}</div>
                   )}
                 </div>
-                <div className="flex max-w-full flex-wrap gap-2 pb-1">
+                <div className="flex max-w-full flex-nowrap gap-2 overflow-x-auto app-scrollbar pb-1 [&>*]:shrink-0">
                   {selectedColor.promo && (
                     <span className="text-sm px-3 py-1 rounded-lg bg-purple-500/80">Promo Type: {selectedColor.promo.Type}</span>
                   )}
@@ -695,7 +697,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                 <div className="xl:col-start-2 xl:row-start-2 w-full flex flex-col gap-2">
                   {selectedColor.colorData?.ExcludeOpponentTeamColor && (
                     <div className="flex flex-col gap-3 rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
-                      <span className="text-lg text-gray-900 dark:text-white sm:text-2xl">Opponent Color Exclusions</span>
+                      <span className="text-2xl text-gray-900 dark:text-white">Opponent Color Exclusions</span>
                       <div className="flex items-center text-sm text-gray-600 dark:text-gray-300 rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3">
                         <span>
                           If your opponent(s) are using any of these colors while you're using{' '}
@@ -708,14 +710,14 @@ export function ColorSchemeStoreView({ colors, langs }) {
                         </span>
                       </div>
                       <div className="flex flex-col gap-2 rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3">
-                        <span className="text-base text-gray-700 dark:text-gray-200 sm:text-lg">Fallback Color</span>
+                        <span className="text-lg text-gray-700 dark:text-gray-200">Fallback Color</span>
                         <div className="flex items-center gap-2 rounded-lg bg-gray-100 dark:bg-slate-800 p-2">
                           <img
                             src={`${host}/game/getGfx/UI_Icons/${(colors.find(r => r.colorData.ColorSchemeName == selectedColor.colorData.FallbackOpponentTeamColor) || {}).colorData?.IconName}`}
                             className="h-7"
                             loading="lazy"
                           />
-                          <span className="text-base font-bold text-gray-900 dark:text-white sm:text-lg">
+                          <span className="text-lg font-bold text-gray-900 dark:text-white">
                             {(() => {
                               const cd = colors.find(r => r.colorData.ColorSchemeName == selectedColor.colorData.FallbackOpponentTeamColor);
                               if (!cd) return selectedColor.colorData.FallbackOpponentTeamColor;
@@ -725,7 +727,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                         </div>
                       </div>
                       <div className="rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3">
-                        <span className="text-base text-gray-700 dark:text-gray-200 sm:text-lg">Color List</span>
+                        <span className="text-lg text-gray-700 dark:text-gray-200">Color List</span>
                         <div className="col-span-2 flex flex-wrap gap-2 mt-2">
                           {selectedColor.colorData.ExcludeOpponentTeamColor.split(',').map((colorName, idx) => {
                             const colorData = colors.find(r => r.colorData.ColorSchemeName == colorName);
@@ -739,7 +741,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                             return (
                               <div key={idx} className="flex items-center gap-2 rounded-lg p-2 border border-black/10 dark:border-white/10 shadow-sm" style={{ backgroundColor: bg, color: tc }}>
                                 <img src={`${host}/game/getGfx/UI_Icons/${colorData.colorData.IconName}`} className="h-6" loading="lazy" />
-                                <span className="text-base font-bold sm:text-lg">{langs.content[getDisplayNameKey(colorData)] || colorData.colorData.ColorSchemeName}</span>
+                                <span className="text-lg font-bold">{langs.content[getDisplayNameKey(colorData)] || colorData.colorData.ColorSchemeName}</span>
                               </div>
                             );
                           })}
@@ -952,7 +954,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                 </div>
                 <div className="order-[-1] xl:order-none xl:col-start-1 xl:row-start-2 w-full flex flex-col gap-2  rounded-lg">
                   <div className="flex flex-col gap-3 rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
-                    <span className="text-lg text-gray-900 dark:text-white sm:text-2xl">Color Details</span>
+                    <span className="text-2xl text-gray-900 dark:text-white">Color Details</span>
                     <div className="flex flex-col text-sm gap-4">
                       {[
                         { category: 'Hair', items: [
@@ -1012,8 +1014,8 @@ export function ColorSchemeStoreView({ colors, langs }) {
                                 const tc = luminance > 128 ? '#000000' : '#ffffff';
                                 return (
                                   <div key={key} className="flex flex-col p-3 rounded-2xl border border-black/10 dark:border-white/10 shadow-sm" style={{ backgroundColor: `#${hexColor.substr(2)}`, color: tc }}>
-                                    <span className="text-sm font-bold sm:text-base">{category} {label}</span>
-                                    <code className="break-all text-sm font-bold sm:text-lg">{hexColor}</code>
+                                    <span className="font-bold text-base">{category} {label}</span>
+                                    <code className="font-bold break-all text-lg">{hexColor}</code>
                                   </div>
                                 );
                               })}
@@ -1025,7 +1027,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                   </div>
                   {Array.isArray(selectedColor.levelExclusion) && selectedColor.levelExclusion.length > 0 && (
                     <div className="flex flex-col gap-3 mt-2 rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
-                      <span className="text-lg text-gray-900 dark:text-white sm:text-2xl">Level Exclusions</span>
+                      <span className="text-2xl text-gray-900 dark:text-white">Level Exclusions</span>
                       <div className="flex items-center text-sm text-gray-600 dark:text-gray-300 rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3">
                         <span>
                           If you are using{' '}
@@ -1037,7 +1039,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                           {' '} on these maps, your opponent(s) will see you with the fallback color scheme.
                         </span>
                       </div>
-                      <div className="mt-2 grid grid-cols-2 items-stretch gap-2 text-center text-sm sm:text-lg md:grid-cols-3">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-lg text-center items-stretch mt-2">
                         {selectedColor.levelExclusion.map((exclusion, idx) => (
                           <div key={idx} className="flex flex-col bg-gray-200 dark:bg-slate-900 border border-gray-300 dark:border-slate-700 p-2 rounded-2xl h-full items-center">
                             <span className="text-gray-900 dark:text-white flex-grow flex items-center">{exclusion.DisplayName}</span>

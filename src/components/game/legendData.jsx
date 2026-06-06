@@ -5,6 +5,12 @@ import moment from 'moment';
 import { useNavigate } from 'react-router-dom';
 
 const normalizeString = (str) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const apiAsset = (src) => typeof src === 'string' && src.startsWith('/game/') ? `${host}${src}` : src;
+const releaseDate = (value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric <= 0) return 'Unknown';
+    return new Date(numeric < 100000000000 ? numeric * 1000 : numeric).toLocaleDateString();
+};
 
 function PatchList({ data }) {
     const handleClick = () => {
@@ -14,17 +20,17 @@ function PatchList({ data }) {
     return (
         <div className="relative flex flex-col md:flex-row items-center p-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg cursor-pointer" onClick={handleClick}>
             <div className="flex flex-shrink-0">
-                <div className="flex flex-col justify-center md:justify-start">
-                    <img src={data.weapons.main.image} className="h-8 w-8 md:h-12 md:w-12" alt={`${data.weapons.main.name}`} />
-                    <img src={data.weapons.secondary.image} className="h-8 w-8 md:h-12 md:w-12" alt={`${data.weapons.secondary.name}`} />
+                <div className="flex flex-col justify-center md:justify-start gap-2 mr-2">
+                    <img src={apiAsset(data.weapons.main.image)} className="h-8 w-8 md:h-12 md:w-12" alt={`${data.weapons.main.name}`} />
+                    <img src={apiAsset(data.weapons.secondary.image)} className="h-8 w-8 md:h-12 md:w-12" alt={`${data.weapons.secondary.name}`} />
                 </div>
-                <img src={data.image} className="rounded-lg h-16 w-16 md:h-24 md:w-24" alt={`${data.bio.name.normal} icon`} />
+                <img src={apiAsset(data.image)} className="rounded-lg h-16 w-16 md:h-24 md:w-24" alt={`${data.bio.name.normal} icon`} />
             </div>
             <div className="flex flex-col justify-center text-center md:text-left ml-1 md:mt-0">
                 
                 <span className="text-xl md:text-2xl font-bold">{data.bio.name.normal}</span>
                 <span className="text-sm text-gray-500">Code Name: {data.codeName}</span>
-                <span className="text-sm text-gray-500">Release: {new Date(data.release).toLocaleDateString()}</span>
+                <span className="text-sm text-gray-500">Release: {releaseDate(data.release)}</span>
             </div>
         </div>
     );
@@ -36,6 +42,7 @@ function Cist() {
         "Bow", "Fists", "Scythe", "Cannon", "Orb", "Greatsword", "Boots",
         "Blasters", "Rocket Lance", "Katars", "Gauntlets", "Battle Boots"
     ];
+    const weaponIcon = (weapon) => `${host}/game/getGfx/UI_Icons/a_WeaponIcon_${weapon}`;
 
     const [historyItems, setHistoryItems] = useState([]);
     const [searchTerm, setSearchTerm] = useState("");
@@ -108,7 +115,7 @@ function Cist() {
                 {weaponList.slice(0, -5).map((item) => (
                     <img
                         key={item}
-                        src={`https://saorax.github.io/images/weapons/${item.toLowerCase()}.png`}
+                        src={weaponIcon(item)}
                         alt={item}
                         className={`h-8 w-8 md:h-12 md:w-12 cursor-pointer ${selectedWeapon === item ? 'border-2 rounded-lg border-slate-500' : ''}`}
                         onClick={() => setSelectedWeapon(selectedWeapon === item ? null : item)}

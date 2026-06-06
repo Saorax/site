@@ -7,26 +7,27 @@ import { ChevronUpIcon, ChevronDownIcon, XMarkIcon, Bars3Icon } from '@heroicons
 import { Transition } from '@headlessui/react';
 import '../../fonts/style.css';
 import { SkinStoreView } from '../components/game/database/skin';
-import { TauntStoreView } from '../components/game/database/taunt';
 import { WeaponStoreView } from '../components/game/database/weapon';
-import { SpawnBotStoreView } from '../components/game/database/spawnbot';
 import { ColorSchemeStoreView } from '../components/game/database/color';
-import { KOEffectStoreView } from '../components/game/database/koeffect';
-import { AvatarStoreView } from '../components/game/database/avatar';
-import { PodiumStoreView } from '../components/game/database/podium';
-import { UIThemeStoreView } from '../components/game/database/ui';
 import { EmojiStoreView } from "../components/game/database/emoji";
-import { CompanionStoreView } from "../components/game/database/companion";
-import { TitlesStoreView } from "../components/game/database/moniker";
 import {
+  AvatarMetadataStoreView,
   BattlePassStoreView,
   BorderStoreView,
   BundleStoreView,
   ChestStoreView,
+  CompanionMetadataStoreView,
+  KOEffectMetadataStoreView,
   PromoStoreView,
   PurchaseStoreView,
   RawMetadataView,
+  PodiumMetadataStoreView,
   SkirmishStoreView,
+  SmokeTrailMetadataStoreView,
+  SpawnBotMetadataStoreView,
+  TauntMetadataStoreView,
+  TitlesMetadataStoreView,
+  UIThemeMetadataStoreView,
 } from "../components/game/database/metadata";
 const defaultAnim = 'Animation_Unarmed/a__KickAnimation/Ready';
 const fetchPostData = async (url, body, json) => {
@@ -97,7 +98,7 @@ function Spinner({ stage, completed = [], steps = [] }) {
             <div className="text-sm text-blue-600 dark:text-blue-400">{stage || 'Preparing data requests...'}</div>
           </div>
         </div>
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[55vh] overflow-y-auto pr-1">
+      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[55dvh] overflow-y-auto app-scrollbar pr-1">
           {steps.map((step) => {
             const done = completed.includes(step);
             const active = stage === `Loading ${step}`;
@@ -216,14 +217,29 @@ export default function GameDatabase() {
   }, []);
 
   useEffect(() => {
+    let alive = true;
+    let polling = true;
+    let statusTimer = null;
+
     async function loadAll() {
       setLoading(true);
       setCompletedLoadingStages([]);
       setLoadingSteps(['Languages', 'Metadata catalog', ...STORE_DATA_SECTIONS.map((section) => section.label)]);
       const syncStoreStatus = async () => {
+        if (!alive) return;
         try {
           const status = await fetch(`${host}/game/storeData/status`).then(res => res.json());
-          if (status?.stage) setLoadingStage(status.stage);
+          if (!alive) return;
+          const releaseIndex = status?.releaseIndex;
+          if (releaseIndex?.state && !['idle', 'ready'].includes(releaseIndex.state)) {
+            const total = Number(releaseIndex.total || 0);
+            const current = Number(releaseIndex.current || 0);
+            const progress = total > 0 ? ` (${current}/${total})` : '';
+            const patch = releaseIndex.currentPatch ? ` · ${releaseIndex.currentPatch}` : '';
+            setLoadingStage(`${releaseIndex.stage || 'Indexing item release patches'}${progress}${patch}`);
+          } else if (status?.stage) {
+            setLoadingStage(status.stage);
+          }
           if (Array.isArray(status?.completedSections)) {
             setCompletedLoadingStages((current) => {
               const base = current.filter((step) => step === 'Languages' || step === 'Metadata catalog');
@@ -235,41 +251,54 @@ export default function GameDatabase() {
           console.error(error);
         }
       };
+      const scheduleStatusPoll = () => {
+        if (!polling || !alive) return;
+        statusTimer = window.setTimeout(async () => {
+          await syncStoreStatus();
+          scheduleStatusPoll();
+        }, 1000);
+      };
       const fetchStoreSection = async (section) => {
         setLoadingStage(`Requesting ${section.label}`);
-        const poller = window.setInterval(syncStoreStatus, 250);
-        try {
-          const payload = await fetch(`${host}/game/storeData/${section.key}`).then(res => res.json());
-          await syncStoreStatus();
-          return payload;
-        } finally {
-          window.clearInterval(poller);
-        }
+        const payload = await fetch(`${host}/game/storeData/${section.key}`).then(res => res.json());
+        await syncStoreStatus();
+        return payload;
       };
       try {
+        scheduleStatusPoll();
         setLoadingStage('Loading Languages');
         const langs = await fetch(`${host}/game/langs`).then(res => res.json());
+        if (!alive) return;
         setCompletedLoadingStages((current) => [...current, 'Languages']);
         setLoadingStage('Loading Metadata catalog');
         const catalog = await fetch(`${host}/game/metadata/catalog`).then(res => res.json());
+        if (!alive) return;
         setCompletedLoadingStages((current) => [...current, 'Metadata catalog']);
         setMetadataCatalog(catalog);
         setLangs(langs);
         const nextStoreData = {};
         for (const section of STORE_DATA_SECTIONS) {
           const payload = await fetchStoreSection(section);
+          if (!alive) return;
           nextStoreData[section.key] = payload.items || [];
           setStoreData((current) => ({ ...current, [section.key]: payload.items || [] }));
-          setCompletedLoadingStages((current) => [...current, section.label]);
+          setCompletedLoadingStages((current) => [...new Set([...current, section.label])]);
         }
         setStoreData(nextStoreData);
       } catch (err) {
         console.error(err);
       } finally {
-        setLoading(false);
+        polling = false;
+        if (statusTimer) window.clearTimeout(statusTimer);
+        if (alive) setLoading(false);
       }
     }
     loadAll();
+    return () => {
+      alive = false;
+      polling = false;
+      if (statusTimer) window.clearTimeout(statusTimer);
+    };
   }, []);
 
   if (loading || langs.length === 0 || !storeData?.legends || !metadataCatalog) {
@@ -292,7 +321,6 @@ export default function GameDatabase() {
     <div className="flex h-full flex-col gap-4">
       <div>
         <div className="text-2xl font-bold text-gray-900 dark:text-white">Game Database</div>
-        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">Browse game data, cosmetics, store, events, and raw metadata.</div>
       </div>
       <select
         value={selectedLang}
@@ -303,7 +331,7 @@ export default function GameDatabase() {
           <option key={idx} value={idx}>{lang.name}</option>
         ))}
       </select>
-      <div ref={sidebarScrollRef} className="flex-1 overflow-y-auto overscroll-contain pr-1 space-y-1">
+      <div ref={sidebarScrollRef} className="flex-1 overflow-y-auto app-scrollbar overscroll-contain pr-1 space-y-1">
         {NAV_PAGES.map((page) => {
           const active = selectedCategory === 'Game Database' && selectedSubcategory === page;
           return (
@@ -318,7 +346,7 @@ export default function GameDatabase() {
             </button>
           );
         })}
-        <div className="h-3" />
+        <div className="h-1" />
         <button
           onMouseDown={(event) => event.preventDefault()}
           onClick={() => handlePageChange('Raw Metadata', null)}
@@ -336,31 +364,31 @@ export default function GameDatabase() {
         case 'Skins':
           return <SkinStoreView skins={storeData.skins} legends={storeData.legends} langs={langs[selectedLang]} />;
         case 'Taunts':
-          return <TauntStoreView taunts={storeData.taunts} langs={langs[selectedLang]} />;
+          return <TauntMetadataStoreView taunts={storeData.taunts} langs={langs[selectedLang]} />;
         case 'Weapon Skins':
           return <WeaponStoreView weapons={storeData.weapons} legends={storeData.legends} langs={langs[selectedLang]} />;
         case 'Sidekicks':
-          return <SpawnBotStoreView spawnbots={storeData.spawnBots} langs={langs[selectedLang]} />;
+          return <SpawnBotMetadataStoreView spawnbots={storeData.spawnBots} langs={langs[selectedLang]} />;
         case 'Colors':
           return <ColorSchemeStoreView colors={storeData.colors} langs={langs[selectedLang]} />;
         case 'KO Effects':
-          return <KOEffectStoreView koEffects={storeData.koeffects} langs={langs[selectedLang]} />;
+          return <KOEffectMetadataStoreView koEffects={storeData.koeffects} langs={langs[selectedLang]} />;
         case 'Smoke Trails':
-          return <KOEffectStoreView koEffects={storeData.smokeTrails} langs={langs[selectedLang]} title="Smoke Trails" singular="Smoke Trail" queryParam="smoketrail" animationEndpoint="animSmokeTrail" dataField="emitterTrailData" />;
+          return <SmokeTrailMetadataStoreView smokeTrails={storeData.smokeTrails} langs={langs[selectedLang]} />;
         case 'Avatars':
-          return <AvatarStoreView avatars={storeData.avatars} langs={langs[selectedLang]} />;
+          return <AvatarMetadataStoreView avatars={storeData.avatars} langs={langs[selectedLang]} />;
         case 'Podiums':
-          return <PodiumStoreView podiums={storeData.podiums} langs={langs[selectedLang]} />;
+          return <PodiumMetadataStoreView podiums={storeData.podiums} langs={langs[selectedLang]} />;
         case 'UI Themes':
-          return <UIThemeStoreView themes={storeData.ui} langs={langs[selectedLang]} />;
+          return <UIThemeMetadataStoreView themes={storeData.ui} langs={langs[selectedLang]} />;
         case 'Borders':
           return <BorderStoreView borders={storeData.borders} langs={langs[selectedLang]} />;
         case 'Emojis':
           return <EmojiStoreView emojis={storeData.emojis} langs={langs[selectedLang]} />;
         case 'Companions':
-          return <CompanionStoreView companions={storeData.companions} langs={langs[selectedLang]} />;
+          return <CompanionMetadataStoreView companions={storeData.companions} langs={langs[selectedLang]} />;
         case 'Titles':
-          return <TitlesStoreView titles={storeData.titles} langs={langs[selectedLang]} />;
+          return <TitlesMetadataStoreView titles={storeData.titles} langs={langs[selectedLang]} />;
         case 'Bundles':
           return <BundleStoreView bundles={storeData.bundles} langs={langs[selectedLang]} />;
         case 'Entitlements/Purchases':
@@ -403,7 +431,7 @@ export default function GameDatabase() {
       {isMenuOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <button className="absolute inset-0 bg-black/50" onClick={() => setIsMenuOpen(false)} aria-label="Close navigation" />
-          <aside className="relative h-full w-[85vw] max-w-sm bg-white dark:bg-slate-800 p-4 shadow-xl">
+          <aside className="relative h-full w-[min(92vw,24rem)] max-w-sm overflow-y-auto app-scrollbar bg-white dark:bg-slate-800 p-3 sm:p-4 shadow-xl">
             <button
               className="absolute right-3 top-3 rounded-lg bg-gray-100 dark:bg-slate-700 p-2 text-gray-700 dark:text-gray-200"
               onClick={() => setIsMenuOpen(false)}
@@ -416,12 +444,12 @@ export default function GameDatabase() {
       )}
 
       <div className="lg:grid lg:grid-cols-[18rem_minmax(0,1fr)] bg-gray-100 dark:bg-slate-900">
-        <aside className="hidden lg:sticky lg:top-0 lg:z-20 lg:flex lg:h-screen lg:w-72 lg:shrink-0 lg:flex-col bg-white dark:bg-slate-800 p-4 shadow-sm overflow-hidden">
+        <aside className="hidden lg:sticky lg:top-0 lg:z-20 lg:flex lg:h-dvh lg:w-72 lg:shrink-0 lg:flex-col bg-white dark:bg-slate-800 p-4 shadow-sm overflow-hidden">
           <SidebarContent />
         </aside>
         <main className="min-w-0 bg-gray-100 dark:bg-slate-900">
-          <div className="bg-white/80 dark:bg-slate-800/80 px-4 py-3 shadow-sm backdrop-blur">
-          <div className="text-xs font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">{selectedCategory}</div>
+          <div className="hidden bg-white/80 dark:bg-slate-800/80 px-4 py-3 shadow-sm backdrop-blur lg:block">
+            <div className="text-xs font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">{selectedCategory}</div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{selectedSubcategory || selectedCategory}</h1>
           </div>
           {renderContent()}

@@ -1,9 +1,9 @@
 import { host } from '../../../stuff';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { XMarkIcon } from '@heroicons/react/20/solid';
+import { Virtuoso, VirtuosoGrid } from 'react-virtuoso';
 import { useMediaQuery } from 'react-responsive';
-import { AddedBadge, ImageWithLoader, RawDataDetails, getAddedPatch, getPatchFilterCounts, getPatchGroups, patchFilterMatches, PatchFilterSelect } from './comp/LoadingImage';
-import { VirtualCardGrid } from './comp/VirtualCardGrid';
+import { AddedBadge, ImageWithLoader, RawDataDetails, AppScroller, getAddedPatch, getPatchFilterCounts, getPatchGroups, patchFilterMatches, PatchFilterSelect } from './comp/LoadingImage';
 
 function uniqueValues(array, path) {
   if (typeof path === 'string') {
@@ -552,49 +552,38 @@ export function SkinStoreView({ skins, legends, langs }) {
     const skin = data[index];
     const heroData = legends.find(r => r.heroData.HeroID == skin.HeroID);
     return (
-      <div className={viewMode === 'grid' ? 'h-full w-full' : 'p-0 px-2 min-h-[215px]'} >
+      <div className={viewMode === 'grid' ? 'p-1 w-full' : 'p-0 px-2 min-h-[215px]'} >
         <div
-          className={`relative h-full self-start text-left bg-white dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-xl cursor-pointer p-3 pt-10 sm:pt-3 transition border border-gray-200 dark:border-slate-700 min-h-52 shadow-sm hover:-translate-y-0.5 ${selectedSkin?.costumeData?.CostumeID === skin.costumeData?.CostumeID ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} flex flex-col`}
+          className={`relative self-start text-left bg-white dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-xl cursor-pointer p-3 pt-10 transition border border-gray-200 dark:border-slate-700 min-h-52 shadow-sm hover:-translate-y-0.5 ${selectedSkin?.costumeData?.CostumeID === skin.costumeData?.CostumeID ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} flex flex-col`}
           onClick={() => {
             setSelectedSkin(skin);
             setCurrentAnimation({ anim: skin.animTypes?.idleOther || skin.animTypes?.idle || '', urlType: 'all' });
             filtersChanged.current = false;
           }}
         >
-          <div className="mb-2 hidden min-h-8 items-start justify-between gap-2 sm:flex">
-            {heroData && (
-              <div className="flex min-w-0 items-center gap-1.5 rounded-lg bg-gray-100/90 px-2 py-1 text-left text-xs font-bold text-gray-800 shadow-sm dark:bg-slate-900/90 dark:text-gray-100">
-                <img src={`${host}/game/getGfx/${heroData?.costumeType?.CostumeIconFileName}/${heroData?.costumeType?.CostumeIcon}`} className="h-6 w-6 shrink-0 object-contain" onError={handleImgError} />
-                <span className="hidden min-w-0 whitespace-normal sm:inline">{langs.content[heroData?.DisplayNameKey] || heroData?.DisplayNameKey} Skin</span>
-              </div>
-            )}
-            <AddedBadge item={skin} className="hidden shrink-0 sm:inline-flex" />
-          </div>
-          <div className="absolute right-2 top-2 z-10 sm:hidden">
-            <AddedBadge item={skin} showDate={false} showPatchLabel={false} className="pointer-events-none" />
-          </div>
           {heroData && (
-            <div className="absolute left-2 top-2 z-10 flex items-center justify-center rounded-lg bg-gray-100/90 p-1 text-left text-xs font-bold text-gray-800 shadow-sm dark:bg-slate-900/90 dark:text-gray-100 sm:hidden">
+            <div className="absolute left-2 top-2 z-10 flex max-w-[58%] items-center gap-1.5 rounded-lg bg-gray-100/90 px-2 py-1 text-left text-xs font-bold text-gray-800 shadow-sm dark:bg-slate-900/90 dark:text-gray-100">
               <img src={`${host}/game/getGfx/${heroData?.costumeType?.CostumeIconFileName}/${heroData?.costumeType?.CostumeIcon}`} className="h-6 w-6 shrink-0 object-contain" onError={handleImgError} />
+              <span className="min-w-0 whitespace-nowrap">{langs.content[heroData?.DisplayNameKey] || heroData?.DisplayNameKey} Skin</span>
             </div>
           )}
           {viewMode === 'grid' && (
-            <div className="mb-2 flex max-w-full flex-row items-center justify-center gap-1.5 px-1 text-sm font-bold leading-tight text-gray-900 dark:text-white sm:gap-2 sm:px-2 sm:text-base">
-              <img src={`${host}/game/getGfx/${skin.costumeData?.CostumeIconFileName}/${skin.costumeData?.CostumeIcon}`} className="inline h-5 shrink-0 sm:h-7" onError={handleImgError} />
+            <div className="mb-2 flex max-w-full flex-row items-center justify-center gap-2 px-2 text-base font-bold text-gray-900 dark:text-white">
+              <img src={`${host}/game/getGfx/${skin.costumeData?.CostumeIconFileName}/${skin.costumeData?.CostumeIcon}`} className="inline h-7 shrink-0" onError={handleImgError} />
               <span className="break-words">{langs.content[getDisplayNameKey(skin)] || skin.costumeData?.CostumeName}</span>
             </div>
           )}
-          <div className="flex w-full flex-row items-center justify-center gap-2 max-sm:flex-col">
+          <div className="flex w-full items-center justify-center gap-2">
             <div className={`flex p-2 rounded-lg items-center justify-center ${getRarityStyles(Array.isArray(skin.store) && skin.store[0]?.Rarity).className}`} style={getRarityStyles(Array.isArray(skin.store) && skin.store[0]?.Rarity).style}>
-              <ImageWithLoader src={`${host}/game/anim/char/${skin.HeroID}-${skin.SkinInt}/Animation_CharacterSelect/a__CharacterSelectAnimation/${skin.animTypes.selectedOther || skin.animTypes.selected}/loop`} alt="" className="h-28 w-28 rounded-lg bg-slate-900/80 sm:h-36 sm:w-36" />
+              <ImageWithLoader src={`${host}/game/anim/char/${skin.HeroID}-${skin.SkinInt}/Animation_CharacterSelect/a__CharacterSelectAnimation/${skin.animTypes.selectedOther || skin.animTypes.selected}/loop`} alt="" className="h-36 w-36 rounded-lg bg-slate-900/80" />
             </div>
             {skin.weapons.length > 0 && (
-              <div className="flex flex-col gap-2 max-sm:flex-row">
+              <div className="flex flex-col gap-2">
                 {skin.weapons.slice(0, 2).map((weapon) => (
                   <div key={weapon.WeaponSkinID} className="bg-gray-100 p-1 dark:bg-slate-900 flex rounded-lg">
                     <img
                       src={`${host}/game/anim/weapon/${weapon.WeaponSkinID}/UI_TooltipAnimations/a__TooltipAnimation/${weapon.BaseWeapon}Pose/all`}
-                      className="h-12 w-12 object-contain sm:h-16 sm:w-16"
+                      className="h-16 w-16 object-contain"
                       onError={handleImgError}
                     />
                   </div>
@@ -605,7 +594,7 @@ export function SkinStoreView({ skins, legends, langs }) {
           <div className="flex-1 flex w-full flex-col items-center text-center mt-2 min-w-0">
             <div className="flex flex-col gap-1">
               {viewMode != 'grid' && (
-                <div className="hidden max-w-full flex-wrap justify-center gap-1 pb-1 sm:flex">
+                <div className="flex max-w-full flex-nowrap justify-center gap-1 overflow-x-auto app-scrollbar pb-1 [&>*]:shrink-0">
                   {(!Array.isArray(skin.store) || skin.store.length === 0) && !skin.bp && !skin.promo && !skin.entitlement && (
                     <div className={`${skin.costumeData.CostumeName === "Collectors" ? "bg-red-700 dark:bg-red-800" : "bg-gray-500 dark:bg-gray-600"} text-white text-xs font-bold px-2 py-0.5 rounded-lg`}>
                       {skin.costumeData.CostumeName === "Collectors" ? "Collectors Pack Exclusive" : "Not Obtainable"}
@@ -653,7 +642,9 @@ export function SkinStoreView({ skins, legends, langs }) {
                 <img src={`${host}/game/getGfx/${skin.costumeData?.CostumeIconFileName}/${skin.costumeData?.CostumeIcon}`} className="inline h-7" onError={handleImgError} />
                 <span >{langs.content[getDisplayNameKey(skin)] || skin.costumeData?.CostumeName}</span>
               </div>
-              {viewMode == 'grid' && <div className="hidden w-full max-w-full flex-wrap justify-center gap-1 pb-1 sm:flex">
+              <AddedBadge item={skin} className="absolute right-2 top-2 z-10 pointer-events-none" />
+
+              {viewMode == 'grid' && <div className="flex w-full max-w-full flex-nowrap justify-center gap-1 overflow-x-auto app-scrollbar pb-1 [&>*]:shrink-0">
                 {(!Array.isArray(skin.store) || skin.store.length === 0) && !skin.bp && !skin.promo && !skin.entitlement && (
                   <div className={`${skin.costumeData.CostumeName === "Collectors" ? "bg-red-700 dark:bg-red-800" : "bg-gray-500 dark:bg-gray-600"} text-white text-xs font-bold px-2 py-0.5 rounded-lg`}>
                     {skin.costumeData.CostumeName === "Collectors" ? "Collectors Pack Exclusive" : "Not Obtainable"}
@@ -929,24 +920,17 @@ export function SkinStoreView({ skins, legends, langs }) {
                 const icon = heroData?.costumeType?.CostumeIcon;
                 const iconFile = heroData?.costumeType?.CostumeIconFileName;
                 if (!icon || !iconFile) return null;
-                const selected = filterHeroIDs.includes(id);
                 return (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => handleFilterChange(setFilterHeroIDs, selected ? filterHeroIDs.filter(hid => hid !== id) : [...filterHeroIDs, id])}
-                    title={`${langs.content[heroData.DisplayNameKey]} (ID ${id})`}
-                    className={`relative flex h-12 w-12 items-center justify-center rounded-xl border bg-gray-100 p-1 transition dark:bg-slate-700 ${selected ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-300 opacity-55 hover:opacity-100 dark:border-slate-600'}`}
-                  >
-                    <ImageWithLoader
+                  <div key={id} className="relative">
+                    <img
                       src={`${host}/game/getGfx/${iconFile}/${icon}`}
-                      className="h-full w-full bg-transparent"
-                      imgClassName="max-h-full max-w-full object-contain"
-                      small
+                      className={`h-8 w-8 object-contain rounded-lg cursor-pointer ${filterHeroIDs.includes(id) ? '' : 'opacity-40'}`}
+                      onClick={() => handleFilterChange(setFilterHeroIDs, filterHeroIDs.includes(id) ? filterHeroIDs.filter(hid => hid !== id) : [...filterHeroIDs, id])}
+                      title={`${langs.content[heroData.DisplayNameKey]} (ID ${id})`}
                       onError={handleImgError}
                     />
-                    <span className="absolute -right-1 -top-1 rounded-full bg-blue-500 px-1 text-[10px] font-bold leading-4 text-white">{optionCounts.HeroID[id]}</span>
-                  </button>
+                    <span className="absolute top-0.5 -right-2 bg-blue-500 text-white text-xs rounded-full px-1">{optionCounts.HeroID[id]}</span>
+                  </div>
                 );
               })}
           </div>
@@ -956,7 +940,7 @@ export function SkinStoreView({ skins, legends, langs }) {
                 <select
                   value={filterCohort}
                   onChange={e => handleFilterChange(setFilterCohort, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Cohorts</option>
                   {cohorts.filter(c => optionCounts.Cohort[c] > 0).map(c => (
@@ -968,7 +952,7 @@ export function SkinStoreView({ skins, legends, langs }) {
                 <select
                   value={filterPromo}
                   onChange={e => handleFilterChange(setFilterPromo, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Promotions</option>
                   {promotions.filter(p => optionCounts.TimedPromotion[p] > 0).map(p => (
@@ -980,7 +964,7 @@ export function SkinStoreView({ skins, legends, langs }) {
                 <select
                   value={filterRarity}
                   onChange={e => handleFilterChange(setFilterRarity, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">All Rarities</option>
                   {rarities.filter(r => optionCounts.Rarity[r] > 0).map(r => (
@@ -993,7 +977,7 @@ export function SkinStoreView({ skins, legends, langs }) {
                 <select
                   value={filterStoreLabel}
                   onChange={e => handleFilterChange(setFilterStoreLabel, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Store Label</option>
                   {storeLabels.filter(n => optionCounts.StoreLabel[n] > 0).map(n => (
@@ -1005,7 +989,7 @@ export function SkinStoreView({ skins, legends, langs }) {
                 <select
                   value={filterPromoType}
                   onChange={e => handleFilterChange(setFilterPromoType, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Promo Codes</option>
                   {promoTypes.filter(n => optionCounts.PromoType[n] > 0).map(n => (
@@ -1017,7 +1001,7 @@ export function SkinStoreView({ skins, legends, langs }) {
                 <select
                   value={filterCostumeIndex}
                   onChange={e => handleFilterChange(setFilterCostumeIndex, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Costume Index</option>
                   {costumeIndexes.filter(n => optionCounts.CostumeIndex[n] > 0).map(n => (
@@ -1029,7 +1013,7 @@ export function SkinStoreView({ skins, legends, langs }) {
                 <select
                   value={filterChestName}
                   onChange={e => handleFilterChange(setFilterChestName, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Chests</option>
                   {optionCounts.AllChests > 0 && <option value="AllChests">All Chest Skins ({optionCounts.AllChests})</option>}
@@ -1045,7 +1029,7 @@ export function SkinStoreView({ skins, legends, langs }) {
                 <select
                   value={filterBPSeason}
                   onChange={e => handleFilterChange(setFilterBPSeason, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Battle Pass</option>
                   {optionCounts.AllBP > 0 && <option value="AllBP">All Battle Pass Skins ({optionCounts.AllBP})</option>}
@@ -1124,14 +1108,17 @@ export function SkinStoreView({ skins, legends, langs }) {
             <svg className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
           </div>
         </div>
-        <VirtualCardGrid
-          items={filteredSkins}
-          rowHeight={400}
-          rowHeightMobile={350}
-          className="h-[calc(100dvh-9rem)] min-h-[22rem] app-scrollbar"
-          getKey={(skin, index) => skin?.costumeData?.CostumeID || index}
-          renderItem={(skin, index) => <Row key={skin?.costumeData?.CostumeID || index} index={index} data={filteredSkins} />}
-        />
+        <div className='h-[calc(100dvh-9rem)] min-h-[22rem]'>
+          <VirtuosoGrid
+              data={filteredSkins}
+              totalCount={filteredSkins.length}
+              listClassName="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2"
+              itemClassName="skin-grid-item"
+              itemContent={(index, skin) => <Row index={index} data={filteredSkins} />}
+              components={{ Scroller: AppScroller }}
+              useWindowScroll={false}
+            />
+        </div>
       </div>
       <div ref={detailPanelRef} className={`fixed inset-0 bg-black/70 z-50 ${selectedSkin ? 'flex items-stretch justify-center p-0 sm:items-center sm:p-4' : 'hidden'}`} onClick={() => setSelectedSkin(null)}> 
         <div className="relative flex h-dvh max-h-dvh w-full max-w-[min(96vw,100rem)] flex-col gap-3 overflow-y-auto app-scrollbar rounded-none border border-gray-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:h-auto sm:max-h-[92vh] sm:rounded-xl sm:p-3 lg:gap-4 lg:p-4" onClick={(event) => event.stopPropagation()}>
@@ -1191,7 +1178,7 @@ export function SkinStoreView({ skins, legends, langs }) {
                 {Array.isArray(selectedSkin.store) && selectedSkin.store.flatMap(sd => splitTags(sd.SearchTags)).filter(Boolean).length > 0 && (
                   <div>
                     <span className="text-gray-900 dark:text-white">Store Search Tags</span>
-                    <div className="mt-1 flex max-w-full flex-wrap gap-2 pb-1">
+                    <div className="mt-1 flex max-w-full flex-nowrap gap-2 overflow-x-auto app-scrollbar pb-1 [&>*]:shrink-0">
                       {[
                         ...new Set(
                           selectedSkin.store
@@ -1205,7 +1192,7 @@ export function SkinStoreView({ skins, legends, langs }) {
                   </div>
                 )}
                 <div className="flex flex-col gap-4">
-                  <div className="flex max-w-full flex-wrap gap-2 pb-1">
+                  <div className="flex max-w-full flex-nowrap gap-2 overflow-x-auto app-scrollbar pb-1 [&>*]:shrink-0">
                     {selectedSkin.promo && (
                       <span className="text-sm px-3 py-1 rounded-lg bg-purple-500 dark:bg-purple-700 text-gray-900 dark:text-white">
                         Promo Type: {selectedSkin.promo.Type}
@@ -1389,7 +1376,7 @@ export function SkinStoreView({ skins, legends, langs }) {
                 <div className="order-[-1] xl:order-none xl:col-start-1 xl:row-start-2 w-full flex flex-col gap-2 relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
                   <span className='text-gray-900 dark:text-white text-lg'>Animation/Image Data</span>
                   {getAnimButtonRows(selectedSkin.animTypes || {}, selectedSkin.animTypes.overAnim).map((row, i) => (
-                    <div key={i} className="flex max-w-full flex-wrap gap-2 pb-1">
+                    <div key={i} className="flex max-w-full flex-nowrap gap-2 overflow-x-auto app-scrollbar pb-1 [&>*]:shrink-0">
                       {row.map(btn => (
                         <button
                           key={btn.key}

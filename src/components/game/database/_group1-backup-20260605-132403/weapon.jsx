@@ -1,9 +1,9 @@
 import { host } from '../../../stuff';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { XMarkIcon } from '@heroicons/react/20/solid';
+import { Virtuoso, VirtuosoGrid } from 'react-virtuoso';
 import { useMediaQuery } from 'react-responsive';
-import { AddedBadge, ImageWithLoader, RawDataDetails, getAddedPatch, getPatchFilterCounts, getPatchGroups, patchFilterMatches, PatchFilterSelect } from './comp/LoadingImage';
-import { VirtualCardGrid } from './comp/VirtualCardGrid';
+import { AddedBadge, ImageWithLoader, RawDataDetails, AppScroller, getAddedPatch, getPatchFilterCounts, getPatchGroups, patchFilterMatches, PatchFilterSelect } from './comp/LoadingImage';
 
 function uniqueValues(array, path) {
   if (typeof path === 'string') {
@@ -624,9 +624,9 @@ export function WeaponStoreView({ weapons, langs, legends }) {
     }
 
     return (
-      <div className={viewMode === 'grid' ? 'h-full w-full' : 'p-0 px-2 min-h-[185px]'}>
+      <div className={viewMode === 'grid' ? 'p-1 w-full' : 'p-0 px-2 min-h-[185px]'}>
         <div
-          className={`relative h-full self-start text-left bg-white dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-xl cursor-pointer p-3 pt-10 transition border border-gray-200 dark:border-slate-700 min-h-52 shadow-sm hover:-translate-y-0.5 ${selectedWeapon?.weaponData?.WeaponSkinID === weapon.weaponData?.WeaponSkinID ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} flex flex-col`}
+          className={`relative self-start text-left bg-white dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-xl cursor-pointer p-3 pt-10 transition border border-gray-200 dark:border-slate-700 min-h-52 shadow-sm hover:-translate-y-0.5 ${selectedWeapon?.weaponData?.WeaponSkinID === weapon.weaponData?.WeaponSkinID ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} flex flex-col`}
           onClick={() => {
             setSelectedWeapon(weapon);
             setCurrentAnimation({ anim: '', urlType: 'all' });
@@ -634,25 +634,25 @@ export function WeaponStoreView({ weapons, langs, legends }) {
           }}
         >
           {viewMode === 'grid' && (
-            <div className="mb-2 flex max-w-full flex-col items-center gap-1 px-1 text-center sm:px-2">
-              <div className="flex flex-row items-center justify-center gap-1.5 text-sm font-bold leading-tight text-gray-900 dark:text-white sm:gap-2 sm:text-base">
-                <img src={`${host}/game/getGfx/UI_Icons/a_WeaponIcon_${weapon.weaponData.BaseWeapon}/1`} className="inline h-5 shrink-0 sm:h-7" onError={handleImgError} />
+            <div className="mb-2 flex max-w-full flex-col items-center gap-1 px-2 text-center">
+              <div className="flex flex-row items-center justify-center gap-2 text-base font-bold text-gray-900 dark:text-white">
+                <img src={`${host}/game/getGfx/UI_Icons/a_WeaponIcon_${weapon.weaponData.BaseWeapon}/1`} className="inline h-7 shrink-0" onError={handleImgError} />
                 <span className="break-words">{langs.content[weapon.weaponData.DisplayNameKey] || weapon.weaponData.WeaponSkinName}</span>
               </div>
               {weapon.skin && (
-                <div className="flex flex-row items-center justify-center gap-1.5 text-xs font-bold leading-tight text-gray-700 dark:text-gray-300 sm:gap-2 sm:text-sm">
-                  <img src={`${host}/game/getGfx/${weapon.skin.CostumeIconFileName}/${weapon.skin.CostumeIcon}`} className="inline h-5 shrink-0 sm:h-6" onError={handleImgError} />
+                <div className="flex flex-row items-center justify-center gap-2 text-sm font-bold text-gray-700 dark:text-gray-300">
+                  <img src={`${host}/game/getGfx/${weapon.skin.CostumeIconFileName}/${weapon.skin.CostumeIcon}`} className="inline h-6 shrink-0" onError={handleImgError} />
                   <span className="break-words">{langs.content[weapon.skin.DisplayNameKey]}</span>
                 </div>
               )}
             </div>
           )}
           <div className={`flex p-2 rounded-lg items-center justify-center ${getRarityStyles(weapon.weaponData?.Rarity).className}`} style={getRarityStyles(weapon.weaponData?.Rarity).style}>
-            <ImageWithLoader src={`${host}/game/anim/weapon/${weapon.weaponData.WeaponSkinID}/UI_TooltipAnimations/a__TooltipAnimation/${weapon.weaponData.BaseWeapon}Pose/all`} alt="" className="h-24 w-24 rounded-lg bg-slate-900/80 sm:h-32 sm:w-32" />
+            <ImageWithLoader src={`${host}/game/anim/weapon/${weapon.weaponData.WeaponSkinID}/UI_TooltipAnimations/a__TooltipAnimation/${weapon.weaponData.BaseWeapon}Pose/all`} alt="" className="h-32 w-32 rounded-lg bg-slate-900/80" />
           </div>
           <div className="flex-1 flex w-full flex-col items-center text-center mt-2 min-w-0">
             {viewMode === 'list' && (
-              <div className="hidden w-full max-w-full flex-wrap justify-center gap-1 pb-1 sm:flex">
+              <div className="flex w-full max-w-full flex-nowrap justify-center gap-1 overflow-x-auto app-scrollbar pb-1 [&>*]:shrink-0">
                 {(weapon.bp || weapon.skin?.bp) && (
                   <div className="bg-emerald-600 dark:bg-emerald-700 text-black dark:text-white text-xs font-bold px-2 py-0.5 rounded-lg">
                     {`Battle Pass Season ${(weapon.bp || weapon.skin?.bp).ID.replace('BP', '').replace('-', ' ')}`}
@@ -760,7 +760,7 @@ export function WeaponStoreView({ weapons, langs, legends }) {
               }
             </div>
             {viewMode === 'grid' && (
-              <div className="order-first my-1 hidden w-full max-w-full flex-wrap justify-center gap-1 pb-1 sm:flex">
+              <div className="order-first my-1 flex w-full max-w-full flex-nowrap justify-center gap-1 overflow-x-auto app-scrollbar pb-1 [&>*]:shrink-0">
                 {(weapon.bp || weapon.skin?.bp) && (
                   <div className="bg-emerald-600 dark:bg-emerald-700 text-black dark:text-white text-xs font-bold px-2 py-0.5 rounded-lg">
                     {`Battle Pass Season ${(weapon.bp || weapon.skin?.bp).ID.replace('BP', '').replace('-', ' ')}`}
@@ -813,27 +813,18 @@ export function WeaponStoreView({ weapons, langs, legends }) {
               <div className="flex flex-wrap gap-2 items-center overflow-x-auto app-scrollbar pt-2">
                 {baseWeapons
                   .filter(id => optionCounts.BaseWeapon[id] > 0)
-                  .map((id) => {
-                    const selected = filterBaseWeapons.includes(id);
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => handleFilterChange(setFilterBaseWeapons, selected ? filterBaseWeapons.filter(hid => hid !== id) : [...filterBaseWeapons, id])}
+                  .map((id) => (
+                    <div key={id} className="relative">
+                      <img
+                        src={`${host}/game/getGfx/UI_Icons/a_WeaponIcon_${id}/1`}
+                        className={`h-8 w-8 object-contain rounded-lg cursor-pointer ${filterBaseWeapons.includes(id) ? '' : 'opacity-40'}`}
+                        onClick={() => handleFilterChange(setFilterBaseWeapons, filterBaseWeapons.includes(id) ? filterBaseWeapons.filter(hid => hid !== id) : [...filterBaseWeapons, id])}
                         title={formatLabel(id)}
-                        className={`relative flex h-12 w-12 items-center justify-center rounded-xl border bg-gray-100 p-1 transition dark:bg-slate-700 ${selected ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-300 opacity-55 hover:opacity-100 dark:border-slate-600'}`}
-                      >
-                        <ImageWithLoader
-                          src={`${host}/game/getGfx/UI_Icons/a_WeaponIcon_${id}/1`}
-                          className="h-full w-full bg-transparent"
-                          imgClassName="max-h-full max-w-full object-contain"
-                          small
-                          onError={handleImgError}
-                        />
-                        <span className="absolute -right-1 -top-1 rounded-full bg-blue-500 px-1 text-[10px] font-bold leading-4 text-white">{optionCounts.BaseWeapon[id]}</span>
-                      </button>
-                    );
-                  })}
+                        onError={handleImgError}
+                      />
+                      <span className="absolute top-0.5 -right-2 bg-blue-500 text-white text-xs rounded-full px-1">{optionCounts.BaseWeapon[id]}</span>
+                    </div>
+                  ))}
               </div>
             )}
 
@@ -845,24 +836,17 @@ export function WeaponStoreView({ weapons, langs, legends }) {
                   const legend = legends.find(l => l.heroData?.HeroName === hero);
                   const icon = legend?.costumeType?.CostumeIcon;
                   const iconFile = legend?.costumeType?.CostumeIconFileName;
-                  const selected = filterOwnerHeroes.includes(hero);
                   return (
-                    <button
-                      key={hero}
-                      type="button"
-                      onClick={() => handleFilterChange(setFilterOwnerHeroes, selected ? filterOwnerHeroes.filter(hid => hid !== hero) : [...filterOwnerHeroes, hero])}
-                      title={legend ? langs.content[legend.DisplayNameKey] : hero}
-                      className={`relative flex h-12 w-12 items-center justify-center rounded-xl border bg-gray-100 p-1 transition dark:bg-slate-700 ${selected ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-300 opacity-55 hover:opacity-100 dark:border-slate-600'}`}
-                    >
-                      <ImageWithLoader
+                    <div key={hero} className="relative">
+                      <img
                         src={icon && iconFile ? `${host}/game/getGfx/${iconFile}/${icon}` : ''}
-                        className="h-full w-full bg-transparent"
-                        imgClassName="max-h-full max-w-full object-contain"
-                        small
+                        className={`h-8 w-8 object-contain rounded-lg cursor-pointer ${filterOwnerHeroes.includes(hero) ? '' : 'opacity-40'}`}
+                        onClick={() => handleFilterChange(setFilterOwnerHeroes, filterOwnerHeroes.includes(hero) ? filterOwnerHeroes.filter(hid => hid !== hero) : [...filterOwnerHeroes, hero])}
+                        title={legend ? langs.content[legend.DisplayNameKey] : hero}
                         onError={handleImgError}
                       />
-                      <span className="absolute -right-1 -top-1 rounded-full bg-blue-500 px-1 text-[10px] font-bold leading-4 text-white">{optionCounts.OwnerHero[hero]}</span>
-                    </button>
+                      <span className="absolute top-0.5 -right-2 bg-blue-500 text-white text-xs rounded-full px-1">{optionCounts.OwnerHero[hero]}</span>
+                    </div>
                   );
                 })}
             </div>
@@ -874,7 +858,7 @@ export function WeaponStoreView({ weapons, langs, legends }) {
                 <select
                   value={filterCohort}
                   onChange={e => handleFilterChange(setFilterCohort, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Cohorts</option>
                   {cohorts.filter(c => optionCounts.Cohort[c] > 0).map(c => (
@@ -886,7 +870,7 @@ export function WeaponStoreView({ weapons, langs, legends }) {
                 <select
                   value={filterRarity}
                   onChange={e => handleFilterChange(setFilterRarity, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">All Rarities</option>
                   {rarities.filter(r => optionCounts.Rarity[r] > 0).map(r => (
@@ -899,7 +883,7 @@ export function WeaponStoreView({ weapons, langs, legends }) {
                 <select
                   value={filterStoreLabel}
                   onChange={e => handleFilterChange(setFilterStoreLabel, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Store Label</option>
                   {storeLabels.map(n => (
@@ -913,7 +897,7 @@ export function WeaponStoreView({ weapons, langs, legends }) {
                 <select
                   value={filterPromoType}
                   onChange={e => handleFilterChange(setFilterPromoType, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Promo Codes</option>
                   {promoTypes.filter(n => optionCounts.PromoType[n] > 0).map(n => (
@@ -925,7 +909,7 @@ export function WeaponStoreView({ weapons, langs, legends }) {
                 <select
                   value={filterChestName}
                   onChange={e => handleFilterChange(setFilterChestName, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Chests</option>
                   {optionCounts.AllChests > 0 && <option value="AllChests">All Chest Skins ({optionCounts.AllChests})</option>}
@@ -941,7 +925,7 @@ export function WeaponStoreView({ weapons, langs, legends }) {
                 <select
                   value={filterBPSeason}
                   onChange={e => handleFilterChange(setFilterBPSeason, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 cursor-pointer"
                 >
                   <option value="">Battle Pass</option>
                   {optionCounts.AllBP > 0 && <option value="AllBP">All Battle Pass Weapons ({optionCounts.AllBP})</option>}
@@ -1020,14 +1004,17 @@ export function WeaponStoreView({ weapons, langs, legends }) {
             <svg className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
           </div>
         </div>
-        <VirtualCardGrid
-          items={filteredWeapons}
-          rowHeight={380}
-          rowHeightMobile={320}
-          className="h-[calc(100dvh-9rem)] min-h-[22rem] app-scrollbar"
-          getKey={(weapon, index) => weapon?.weaponData?.WeaponSkinID || index}
-          renderItem={(weapon, index) => <Row key={weapon?.weaponData?.WeaponSkinID || index} index={index} data={filteredWeapons} />}
-        />
+        <div className='h-[calc(100dvh-9rem)] min-h-[22rem]'>
+          <VirtuosoGrid
+              data={filteredWeapons}
+              totalCount={filteredWeapons.length}
+              listClassName="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2"
+              itemClassName="weapon-grid-item"
+              itemContent={(index, weapon) => <Row index={index} data={filteredWeapons} />}
+              components={{ Scroller: AppScroller }}
+              useWindowScroll={false}
+            />
+        </div>
       </div>
       <div ref={detailPanelRef} className={`fixed inset-0 bg-black/70 z-50 ${selectedWeapon ? 'flex items-stretch justify-center p-0 sm:items-center sm:p-4' : 'hidden'}`} onClick={() => setSelectedWeapon(null)}> 
         <div className="relative flex h-dvh max-h-dvh w-full max-w-[min(96vw,100rem)] flex-col gap-3 overflow-y-auto app-scrollbar rounded-none border border-gray-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:h-auto sm:max-h-[92vh] sm:rounded-xl sm:p-3 lg:gap-4 lg:p-4" onClick={(event) => event.stopPropagation()}>
@@ -1083,7 +1070,7 @@ export function WeaponStoreView({ weapons, langs, legends }) {
                   .filter(Boolean).length > 0 && (
                     <div className="flex flex-col">
                       <span className="text-gray-900 dark:text-white">Store Search Tags</span>
-                      <div className="mt-1 flex max-w-full flex-wrap gap-2 pb-1">
+                      <div className="mt-1 flex max-w-full flex-nowrap gap-2 overflow-x-auto app-scrollbar pb-1 [&>*]:shrink-0">
                         {[...new Set(
                           [...(Array.isArray(selectedWeapon.store) ? selectedWeapon.store : []), ...(Array.isArray(selectedWeapon.skin?.store) ? selectedWeapon.skin.store : [])]
                             .flatMap(sd => splitTags(sd.SearchTags))
@@ -1095,7 +1082,7 @@ export function WeaponStoreView({ weapons, langs, legends }) {
                     </div>
                   )}
                 <div className="flex flex-col gap-4">
-                  <div className="flex max-w-full flex-wrap gap-2 pb-1">
+                  <div className="flex max-w-full flex-nowrap gap-2 overflow-x-auto app-scrollbar pb-1 [&>*]:shrink-0">
                     {selectedWeapon.promo && (
                       <span className="text-sm px-3 py-1 rounded-lg bg-purple-500 dark:bg-purple-700 text-gray-900 dark:text-white">
                         Promo Type: {selectedWeapon.promo.Type}

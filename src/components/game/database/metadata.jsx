@@ -1,6 +1,8 @@
 import { host } from '../../../stuff';
-import { memo, useEffect, useMemo, useState } from 'react';
-import { ImageWithLoader } from './comp/LoadingImage';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { XMarkIcon } from '@heroicons/react/20/solid';
+import { AddedBadge, getAddedPatch, getPatchFilterCounts, getPatchGroups, ImageWithLoader, LoadingSpinner, patchFilterMatches, PatchFilterSelect } from './comp/LoadingImage';
+import { VirtualCardGrid } from './comp/VirtualCardGrid';
 
 const moneyFields = ['USD', 'CAD', 'GBP', 'EUR', 'AUD', 'JPY', 'BRL', 'MXN'];
 
@@ -10,6 +12,7 @@ function asArray(value) {
 }
 
 function clean(value) {
+  if (value === false) return false;
   if (Array.isArray(value)) return value.some(clean);
   if (typeof value === 'object' && value !== null) return false;
   const normalized = String(value ?? '').trim();
@@ -18,6 +21,10 @@ function clean(value) {
 
 function cleanList(values) {
   return asArray(values).flat(Infinity).filter(clean).map((value) => String(value).trim());
+}
+
+function queryKeyForTitle(title) {
+  return String(title || 'item').toLowerCase().replace(/[^a-z0-9]+/g, '') || 'item';
 }
 
 function label(value, langs) {
@@ -198,7 +205,7 @@ function CurrencyBadge({ cost, small = false }) {
 function CostBadges({ costs, small = false }) {
   const visible = asArray(costs).filter((cost) => cost && (cost.value > 0 || cost.saleValue > 0));
   if (!visible.length) return null;
-  return <div className="flex flex-wrap gap-1">{visible.map((cost, index) => <CurrencyBadge key={`${cost.type}-${index}`} cost={cost} small={small} />)}</div>;
+  return <div className="flex max-w-full flex-wrap justify-center gap-1 pb-1">{visible.map((cost, index) => <CurrencyBadge key={`${cost.type}-${index}`} cost={cost} small={small} />)}</div>;
 }
 
 function discountPercent(cost) {
@@ -254,6 +261,66 @@ function itemType(entry) {
   return normalizedType(entry?.type || entry?.storeData?.Type || entry?.rewardData?.Type || entry?.rewardData?.Acquirable?.split(':')?.[0] || 'Item');
 }
 
+function typeLabel(type) {
+  const normalized = normalizedType(type);
+  if (normalized === 'PlayerTheme') return 'UI Themes';
+  if (normalized === 'SpawnBot') return 'Sidekick';
+  if (normalized === 'EmitterGroup') return 'Smoke Trail';
+  if (normalized === 'KOEffect') return 'KO Effect';
+  if (normalized === 'MammothCoins') return 'Mammoth Coins';
+  return normalized;
+}
+
+function dataField(object, keys) {
+  const source = object || {};
+  const wanted = (Array.isArray(keys) ? keys : [keys]).map((key) => String(key).toLowerCase());
+  const entry = Object.entries(source).find(([key, value]) => wanted.includes(String(key).toLowerCase()) && clean(value));
+  return entry?.[1];
+}
+
+function bundleUiImageSrc(bundle, keys) {
+  const image = dataField(bundle?.bundleData, keys);
+  if (!clean(image)) return '';
+  const file = String(image).split(/[\\/]/).pop();
+  if (!/\.(png|jpe?g|webp|gif|svg)$/i.test(file)) return '';
+  return `${host}/game/images/images/UI/${file}`;
+}
+
+function bundleImageSrc(bundle) {
+  const sources = [
+    bundleUiImageSrc(bundle, ['PopupImage', 'PopUpImage']),
+    bundleUiImageSrc(bundle, 'ItemImage'),
+  ].filter(Boolean);
+  return [...new Set(sources)];
+}
+
+function bundlePopupImageSrc(bundle) {
+  const sources = [
+    bundleUiImageSrc(bundle, ['PopupImage', 'PopUpImage']),
+    bundleUiImageSrc(bundle, 'ItemImage'),
+  ].filter(Boolean);
+  return [...new Set(sources)];
+}
+
+function OptionalImageBlock({ src, label, className = '', imageClassName = '', imgClassName = 'max-h-full max-w-full object-contain', small = false }) {
+  const sources = asArray(src).filter(Boolean);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [sources.join('|')]);
+  if (!sources.length || failed) return null;
+  return (
+    <div className={className}>
+      {label && <div className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</div>}
+      <ImageWithLoader
+        src={sources}
+        className={imageClassName}
+        imgClassName={imgClassName}
+        small={small}
+        onError={() => setFailed(true)}
+      />
+    </div>
+  );
+}
+
 function itemImage(entry) {
   const resolved = entry?.resolved;
   const type = itemType(entry);
@@ -275,7 +342,13 @@ function itemImage(entry) {
     const weapon = resolved.weaponData.BaseWeapon || 'Sword';
     return `${host}/game/anim/weapon/${resolved.weaponData.WeaponSkinID}/UI_TooltipAnimations/a__TooltipAnimation/${weapon}Pose/loop`;
   }
-  if (resolved.avatarData?.AvatarID) return `${host}/game/animAvatar/${resolved.avatarData.AvatarID}`;
+  if (resolved.avatarData?.AvatarID) {
+    return [
+      `${host}/game/animAvatar/${resolved.avatarData.AvatarID}`,
+      resolved.avatarData.IconName && `${host}/game/getGfx/UI_Icons/${resolved.avatarData.IconName}`,
+      resolved.avatarData.AvatarName && `${host}/game/images/images/UI/${resolved.avatarData.AvatarName}.png`,
+    ].filter(Boolean);
+  }
   if (resolved.emojiData?.EmojiID) return `${host}/game/animEmoji/${resolved.emojiData.EmojiID}`;
   if (resolved.podiumData?.PodiumID) return `${host}/game/animPodium/${resolved.podiumData.PodiumID}/loop/Ready`;
   if (resolved.PowerName) return `${host}/game/anim/char/3-0/Animation_Emote/a__EmoteAnimation/${resolved.PowerName}/loop`;
@@ -304,26 +377,30 @@ function MonikerChip({ entry, langs, large = false }) {
   const moniker = entry?.resolved?.monikerData;
   const color = hex(moniker?.Color, '#e2e8f0');
   return (
-    <div className={`rounded-lg bg-slate-900/80 border border-slate-700 ${large ? 'px-5 py-4 text-xl' : 'px-3 py-2 text-sm'} font-bold text-center`} style={{ color }}>
+    <div className={`rounded-lg bg-slate-900/80 border border-slate-700 ${large ? 'px-3 py-2 text-base sm:px-5 sm:py-4 sm:text-xl' : 'px-2 py-1.5 text-xs sm:px-3 sm:py-2 sm:text-sm'} font-bold text-center leading-tight break-words`} style={{ color }}>
       {itemLabel(entry, langs)}
     </div>
   );
 }
 
-const ItemThumb = memo(function ItemThumb({ entry, langs, small = false }) {
+const ItemThumb = memo(function ItemThumb({ entry, langs, small = false, className = '' }) {
   const type = itemType(entry).toLowerCase();
   const isBorder = type === 'border' || entry?.resolved?.themeData?.SeasonBorderID;
   if (type === 'moniker' || entry?.resolved?.monikerData) {
     return <MonikerChip entry={entry} langs={langs} large={!small} />;
   }
+  if (type === 'playertheme' || entry?.resolved?.themeData?.PlayerThemeID) {
+    return <UiThemePieces entry={entry} />;
+  }
 
   const src = itemImage(entry);
+  const sizeClass = className || (small ? (isBorder ? 'h-40 w-28 sm:h-48 sm:w-32' : 'h-14 w-14 sm:h-16 sm:w-16') : (isBorder ? 'min-h-64 w-full max-w-2xl sm:min-h-80' : 'h-24 w-24 sm:h-28 sm:w-28'));
   return (
-    <div className={`${small ? (isBorder ? 'h-24 w-16' : 'h-16 w-16') : (isBorder ? 'min-h-80 w-full max-w-2xl' : 'h-28 w-28')} rounded-xl bg-slate-900/80 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0`}>
+    <div className={`${sizeClass} rounded-xl bg-slate-900/80 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0`}>
       {src ? (
         <ImageWithLoader src={src} alt={itemLabel(entry, langs)} className="h-full w-full" small={small} />
       ) : (
-        <span className="text-xs text-slate-400 px-2 text-center">{itemType(entry)}</span>
+        <span className="text-xs text-slate-400 px-2 text-center">{typeLabel(itemType(entry))}</span>
       )}
     </div>
   );
@@ -351,17 +428,62 @@ function FieldGrid({ data, langs, title = 'Raw Fields', exclude = [] }) {
   if (!rows.length) return null;
   return (
     <Section title={title}>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {rows.map(([key, value]) => (
-          <div key={key} className="rounded-lg bg-slate-950/70 border border-slate-700 p-3">
-            <div className="text-[11px] uppercase tracking-wide text-slate-400">{key}</div>
-            <div className="mt-1 text-sm text-white break-words whitespace-pre-wrap">
-              {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
-            </div>
+      <FieldCards rows={rows} />
+    </Section>
+  );
+}
+
+function FieldCards({ rows }) {
+  const visible = asArray(rows).filter(Boolean);
+  if (!visible.length) return null;
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {visible.map(([key, value]) => (
+        <div key={key} className="rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+          <div className="text-[11px] uppercase tracking-wide text-slate-400">{key}</div>
+          <div className="mt-1 text-sm text-white break-words whitespace-pre-wrap">
+            {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
           </div>
-        ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StoreDataSection({ rows, langs, title = 'Store Data' }) {
+  const visible = asArray(rows).filter(Boolean);
+  if (!visible.length) return null;
+  return (
+    <Section title={title}>
+      <div className="space-y-3">
+        {visible.map((row, index) => {
+          const fieldRows = Object.entries(row || {})
+            .filter(([key, value]) => !['ItemList', 'Costs'].includes(key) && clean(value))
+            .filter(([, value]) => !(Array.isArray(value) && value.length === 0));
+          return (
+            <div key={`${row.StoreID || row.StoreName || index}-${index}`} className="rounded-lg bg-gray-100 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3">
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="font-bold text-gray-900 dark:text-white">{displayName(row.DisplayNameKey, row.StoreName, langs)}</div>
+                  {row.StoreName && <div className="text-xs text-gray-500 dark:text-gray-400">{row.StoreName}</div>}
+                </div>
+                <CostBadges costs={storeCostBadges(row)} />
+              </div>
+              <FieldCards rows={fieldRows} />
+            </div>
+          );
+        })}
       </div>
     </Section>
+  );
+}
+
+function DetailColumns({ left, right }) {
+  return (
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start">
+      <div className="flex flex-col gap-3">{left}</div>
+      <div className="flex flex-col gap-3">{right}</div>
+    </div>
   );
 }
 
@@ -369,8 +491,8 @@ function RawDataSection({ data, title = 'Raw Data' }) {
   if (!data) return null;
   return (
     <details className="rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3">
-      <summary className="cursor-pointer select-none text-lg font-bold text-gray-900 dark:text-white">{title}</summary>
-      <pre className="mt-3 max-h-[70vh] overflow-auto rounded-lg bg-gray-100 dark:bg-slate-950 p-3 text-xs text-gray-900 dark:text-gray-100">{JSON.stringify(data, null, 2)}</pre>
+      <summary className="cursor-pointer select-none text-base font-bold text-gray-900 dark:text-white sm:text-lg">{title}</summary>
+      <pre className="mt-3 max-h-[70vh] overflow-auto app-scrollbar rounded-lg bg-gray-100 dark:bg-slate-950 p-3 text-xs text-gray-900 dark:text-gray-100">{JSON.stringify(data, null, 2)}</pre>
     </details>
   );
 }
@@ -391,7 +513,7 @@ function TagChips({ tags }) {
   const visible = [...new Set(cleanList(tags))];
   if (!visible.length) return null;
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className="hidden max-w-full flex-wrap justify-center gap-1 pb-1 sm:flex">
       {visible.map((tag) => (
         <span key={tag} className="text-xs px-2 py-0.5 rounded-lg bg-gray-300 dark:bg-slate-700 text-gray-900 dark:text-white">{tag}</span>
       ))}
@@ -399,10 +521,284 @@ function TagChips({ tags }) {
   );
 }
 
-function FilterShell({ title, count, total, search, setSearch, sort, setSort, filters, setFilters, filterDefs, filterOptions, filterCounts, viewMode, setViewMode }) {
-  const dropdownFilters = filterDefs.filter((filter) => filter.type !== 'toggle');
+function ToggleButton({ active, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex-1 rounded-lg px-3 py-1 text-sm font-bold transition-colors duration-200 ${active ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-900 hover:bg-gray-300 dark:bg-slate-700 dark:text-white dark:hover:bg-slate-600'}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function AnimationFrameToggle({ value, onChange }) {
+  return (
+    <div className="flex gap-2">
+      <ToggleButton active={value === 'all'} onClick={() => onChange('all')}>All Frames</ToggleButton>
+      <ToggleButton active={value === 'loop'} onClick={() => onChange('loop')}>Looped Frames</ToggleButton>
+    </div>
+  );
+}
+
+function AnimationImage({ src, alt = '' }) {
+  const [loading, setLoading] = useState(true);
+  useEffect(() => setLoading(true), [Array.isArray(src) ? src.join('|') : src]);
+  return (
+    <div className="relative mt-2 flex min-h-80 items-center justify-center rounded-lg bg-slate-900/80 p-3">
+      {loading && <LoadingSpinner />}
+      <ImageWithLoader
+        src={src}
+        alt={alt}
+        className="min-h-80 w-full rounded-lg"
+        imgClassName="max-h-[70vh] max-w-full object-contain"
+        onLoad={() => setLoading(false)}
+        onError={() => setLoading(false)}
+      />
+    </div>
+  );
+}
+
+function TauntAnimationSection({ item, langs }) {
+  const [frameMode, setFrameMode] = useState('all');
+  const [selectedPower, setSelectedPower] = useState('player1');
+  const randomPowers = cleanList(item?.RandomPowers);
+  const teamPower = item?.powerData?.TeamTauntPower?.PowerName;
+  useEffect(() => {
+    setFrameMode('all');
+    setSelectedPower('player1');
+  }, [item]);
+  const powerName = teamPower && selectedPower === 'player2'
+    ? teamPower
+    : typeof selectedPower === 'number' && randomPowers[selectedPower]
+      ? randomPowers[selectedPower]
+      : item?.PowerName;
+  return (
+    <Section title="Animation Data">
+      <AnimationFrameToggle value={frameMode} onChange={setFrameMode} />
+      <AnimationImage
+        src={`${host}/game/anim/char/3-0/Animation_Emote/a__EmoteAnimation/${powerName}/${frameMode}`}
+        alt={label(item?.DisplayNameKey || item?.TauntName, langs)}
+      />
+      <div className="mt-3 flex flex-col gap-3">
+        {teamPower && (
+          <div>
+            <div className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">Player Animation</div>
+            <div className="grid grid-cols-2 gap-2">
+              <ToggleButton active={selectedPower === 'player1'} onClick={() => setSelectedPower('player1')}>1st Player</ToggleButton>
+              <ToggleButton active={selectedPower === 'player2'} onClick={() => setSelectedPower('player2')}>2nd Player</ToggleButton>
+            </div>
+          </div>
+        )}
+        {randomPowers.length > 0 && (
+          <div>
+            <div className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">Random Animations</div>
+            <div className="grid grid-cols-2 gap-2">
+              {randomPowers.map((power, index) => (
+                <ToggleButton key={power} active={selectedPower === index} onClick={() => setSelectedPower(index)}>{power}</ToggleButton>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </Section>
+  );
+}
+
+function PodiumAnimationSection({ item, langs }) {
+  const [frameMode, setFrameMode] = useState('all');
+  const [animation, setAnimation] = useState('Ready');
+  const [team, setTeam] = useState('Default');
+  useEffect(() => {
+    setFrameMode('all');
+    setAnimation('Ready');
+    setTeam('Default');
+  }, [item]);
+  const teamSuffix =
+    team === 'Red Team' && item?.podiumData?.CustomArtTeamRed ? `/${item.podiumData.CustomArtTeamRed}` :
+    team === 'Blue Team' && item?.podiumData?.CustomArtTeamBlue ? `/${item.podiumData.CustomArtTeamBlue}` :
+    '';
+  return (
+    <Section title="Animation Data">
+      <AnimationFrameToggle value={frameMode} onChange={setFrameMode} />
+      <AnimationImage
+        src={`${host}/game/animPodium/${item?.podiumData?.PodiumID}/${frameMode}/${animation}${teamSuffix}`}
+        alt={label(item?.podiumData?.DisplayNameKey || item?.podiumData?.PodiumName, langs)}
+      />
+      <div className="mt-3 flex flex-col gap-3">
+        <div>
+          <div className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">Podium Color</div>
+          <div className="grid grid-cols-3 gap-2">
+            {['Default', 'Blue Team', 'Red Team'].map((value) => (
+              <ToggleButton key={value} active={team === value} onClick={() => setTeam(value)}>{value}</ToggleButton>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">Podium Animations</div>
+          <div className="grid grid-cols-2 gap-2">
+            {['Ready', 'LockIn', 'Victory', 'Defeat'].map((value) => (
+              <ToggleButton key={value} active={animation === value} onClick={() => setAnimation(value)}>{value === 'LockIn' ? 'Lock In' : value}</ToggleButton>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+const companionAnimations = [
+  ['ActOut', 'Act Out'], ['DodgeAir', 'Dodge Air'], ['Emote', 'Emote'], ['FallFast', 'Fall Fast'],
+  ['FallTurn', 'Fall Turn'], ['HitReact', 'Hit React'], ['Jump', 'Jump'], ['Leave', 'Leave'],
+  ['LookDown', 'Look Down'], ['LookUp', 'Look Up'], ['Ready', 'Ready'], ['ReadyTurn', 'Ready Turn'],
+  ['RespawnFall', 'Respawn Fall'],
+];
+
+function CompanionAnimationSection({ item, langs }) {
+  const [frameMode, setFrameMode] = useState('all');
+  const [animation, setAnimation] = useState('Ready');
+  useEffect(() => {
+    setFrameMode('all');
+    setAnimation('Ready');
+  }, [item]);
+  return (
+    <Section title="Animation Data">
+      <AnimationFrameToggle value={frameMode} onChange={setFrameMode} />
+      <AnimationImage
+        src={`${host}/game/animCompanion/${item?.companionData?.CompanionID}/${animation}/${frameMode}`}
+        alt={label(item?.companionData?.DisplayNameKey || item?.companionData?.CompanionName, langs)}
+      />
+      <div className="mt-3">
+        <div className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">Animation Type</div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">
+          {companionAnimations.map(([value, text]) => (
+            <ToggleButton key={value} active={animation === value} onClick={() => setAnimation(value)}>{text}</ToggleButton>
+          ))}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+const companionTraitDefinitions = [
+  ['CuriosityTrait', 'Curiosity Trait', '0-10; how likely are they to investigate items or wander around on their own?'],
+  ['FearfulnessTrait', 'Fearfulness Trait', '0-10; how likely are they to hide from spawnbot flybys?'],
+  ['LoyaltyTrait', 'Loyalty Trait', '0-10; do they prefer to stay by the player? (10 means they never wander on their own or follow other companions)'],
+  ['SocialTrait', 'Social Trait', '0-10; how likely are they to try to follow another companion around?'],
+];
+
+function CompanionTraitsSection({ item }) {
+  const rows = companionTraitDefinitions.filter(([key]) => clean(item?.companionData?.[key]));
+  if (!rows.length) return null;
+  return (
+    <Section title="Companion Traits">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {rows.map(([key, title, description]) => (
+          <div key={key} className="rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+            <div className="text-[11px] uppercase tracking-wide text-slate-400">{title}</div>
+            <div className="mt-1 text-lg font-bold text-white">{item.companionData[key]}</div>
+            <div className="mt-1 text-xs text-slate-400">{description}</div>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+function SimpleAnimationSection({ title = 'Animation Data', src, alt }) {
+  return (
+    <Section title={title}>
+      <AnimationImage src={src} alt={alt} />
+    </Section>
+  );
+}
+
+function smokeTrailEmitters(item) {
+  const seen = new Map();
+  asArray(item?.emitterTypes)
+    .filter((emitter) => clean(emitter?.EmitterName))
+    .forEach((emitter) => {
+      if (!seen.has(emitter.EmitterName)) seen.set(emitter.EmitterName, emitter);
+    });
+  return [...seen.values()].sort((a, b) => Number(a.EmitterID || 0) - Number(b.EmitterID || 0));
+}
+
+function smokeTrailAnimations(item, emitterName = '') {
+  const emitters = smokeTrailEmitters(item);
+  const selectedEmitter = emitters.find((emitter) => emitter.EmitterName === emitterName) || emitters[0];
+  const storeAnimation = item?.emitterTrailData?.StoreAnimation;
+  return cleanList(selectedEmitter?.Animations)
+    .map((animation) => ({ animation, emitterName: selectedEmitter?.EmitterName }))
+    .sort((a, b) => {
+      if (a.animation === storeAnimation) return -1;
+      if (b.animation === storeAnimation) return 1;
+      return a.animation.localeCompare(b.animation, undefined, { numeric: true });
+    });
+}
+
+function SmokeTrailAnimationSection({ item, langs }) {
+  const emitters = useMemo(() => smokeTrailEmitters(item), [item]);
+  const [emitter, setEmitter] = useState('');
+  const [animation, setAnimation] = useState('');
+  useEffect(() => {
+    const storeAnimation = item?.emitterTrailData?.StoreAnimation;
+    const initialEmitter = emitters.find((candidate) => cleanList(candidate.Animations).includes(storeAnimation)) || emitters[0];
+    const initialAnimations = smokeTrailAnimations(item, initialEmitter?.EmitterName);
+    setEmitter(initialEmitter?.EmitterName || '');
+    setAnimation(initialAnimations.find((entry) => entry.animation === storeAnimation)?.animation || initialAnimations[0]?.animation || '');
+  }, [item, emitters]);
+  const animations = smokeTrailAnimations(item, emitter);
+  useEffect(() => {
+    if (animations.length && !animations.some((entry) => entry.animation === animation)) setAnimation(animations[0].animation);
+  }, [animations, animation]);
+  const id = item?.emitterTrailData?.EmitterGroupID;
+  const src = emitter && animation
+    ? `${host}/game/animSmokeTrail/${id}/${encodeURIComponent(emitter)}/${encodeURIComponent(animation)}`
+    : `${host}/game/animSmokeTrail/${id}`;
+  return (
+    <Section title="Animation Data">
+      {emitters.length > 1 && (
+        <div className="mb-3">
+          <div className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">Emitter Type</div>
+          <div className="flex flex-wrap gap-2">
+            {emitters.map((entry) => (
+              <ToggleButton key={entry.EmitterName} active={emitter === entry.EmitterName} onClick={() => setEmitter(entry.EmitterName)}>
+                {String(entry.EmitterName).replace(/^SmokeTrail/, '')}
+              </ToggleButton>
+            ))}
+          </div>
+        </div>
+      )}
+      {animations.length > 0 && (
+        <div className="mb-3">
+          <div className="mb-1 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">Animation</div>
+          <div className="flex flex-wrap gap-2">
+            {animations.map((entry) => (
+              <ToggleButton key={entry.animation} active={animation === entry.animation} onClick={() => setAnimation(entry.animation)}>{entry.animation}</ToggleButton>
+            ))}
+          </div>
+        </div>
+      )}
+      <AnimationImage src={src} alt={label(item?.emitterTrailData?.DisplayNameKey || item?.emitterTrailData?.EmitterGroupName, langs)} />
+    </Section>
+  );
+}
+
+function FilterShell({ title, count, total, search, setSearch, sort, setSort, filters, setFilters, filterDefs, filterOptions, filterCounts }) {
+  const iconFilters = filterDefs.filter((filter) => filter.type === 'iconMulti');
+  const dropdownFilters = filterDefs.filter((filter) => filter.type !== 'toggle' && filter.type !== 'iconMulti');
   const toggleFilters = filterDefs.filter((filter) => filter.type === 'toggle');
   const [filtersOpen, setFiltersOpen] = useState(true);
+  const toggleIconValue = (key, value) => {
+    setFilters((current) => {
+      const values = asArray(current[key]).map(String);
+      const next = values.includes(String(value))
+        ? values.filter((entry) => entry !== String(value))
+        : [...values, String(value)];
+      return { ...current, [key]: next };
+    });
+  };
   return (
     <div className="space-y-4 mb-4 rounded-xl bg-white/70 dark:bg-slate-800/70 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
       <button onClick={() => setFiltersOpen((open) => !open)} className="flex w-full items-center justify-between rounded-lg bg-gray-100 dark:bg-slate-700 px-3 py-2 text-left text-sm font-bold text-gray-900 dark:text-white">
@@ -411,17 +807,55 @@ function FilterShell({ title, count, total, search, setSearch, sort, setSort, fi
       </button>
       {filtersOpen && (
         <div className="space-y-4">
+          {iconFilters.map((filter) => (
+            <div key={filter.key} className="flex flex-wrap items-center gap-2">
+              {(filterOptions[filter.key] || []).map((value) => {
+                const selected = asArray(filters[filter.key]).map(String).includes(String(value));
+                const countForValue = filterCounts?.[filter.key]?.[value] || 0;
+                if (!countForValue) return null;
+                const src = filter.icon?.(value) || null;
+                const titleText = filter.iconLabel?.(value) || String(value);
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    title={titleText}
+                    aria-label={`${filter.label}: ${titleText}`}
+                    onClick={() => toggleIconValue(filter.key, value)}
+                    className={`relative flex h-12 w-12 items-center justify-center rounded-xl border bg-gray-100 p-1 transition dark:bg-slate-700 ${selected ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-300 opacity-55 hover:opacity-100 dark:border-slate-600'} ${filter.iconClassName || ''}`}
+                  >
+                    {src ? (
+                      <ImageWithLoader src={src} alt={titleText} className="h-full w-full bg-transparent" imgClassName="max-h-full max-w-full object-contain" small />
+                    ) : (
+                      <span className="text-xs font-bold text-gray-900 dark:text-white">{String(value).slice(0, 3)}</span>
+                    )}
+                    <span className="absolute -right-1 -top-1 rounded-full bg-blue-500 px-1 text-[10px] font-bold leading-4 text-white">{countForValue}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
           <div className="flex flex-wrap items-center gap-2">
             {dropdownFilters.map((filter) => (
-              <select
-                key={filter.key}
-                value={filters[filter.key] || ''}
-                onChange={(event) => setFilters((current) => ({ ...current, [filter.key]: event.target.value }))}
-                className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold focus:ring-2 focus:ring-blue-500 cursor-pointer"
-              >
-                <option value="">{filter.label}</option>
-                {(filterOptions[filter.key] || []).map((value) => <option key={value} value={value}>{value} ({filterCounts?.[filter.key]?.[value] || 0})</option>)}
-              </select>
+              filter.group === 'patch' ? (
+                <PatchFilterSelect
+                  key={filter.key}
+                  value={filters[filter.key] || ''}
+                  onChange={(value) => setFilters((current) => ({ ...current, [filter.key]: value }))}
+                  groups={filterOptions[filter.key] || []}
+                  counts={filterCounts?.[filter.key] || {}}
+                />
+              ) : (
+                <select
+                  key={filter.key}
+                  value={filters[filter.key] || ''}
+                  onChange={(event) => setFilters((current) => ({ ...current, [filter.key]: event.target.value }))}
+                  className="bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="">{filter.label}</option>
+                  {(filterOptions[filter.key] || []).map((value) => <option key={value} value={value}>{value} ({filterCounts?.[filter.key]?.[value] || 0})</option>)}
+                </select>
+              )
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -440,15 +874,7 @@ function FilterShell({ title, count, total, search, setSearch, sort, setSort, fi
       )}
       <div className="lg:flex lg:flex-col gap-4">
         <div className="flex justify-between items-center w-full sm:w-auto py-2 gap-4">
-          <div className="text-lg text-blue-600 dark:text-blue-400 font-bold">Showing {count} of {total}</div>
-          <div className="flex gap-2">
-            <button onClick={() => setViewMode('list')} className={`cursor-pointer p-2 rounded-lg ${viewMode === 'list' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-900 dark:text-white'}`} title="List View">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
-            </button>
-            <button onClick={() => setViewMode('grid')} className={`cursor-pointer p-2 rounded-lg ${viewMode === 'grid' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-900 dark:text-white'}`} title="Grid View">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h6v6H4V6zm10 0h6v6h-6V6zm-10 10h6v6H4v-6zm10 0h6v6h-6v-6z"></path></svg>
-            </button>
-          </div>
+          <div className="text-sm text-blue-600 dark:text-blue-400 font-bold sm:text-lg">Showing {count} of {total}</div>
         </div>
         <div className="relative">
           <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
@@ -461,7 +887,7 @@ function FilterShell({ title, count, total, search, setSearch, sort, setSort, fi
           />
         </div>
         <div className="relative">
-          <select value={sort} onChange={(event) => setSort(event.target.value)} className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white text-sm font-semibold rounded-lg px-4 py-2 border border-gray-300 dark:border-slate-600 w-full sm:min-w-[200px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none cursor-pointer">
+          <select value={sort} onChange={(event) => setSort(event.target.value)} className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white text-xs font-semibold rounded-lg px-3 py-2 border border-gray-300 dark:border-slate-600 w-full sm:min-w-[200px] sm:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none cursor-pointer">
             <option value="indexDesc">Default Sorting (Desc)</option>
             <option value="indexAsc">Default Sorting (Asc)</option>
             <option value="name">Alphabetical (A-Z)</option>
@@ -477,23 +903,45 @@ function FilterShell({ title, count, total, search, setSearch, sort, setSort, fi
 
 function DatabaseView({ title, description, items, langs, config }) {
   const data = useMemo(() => asArray(items), [items]);
+  const queryKey = config.queryKey || queryKeyForTitle(title);
+  const gridClassName = config.gridClassName || (config.maxColumns === 3 ? 'grid grid-cols-2 items-start gap-3 lg:grid-cols-3' : 'grid grid-cols-2 items-start gap-3 lg:grid-cols-3 xl:grid-cols-4');
+  const cardClassName = config.cardClassName || 'p-2 pt-8 min-h-44 sm:p-3 sm:pt-10 sm:min-h-52';
+  const badgeClassName = config.badgeClassName || 'absolute left-1/2 top-2 z-10 -translate-x-1/2 pointer-events-none';
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState(config.defaultSort || 'indexDesc');
   const [filters, setFilters] = useState({});
-  const [viewMode, setViewMode] = useState('list');
+  const viewMode = 'grid';
+  const urlHydrated = useRef(false);
+  const urlSyncing = useRef(false);
 
-  const filterDefs = config.filters || [];
+  const filterDefs = useMemo(() => {
+    const base = config.filters || [];
+    if (!data.some((item) => getAddedPatch(item))) return base;
+    if (base.some((filter) => filter.key === 'patch')) return base;
+    return [
+      ...base,
+      { key: 'patch', label: 'Patch Version', group: 'patch', value: getAddedPatch },
+    ];
+  }, [config.filters, data]);
   const filterOptions = useMemo(() => {
     const output = {};
     for (const filter of filterDefs) {
       if (filter.type === 'toggle') continue;
+      if (filter.group === 'patch') {
+        output[filter.key] = getPatchGroups(data);
+        continue;
+      }
+      if (filter.options) {
+        output[filter.key] = filter.options(data, langs).map(String).filter(clean);
+        continue;
+      }
       const values = new Set();
       data.forEach((item) => asArray(filter.value(item)).filter(clean).forEach((value) => values.add(String(value))));
       output[filter.key] = [...values].sort((a, b) => a.localeCompare(b));
     }
     return output;
-  }, [data, filterDefs]);
+  }, [data, filterDefs, langs]);
 
   const matchesFilters = (item, query, excludeKey = null) => {
     if (query && !config.search(item, langs).join(' ').toLowerCase().includes(query)) return false;
@@ -503,6 +951,17 @@ function DatabaseView({ title, description, items, langs, config }) {
       if (!chosen) continue;
       if (filter.type === 'toggle') {
         if (!filter.value(item)) return false;
+        continue;
+      }
+      if (filter.group === 'patch') {
+        if (!patchFilterMatches(filter.value(item), chosen)) return false;
+        continue;
+      }
+      if (filter.type === 'iconMulti') {
+        const selectedValues = asArray(chosen).map(String).filter(clean);
+        if (!selectedValues.length) continue;
+        const itemValues = asArray(filter.value(item)).map(String);
+        if (!selectedValues.some((value) => itemValues.includes(value))) return false;
         continue;
       }
       if (!asArray(filter.value(item)).map(String).includes(chosen)) return false;
@@ -515,6 +974,10 @@ function DatabaseView({ title, description, items, langs, config }) {
     const output = {};
     for (const filter of filterDefs) {
       output[filter.key] = {};
+      if (filter.group === 'patch') {
+        output[filter.key] = getPatchFilterCounts(data.filter((candidate) => matchesFilters(candidate, query, filter.key)));
+        continue;
+      }
       data.forEach((item) => {
         if (!matchesFilters(item, query, filter.key)) return;
         if (filter.type === 'toggle') {
@@ -546,13 +1009,59 @@ function DatabaseView({ title, description, items, langs, config }) {
   }, [config, data, filterDefs, filters, langs, search, sort]);
 
   useEffect(() => {
-    setSelected(filtered[0] || null);
-  }, [filtered]);
+    if (!data.length) return;
+    const applyUrlState = () => {
+      urlSyncing.current = true;
+      const params = new URLSearchParams(window.location.search);
+      const nextFilters = {};
+      for (const filter of filterDefs) {
+        const value = params.get(filter.key);
+        if (value) {
+          if (filter.type === 'toggle') nextFilters[filter.key] = value === '1';
+          else if (filter.type === 'iconMulti') nextFilters[filter.key] = value.split(',').map(decodeURIComponent).filter(clean);
+          else nextFilters[filter.key] = value;
+        }
+      }
+      const id = params.get(queryKey);
+      setSearch(params.get('search') || '');
+      setSort(params.get('sort') || config.defaultSort || 'indexDesc');
+      setFilters(nextFilters);
+      setSelected(id ? data.find((item) => String(config.id(item)) === id) || null : null);
+      urlHydrated.current = true;
+      window.setTimeout(() => {
+        urlSyncing.current = false;
+      }, 0);
+    };
+    applyUrlState();
+    window.addEventListener('popstate', applyUrlState);
+    return () => window.removeEventListener('popstate', applyUrlState);
+  }, [config, data, filterDefs, queryKey]);
+
+  useEffect(() => {
+    if (!urlHydrated.current || urlSyncing.current) return;
+    const params = new URLSearchParams();
+    if (selected) params.set(queryKey, String(config.id(selected)));
+    if (search.trim()) params.set('search', search.trim());
+    if (sort !== (config.defaultSort || 'indexDesc')) params.set('sort', sort);
+    for (const filter of filterDefs) {
+      const value = filters[filter.key];
+      if (!value) continue;
+      if (filter.type === 'toggle') params.set(filter.key, '1');
+      else if (filter.type === 'iconMulti' && asArray(value).length) params.set(filter.key, asArray(value).map(encodeURIComponent).join(','));
+      else if (String(value)) params.set(filter.key, String(value));
+    }
+    const query = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+  }, [config, filterDefs, filters, queryKey, search, selected, sort]);
+
+  useEffect(() => {
+    if (selected && !filtered.includes(selected)) setSelected(null);
+  }, [filtered, selected]);
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-slate-900 p-3 lg:p-4" style={{ fontFamily: langs?.font || 'BHLatinBold' }}>
-      <div className="flex flex-col lg:flex-row gap-4">
-        <div className="lg:w-[35%] flex flex-col">
+      <div className="flex flex-col gap-4">
+        <div className="w-full flex flex-col">
           <FilterShell
             title={title}
             description={description}
@@ -567,49 +1076,80 @@ function DatabaseView({ title, description, items, langs, config }) {
             filterDefs={filterDefs}
             filterOptions={filterOptions}
             filterCounts={filterCounts}
-            viewMode={viewMode}
-            setViewMode={setViewMode}
           />
-          <div className={`${viewMode === 'grid' ? 'grid grid-cols-2 2xl:grid-cols-3 gap-3' : 'flex flex-col gap-2'} max-h-[calc(100vh-12rem)] overflow-y-auto pr-1`}>
-            {filtered.map((item, index) => (
-              <button key={`${config.id(item)}-${index}`} onClick={() => setSelected(item)} className={`${selected === item ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} text-left bg-white dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-xl p-3 transition border border-gray-200 dark:border-slate-700 ${viewMode === 'grid' ? 'min-h-52 shadow-sm hover:-translate-y-0.5' : ''}`}>
-                {config.card(item, langs, viewMode)}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="lg:w-[65%] flex flex-col gap-4">
-          {selected ? config.detail(selected, langs) : (
-            <div className="rounded-lg bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-8 text-center text-gray-500 dark:text-gray-400">
-              Select an item to inspect it.
+          {config.virtual === false ? (
+            <div className="h-[calc(100dvh-9rem)] min-h-[22rem] overflow-y-auto app-scrollbar pr-1">
+              <div className={gridClassName}>
+                {filtered.map((item, index) => (
+                  <button key={`${config.id(item)}-${index}`} onClick={() => setSelected(item)} className={`${selected === item ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} relative self-start text-left text-sm sm:text-base bg-white dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-xl ${cardClassName} transition border border-gray-200 dark:border-slate-700 shadow-sm hover:-translate-y-0.5`}>
+                    {config.card(item, langs, viewMode)}
+                    <AddedBadge item={item} className={badgeClassName} />
+                  </button>
+                ))}
+              </div>
             </div>
+          ) : (
+            <VirtualCardGrid
+              items={filtered}
+              rowHeight={config.rowHeight || 330}
+              rowHeightMobile={config.rowHeightMobile || Math.min(config.rowHeight || 330, 290)}
+              maxColumns={config.maxColumns || 4}
+              className="h-[calc(100dvh-9rem)] min-h-[22rem] app-scrollbar"
+              getKey={(item, index) => `${config.id(item)}-${index}`}
+              renderItem={(item, index) => (
+                <button key={`${config.id(item)}-${index}`} onClick={() => setSelected(item)} className={`${selected === item ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} relative h-full w-full text-left text-sm sm:text-base bg-white dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-xl ${cardClassName} transition border border-gray-200 dark:border-slate-700 shadow-sm hover:-translate-y-0.5`}>
+                  {config.card(item, langs, viewMode)}
+                  <AddedBadge item={item} className={badgeClassName} />
+                </button>
+              )}
+            />
           )}
-          {selected && <RawDataSection data={selected} />}
         </div>
+        {selected && (
+          <div className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/70 p-0 sm:items-center sm:p-4" onClick={() => setSelected(null)}>
+            <div className="relative flex h-dvh max-h-dvh w-full max-w-[min(96vw,100rem)] flex-col gap-3 overflow-y-auto app-scrollbar rounded-none border border-gray-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:h-auto sm:max-h-[92vh] sm:rounded-xl sm:p-3 lg:gap-4 lg:p-4" onClick={(event) => event.stopPropagation()}>
+              <button
+                type="button"
+                aria-label="Close details"
+                onClick={() => setSelected(null)}
+                className="absolute right-3 top-3 z-10 rounded-lg bg-gray-200 p-2 text-gray-900 hover:bg-gray-300 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700"
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+              <div className="flex flex-col gap-4 pr-11">
+                {config.detail(selected, langs)}
+              </div>
+              <RawDataSection data={selected} />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function Header({ title, subtitle, badges, hero, description, tags }) {
+function Header({ title, subtitle, badges, hero, description, tags, inlineHero = false }) {
   const visibleBadges = cleanList(badges);
   return (
-    <div className="rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-4">
-      <div className="flex flex-col gap-5">
-        <div className="min-w-0">
-          {subtitle && <div className="text-sm text-gray-500 dark:text-gray-400">{subtitle}</div>}
-          <h2 className="text-3xl font-bold text-gray-900 dark:text-white">{title}</h2>
-          {description && <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">{description}</div>}
-          {visibleBadges.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {visibleBadges.map((badge, index) => (
-                <span key={`${badge}-${index}`} className="inline-flex rounded-full bg-gray-300 dark:bg-slate-700 text-gray-800 dark:text-gray-100 px-3 py-1 text-xs font-bold">{badge}</span>
-              ))}
-            </div>
-          )}
-          <div className="mt-2"><TagChips tags={tags} /></div>
+    <div className="rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 sm:p-4">
+      <div className="flex flex-col gap-3 sm:gap-5">
+        <div className={`min-w-0 ${inlineHero && hero ? 'flex items-center gap-3' : ''}`}>
+          {inlineHero && hero && <div className="shrink-0">{hero}</div>}
+          <div className="min-w-0">
+            {subtitle && <div className="text-xs text-gray-500 dark:text-gray-400 sm:text-sm">{subtitle}</div>}
+            <h2 className="text-xl font-bold leading-tight text-gray-900 dark:text-white sm:text-3xl">{title}</h2>
+            {description && <div className="mt-1 text-xs text-gray-600 dark:text-gray-300 sm:text-sm">{description}</div>}
+            {visibleBadges.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {visibleBadges.map((badge, index) => (
+                  <span key={`${badge}-${index}`} className="inline-flex rounded-full bg-gray-300 dark:bg-slate-700 text-gray-800 dark:text-gray-100 px-2 py-0.5 text-[11px] font-bold sm:px-3 sm:py-1 sm:text-xs">{badge}</span>
+                ))}
+              </div>
+            )}
+            <div className="mt-2"><TagChips tags={tags} /></div>
+          </div>
         </div>
-        {hero && <div className="rounded-xl bg-gray-100 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3 flex items-center justify-center">{hero}</div>}
+        {!inlineHero && hero && <div className="rounded-xl bg-gray-100 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3 flex items-center justify-center">{hero}</div>}
       </div>
     </div>
   );
@@ -628,7 +1168,9 @@ function bundleTags(bundle) {
 
 function bundleConfig(sourceLabel = 'Bundles') {
   return {
+    virtual: false,
     id: (item) => item.bundleData?.StoreID,
+    defaultSort: 'idDesc',
     name: (item, langs) => displayName(item.bundleData?.DisplayNameKey, item.bundleData?.StoreName, langs),
     search: (item, langs) => [item.bundleData?.StoreName, item.bundleData?.DisplayNameKey, item.bundleData?.DescriptionKey, label(item.bundleData?.DisplayNameKey, langs), label(item.bundleData?.DescriptionKey, langs), bundleItems(item).map((entry) => itemLabel(entry, langs)).join(' ')],
     filters: [
@@ -638,25 +1180,45 @@ function bundleConfig(sourceLabel = 'Bundles') {
       { key: 'type', label: 'Contains Type', value: (item) => bundleItems(item).map(itemType) },
     ],
     card: (item, langs, viewMode) => (
-      <div>
+      <div className="flex w-full flex-col items-center justify-start text-center">
         <div className="font-semibold text-gray-900 dark:text-white">{displayName(item.bundleData?.DisplayNameKey, item.bundleData?.StoreName, langs)}</div>
-        <div className="mt-1 flex items-center justify-between gap-2">
-          <div className="text-xs text-gray-500 dark:text-gray-400">{bundleItems(item).length} items</div>
-          <CostBadges costs={bundleTotalCost(item)} small />
+        <OptionalImageBlock
+          src={bundleImageSrc(item)}
+          className="mt-3 flex justify-center rounded-xl bg-slate-900/80 p-2"
+          imageClassName="h-28 w-full"
+          small
+        />
+        <div className="mt-3 flex max-w-full flex-wrap justify-center gap-2 pb-1">
+          {bundleItems(item).map((entry, index) => <ItemThumb key={itemKey(entry, index)} entry={entry} langs={langs} small />)}
         </div>
-        <div className="mt-2"><TagChips tags={bundleTags(item).slice(0, 5)} /></div>
-        <div className={`mt-3 flex flex-wrap gap-2 ${viewMode === 'grid' ? 'justify-center' : ''}`}>
-          {bundleItems(item).slice(0, viewMode === 'grid' ? 8 : 10).map((entry, index) => <ItemThumb key={itemKey(entry, index)} entry={entry} langs={langs} small />)}
-        </div>
-        {bundleItems(item).length > (viewMode === 'grid' ? 8 : 10) && <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">+{bundleItems(item).length - (viewMode === 'grid' ? 8 : 10)} more</div>}
+        <div className="mt-3"><CostBadges costs={bundleTotalCost(item)} small /></div>
       </div>
     ),
     detail: (item, langs) => (
       <>
-        <Header title={displayName(item.bundleData?.DisplayNameKey, item.bundleData?.StoreName, langs)} subtitle={`${item.source || sourceLabel} bundle`} description={label(item.bundleData?.DescriptionKey, langs)} tags={bundleTags(item)} badges={[item.source || sourceLabel, item.bundleData?.Rarity, `${bundleItems(item).length} items`]} />
-        <BundlePricing bundle={item} langs={langs} />
-        <Section title="Items"><ItemStrip items={bundleItems(item)} langs={langs} /></Section>
-        <FieldGrid data={item.bundleData} langs={langs} exclude={['ItemList']} />
+        <Header
+          title={displayName(item.bundleData?.DisplayNameKey, item.bundleData?.StoreName, langs)}
+          subtitle={`${item.source || sourceLabel} bundle`}
+          description={label(item.bundleData?.DescriptionKey, langs)}
+        />
+        <OptionalImageBlock
+          src={bundlePopupImageSrc(item)}
+          label="Popup Image"
+          className="rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm"
+          imageClassName="max-h-52 w-full rounded-lg bg-slate-900/80"
+          imgClassName="max-h-52 max-w-full object-contain"
+        />
+        <OptionalImageBlock
+          src={bundleUiImageSrc(item, 'ItemImage')}
+          label="Item Image"
+          className="rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm"
+          imageClassName="max-h-52 w-full rounded-lg bg-slate-900/80"
+          imgClassName="max-h-52 max-w-full object-contain"
+        />
+        <DetailColumns
+          left={<BundlePricing bundle={item} langs={langs} />}
+          right={<FieldGrid data={item.bundleData} langs={langs} title="Bundle Data" exclude={['ItemList']} />}
+        />
       </>
     ),
   };
@@ -667,7 +1229,7 @@ function BundlePricing({ bundle, langs }) {
   const items = asArray(bundle?.bundleData?.ItemList);
   if (!costs.length && !items.some((item) => bundleItemBaseCost(item).length)) return null;
   return (
-    <Section title="Pricing">
+    <Section title="Items">
       <div className="space-y-4">
         <div>
           <div className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">Bundle Cost</div>
@@ -677,12 +1239,13 @@ function BundlePricing({ bundle, langs }) {
         {items.length > 0 && (
           <div>
             <div className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">Per Item</div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2">
               {items.map((item, index) => {
                 const entry = bundleItems(bundle).find((candidate) => candidate.item === (item.Item || item.StoreName)) || { type: item.Type, item: item.Item || item.StoreName };
                 return (
                   <div key={`${item.StoreName || item.Item}-${index}`} className="rounded-lg bg-gray-100 dark:bg-slate-900 p-2 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
+                    <ItemThumb entry={entry} langs={langs} small />
+                    <div className="min-w-0 flex-1">
                       <div className="text-sm font-bold text-gray-900 dark:text-white">{itemLabel(entry, langs)}</div>
                       <div className="text-xs text-gray-500 dark:text-gray-400">{item.StoreName || item.Item}</div>
                     </div>
@@ -703,7 +1266,9 @@ function BundlePricing({ bundle, langs }) {
 
 const configs = {
   chests: {
+    rowHeight: 225,
     id: (item) => item.chestData?.ChanceBoxID,
+    defaultSort: 'indexDesc',
     name: (item, langs) => label(item.chestData?.DisplayNameKey || item.chestData?.ChanceBoxName, langs),
     search: (item, langs) => [item.chestData?.ChanceBoxName, label(item.chestData?.DisplayNameKey, langs), ...asArray(item.commonItems).map((entry) => itemLabel({ ...entry, type: 'Costume' }, langs)), ...asArray(item.exclusiveItems).map((entry) => itemLabel({ ...entry, type: 'Costume' }, langs))],
     filters: [
@@ -711,7 +1276,7 @@ const configs = {
     ],
     card: (item, langs) => (
       <div className="flex gap-3">
-        <div className="h-24 w-24 rounded-xl bg-slate-900 border border-slate-700 flex items-center justify-center shrink-0 overflow-hidden">
+        <div className="h-24 w-24 rounded-xl bg-slate-900/80 flex items-center justify-center shrink-0 overflow-hidden">
           <img src={`${host}/game/animChest/${item.chestData?.ChanceBoxID}/StoreIdle/loop`} alt={label(item.chestData?.DisplayNameKey, langs)} className="max-h-full max-w-full object-contain" loading="lazy" />
         </div>
         <div className="min-w-0 flex-1">
@@ -719,7 +1284,6 @@ const configs = {
           <div className="mt-2 flex gap-1 overflow-hidden">
             {asArray(item.exclusiveItems).slice(0, 4).map((entry, index) => <ItemThumb key={entry.item || index} entry={{ ...entry, type: 'Costume' }} langs={langs} small />)}
           </div>
-          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">{item.itemCount} skins</div>
         </div>
       </div>
     ),
@@ -728,18 +1292,27 @@ const configs = {
         <Header
           title={label(item.chestData?.DisplayNameKey || item.chestData?.ChanceBoxName, langs)}
           subtitle={item.chestData?.ChanceBoxName}
-          badges={[`${item.itemCount} skins`, item.chestData?.EndTime ? 'Limited/Ended' : 'Current']}
-          hero={<ImageWithLoader src={`${host}/game/animChest/${item.chestData?.ChanceBoxID}/StoreIdle/loop`} className="min-h-80 w-full rounded-lg bg-slate-900/80" imgClassName="max-h-[70vh] max-w-full object-contain" />}
+          badges={[item.chestData?.EndTime ? 'Limited/Ended' : null]}
+          hero={<ImageWithLoader src={`${host}/game/animChest/${item.chestData?.ChanceBoxID}/StoreIdle/loop`} className="h-24 w-24 rounded-lg bg-slate-900/80" imgClassName="max-h-full max-w-full object-contain" />}
+          inlineHero
         />
-        <Section title="Exclusive Skins"><ItemStrip items={asArray(item.exclusiveItems).map((entry) => ({ ...entry, type: 'Costume' }))} langs={langs} /></Section>
-        <Section title="Common Skins"><ItemStrip items={asArray(item.commonItems).map((entry) => ({ ...entry, type: 'Costume' }))} langs={langs} /></Section>
-        <FieldGrid data={item.chestData} langs={langs} exclude={['CommonItems', 'ExclusiveItems']} />
+        <DetailColumns
+          left={(
+            <>
+              <Section title="Exclusive Skins"><ItemStrip items={asArray(item.exclusiveItems).map((entry) => ({ ...entry, type: 'Costume' }))} langs={langs} /></Section>
+              <Section title="Common Skins"><ItemStrip items={asArray(item.commonItems).map((entry) => ({ ...entry, type: 'Costume' }))} langs={langs} /></Section>
+            </>
+          )}
+          right={<FieldGrid data={item.chestData} langs={langs} title="Chest Data" exclude={['CommonItems', 'ExclusiveItems']} />}
+        />
       </>
     ),
   },
   bundles: bundleConfig('Store'),
   promos: {
+    rowHeight: 275,
     id: (item) => item.promoData?.StoreID,
+    defaultSort: 'indexDesc',
     name: (item, langs) => displayName(item.promoData?.DisplayNameKey, item.promoData?.StoreName, langs),
     search: (item, langs) => [item.promoData?.StoreName, item.promoData?.Type, label(item.promoData?.DisplayNameKey, langs), asArray(item.items).map((entry) => itemLabel(entry, langs)).join(' ')],
     filters: [
@@ -748,27 +1321,29 @@ const configs = {
       { key: 'geo', label: 'Geo Locked', type: 'toggle', value: (item) => clean(item.promoData?.GeoLockedCountries) },
     ],
     card: (item, langs, viewMode) => (
-      <div>
+      <div className="flex w-full flex-col items-center justify-start text-center">
         <div className="min-w-0">
           <div className="font-semibold text-gray-900 dark:text-white">{displayName(item.promoData?.DisplayNameKey, item.promoData?.StoreName, langs)}</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">{item.promoData?.Type}</div>
         </div>
-        <div className={`mt-3 flex flex-wrap gap-2 ${viewMode === 'grid' ? 'justify-center' : ''}`}>
-          {asArray(item.items).slice(0, item.promoData?.Type === 'Bundle' ? 8 : 1).map((entry, index) => <ItemThumb key={itemKey(entry, index)} entry={entry} langs={langs} small />)}
+        <div className="mt-3 flex max-h-44 max-w-full flex-wrap justify-center gap-2 overflow-y-auto app-scrollbar pb-1">
+          {asArray(item.items).map((entry, index) => <ItemThumb key={itemKey(entry, index)} entry={entry} langs={langs} small />)}
         </div>
       </div>
     ),
     detail: (item, langs) => (
       <>
-        <Header title={displayName(item.promoData?.DisplayNameKey, item.promoData?.StoreName, langs)} subtitle={item.promoData?.Type} badges={[item.promoData?.Type, item.promoData?.Rarity, clean(item.promoData?.GeoLockedCountries) && `Geo: ${item.promoData.GeoLockedCountries}`]} />
-        <TagChips tags={splitTags(item.promoData?.SearchTags)} />
-        <Section title={item.promoData?.Type === 'Bundle' ? 'Bundle Items' : 'Reward'}><ItemStrip items={item.items} langs={langs} /></Section>
-        <FieldGrid data={item.promoData} langs={langs} />
+        <Header title={displayName(item.promoData?.DisplayNameKey, item.promoData?.StoreName, langs)} subtitle={item.promoData?.Type} />
+        <DetailColumns
+          left={<Section title={item.promoData?.Type === 'Bundle' ? 'Bundle Items' : 'Reward'}><ItemStrip items={item.items} langs={langs} /></Section>}
+          right={<FieldGrid data={item.promoData} langs={langs} title="Promo Data" />}
+        />
       </>
     ),
   },
   purchases: {
+    virtual: false,
     id: (item) => item.entitlementData?.EntitlementID,
+    defaultSort: 'indexDesc',
     name: (item, langs) => label(item.entitlementData?.DisplayNameKey || item.entitlementData?.EntitlementName, langs),
     search: (item, langs) => [item.entitlementData?.EntitlementName, label(item.entitlementData?.DisplayNameKey, langs), entitlementItems(item).map((entry) => itemLabel(entry, langs)).join(' ')],
     filters: [
@@ -777,27 +1352,34 @@ const configs = {
       { key: 'priced', label: 'Has Pricing', type: 'toggle', value: (item) => asArray(item.steamPurchases).some((purchase) => moneyFields.some((field) => clean(purchase[field]))) },
     ],
     card: (item, langs, viewMode) => (
-      <div>
+      <div className="flex w-full flex-col items-center justify-start text-center">
         <div className="min-w-0">
           <div className="font-semibold text-gray-900 dark:text-white">{label(item.entitlementData?.DisplayNameKey || item.entitlementData?.EntitlementName, langs)}</div>
-          {entitlementItems(item).length > 0 && <div className="text-xs text-gray-500 dark:text-gray-400">{entitlementItems(item).length} items</div>}
         </div>
-        <div className={`mt-3 flex flex-wrap gap-2 ${viewMode === 'grid' ? 'justify-center' : ''}`}>
-          {entitlementItems(item).slice(0, 8).map((entry, index) => <ItemThumb key={itemKey(entry, index)} entry={entry} langs={langs} small />)}
+        <div className="mt-3 flex max-h-44 max-w-full flex-wrap justify-center gap-2 overflow-y-auto app-scrollbar pb-1">
+          {entitlementItems(item).map((entry, index) => <ItemThumb key={itemKey(entry, index)} entry={entry} langs={langs} small />)}
         </div>
       </div>
     ),
     detail: (item, langs) => (
       <>
-        <Header title={label(item.entitlementData?.DisplayNameKey || item.entitlementData?.EntitlementName, langs)} subtitle={item.entitlementData?.EntitlementName} badges={[item.entitlementData?.Idols && `${item.entitlementData.Idols} Mammoth Coins`, entitlementItems(item).length > 0 && `${entitlementItems(item).length} items`]} />
-        {entitlementItems(item).length > 0 && <Section title="Included Items"><ItemStrip items={entitlementItems(item)} langs={langs} /></Section>}
-        <Pricing purchases={item.steamPurchases} />
-        <FieldGrid data={item.entitlementData} langs={langs} />
+        <Header title={label(item.entitlementData?.DisplayNameKey || item.entitlementData?.EntitlementName, langs)} subtitle={item.entitlementData?.EntitlementName} />
+        <DetailColumns
+          left={(
+            <>
+              {entitlementItems(item).length > 0 && <Section title="Items"><ItemStrip items={entitlementItems(item)} langs={langs} /></Section>}
+              <Pricing purchases={item.steamPurchases} />
+            </>
+          )}
+          right={<FieldGrid data={item.entitlementData} langs={langs} title="Entitlement Data" />}
+        />
       </>
     ),
   },
   borders: {
+    rowHeight: 310,
     id: (item) => item.themeData?.SeasonBorderID,
+    defaultSort: 'indexDesc',
     name: (item, langs) => label(item.themeData?.DisplayNameKey || item.themeData?.SeasonBorderName, langs),
     search: (item, langs) => [
       item.themeData?.SeasonBorderName,
@@ -812,10 +1394,12 @@ const configs = {
       { key: 'storeOnly', label: 'Store Borders Only', type: 'toggle', value: (item) => asArray(item.store).length > 0 },
     ],
     card: (item, langs, viewMode) => (
-      <div className={`${viewMode === 'grid' ? 'text-center' : 'flex gap-3 items-center'}`}>
-        <ItemThumb entry={{ type: 'Border', resolved: item }} langs={langs} small={viewMode !== 'grid'} />
+      <div className="flex w-full flex-col items-center justify-start gap-3 text-center">
         <div className="min-w-0">
           <div className="font-semibold text-gray-900 dark:text-white">{label(item.themeData?.DisplayNameKey || item.themeData?.SeasonBorderName, langs)}</div>
+        </div>
+        <div className="flex w-full justify-center">
+          <ItemThumb entry={{ type: 'Border', resolved: item }} langs={langs} small />
         </div>
       </div>
     ),
@@ -824,26 +1408,771 @@ const configs = {
         <Header
           title={label(item.themeData?.DisplayNameKey || item.themeData?.SeasonBorderName, langs)}
           subtitle={item.themeData?.SeasonBorderName}
-          badges={[asArray(item.store).length > 0 && 'Store']}
-          hero={<ImageWithLoader src={`${host}/game/animBorder/${item.themeData?.SeasonBorderID}`} className="min-h-96 w-full rounded-lg bg-slate-900/80" imgClassName="max-h-[80vh] max-w-full object-contain" />}
           description={label(item.themeData?.DescriptionKey, langs)}
         />
-        {asArray(item.store).length > 0 && (
-          <Section title="Store Data">
-            <div className="space-y-3">
-              {asArray(item.store).map((row, index) => (
-                <div key={`${row.StoreID || row.StoreName}-${index}`} className="rounded-lg bg-gray-100 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3">
-                  <div className="font-bold text-gray-900 dark:text-white">{displayName(row.DisplayNameKey, row.StoreName, langs)}</div>
-                  <div className="mt-2"><CostBadges costs={storeCostBadges(row)} /></div>
-                </div>
-              ))}
-            </div>
-          </Section>
-        )}
-        <FieldGrid data={item.themeData} langs={langs} />
+        <DetailColumns
+          left={(
+            <>
+              <Section title="Image Data">
+                <ImageWithLoader src={`${host}/game/animBorder/${item.themeData?.SeasonBorderID}`} className="min-h-96 w-full rounded-lg bg-slate-900/80" imgClassName="max-h-[80vh] max-w-full object-contain" />
+              </Section>
+              <StoreDataSection rows={item.store} langs={langs} />
+            </>
+          )}
+          right={<FieldGrid data={item.themeData} langs={langs} title="Border Data" />}
+        />
       </>
     ),
   },
+};
+
+function resolvedStoreConfig({
+  type,
+  dataKey,
+  idKey,
+  nameKey,
+  displayKey = 'DisplayNameKey',
+  descriptionKey = 'DescriptionKey',
+  queryKey,
+  title,
+  dataTitle,
+  imageTitle = 'Image Data',
+  imageLabel,
+  cardImageClassName = '',
+  detailImageClassName = '',
+  compactCard = false,
+  cardClassName,
+  badgeClassName,
+  defaultSort,
+  rowHeight,
+  maxColumns,
+  extraFilters = [],
+  animationSection,
+}) {
+  const typeFilterLabel = `${title} Type`;
+  return {
+    queryKey,
+    cardClassName,
+    badgeClassName,
+    rowHeight,
+    maxColumns,
+    id: (item) => item?.[dataKey]?.[idKey] || item?.ArrayIndex,
+    defaultSort: defaultSort || 'indexDesc',
+    name: (item, langs) => label(item?.[dataKey]?.[displayKey] || item?.[dataKey]?.[nameKey], langs),
+    search: (item, langs) => [
+      item?.[dataKey]?.[nameKey],
+      item?.[dataKey]?.[idKey],
+      label(item?.[dataKey]?.[displayKey], langs),
+      label(item?.[dataKey]?.[descriptionKey], langs),
+      ...storeRows(item).map((row) => [row.StoreName, row.DisplayNameKey, row.DescriptionKey, row.SearchTags, row.Label, row.Rarity].filter(Boolean).join(' ')),
+      item?.promo?.StoreName,
+      item?.promo?.Type,
+      item?.bp?.ID,
+      item?.entitlement?.EntitlementName,
+    ],
+    filters: [
+      { key: 'source', label: 'Source', value: (item) => item.source || (asArray(item.store).length ? 'Store' : 'Data') },
+      { key: 'rarity', label: 'Rarity', value: (item) => asArray(item.store).map((row) => row.Rarity) },
+      { key: 'type', label: typeFilterLabel, value: (item) => item?.promo?.Type || item?.bp?.ID || item?.entitlement?.EntitlementName },
+      { key: 'storeOnly', label: `Store ${title} Only`, type: 'toggle', value: (item) => asArray(item.store).length > 0 },
+      ...extraFilters,
+    ],
+    card: (item, langs) => (
+      <div className="flex w-full flex-col items-center justify-start gap-3 text-center">
+        {type !== 'Moniker' && (
+          <div className="min-w-0">
+            <div className="font-semibold text-gray-900 dark:text-white">{label(item?.[dataKey]?.[displayKey] || item?.[dataKey]?.[nameKey], langs)}</div>
+          </div>
+        )}
+        {type === 'Moniker' ? (
+          <MonikerChip entry={{ type: 'Moniker', resolved: item, item: item?.[dataKey]?.[nameKey] }} langs={langs} large={!compactCard} />
+        ) : (
+          <div className="flex w-full justify-center">
+            <ItemThumb entry={{ type, resolved: item, item: item?.[dataKey]?.[nameKey] }} langs={langs} small={!cardImageClassName} className={cardImageClassName} />
+          </div>
+        )}
+        <CostBadges costs={storeRows(item).flatMap(storeCostBadges)} small />
+      </div>
+    ),
+    detail: (item, langs) => {
+      const titleText = label(item?.[dataKey]?.[displayKey] || item?.[dataKey]?.[nameKey], langs);
+      const imageEntry = { type, resolved: item, item: item?.[dataKey]?.[nameKey] };
+      const left = type === 'Moniker' ? null : (animationSection ? animationSection(item, langs) : (
+        <Section title={imageLabel || imageTitle}>
+          <div className="flex min-h-64 items-center justify-center rounded-lg bg-slate-900/80 p-3">
+            <ItemThumb entry={imageEntry} langs={langs} className={detailImageClassName} />
+          </div>
+        </Section>
+      ));
+      const store = storeRows(item);
+      const right = (
+        <>
+          <StoreDataSection rows={store} langs={langs} />
+          <FieldGrid data={item?.[dataKey]} langs={langs} title={dataTitle} />
+        </>
+      );
+      return (
+        <>
+          <Header
+            title={titleText}
+            subtitle={item?.[dataKey]?.[nameKey]}
+            description={label(item?.[dataKey]?.[descriptionKey], langs)}
+          />
+          {left ? <DetailColumns left={left} right={right} /> : right}
+        </>
+      );
+    },
+  };
+}
+
+function legendIconSrc(legend) {
+  if (!legend) return null;
+  return `${host}/game/getGfx/${legend?.costumeType?.CostumeIconFileName}/${legend?.costumeType?.CostumeIcon}`;
+}
+
+function sortedBattlePassValue(a, b) {
+  const num = (value) => parseInt(String(value || '').replace('BP', '').split('-')[0], 10) || 0;
+  const diff = num(a) - num(b);
+  return diff || String(a).localeCompare(String(b));
+}
+
+function mixedStoreRows(item) {
+  return [
+    ...asArray(item?.store),
+    ...asArray(item?.skin?.store),
+  ].filter(Boolean);
+}
+
+function skinDisplayName(item, langs) {
+  return label(item?.costumeData?.DisplayNameKey || item?.costumeData?.CostumeName, langs);
+}
+
+function skinAnimButtonRows(animTypes = {}, overAnim) {
+  const hasOther = animTypes.idleOther && animTypes.selectedOther;
+  if (!hasOther) {
+    return [[
+      animTypes.idle && { key: 'idle', label: 'Idle', anim: animTypes.idle, urlType: 'all' },
+      animTypes.selected && { key: 'selected', label: 'Selected', anim: animTypes.selected, urlType: 'all' },
+      animTypes.selected && { key: 'selectedLoop', label: 'Selected Loop', anim: animTypes.selected, urlType: 'loop' },
+      overAnim?.idle && { key: 'idleExtended', label: 'Idle Extended', anim: overAnim.idle, urlType: 'all' },
+    ].filter(Boolean)];
+  }
+  return [
+    [
+      animTypes.idleOther && { key: 'idleOther', label: 'Idle (Main)', anim: animTypes.idleOther, urlType: 'all' },
+      animTypes.selectedOther && { key: 'selectedOther', label: 'Selected (Main)', anim: animTypes.selectedOther, urlType: 'all' },
+      animTypes.selectedOther && { key: 'selectedOtherLoop', label: 'Selected Loop (Main)', anim: animTypes.selectedOther, urlType: 'loop' },
+      overAnim?.idle && { key: 'idleExtended', label: 'Idle Extended', anim: overAnim.idle, urlType: 'all' },
+    ].filter(Boolean),
+    [
+      animTypes.idle && { key: 'idle', label: 'Idle (Other)', anim: animTypes.idle, urlType: 'all' },
+      animTypes.selected && { key: 'selected', label: 'Selected (Other)', anim: animTypes.selected, urlType: 'all' },
+      animTypes.selected && { key: 'selectedLoop', label: 'Selected Loop (Other)', anim: animTypes.selected, urlType: 'loop' },
+    ].filter(Boolean),
+  ].filter((row) => row.length);
+}
+
+function SkinAnimationSection({ item, langs }) {
+  const rows = skinAnimButtonRows(item?.animTypes, item?.overAnim);
+  const first = rows.flat()[0];
+  const [current, setCurrent] = useState(first || null);
+  useEffect(() => setCurrent(first || null), [item?.costumeData?.CostumeID]);
+  const src = current
+    ? `${host}/game/anim/char/${item?.HeroID}-${item?.SkinInt}/Animation_CharacterSelect/a__CharacterSelectAnimation/${current.anim}/${current.urlType}`
+    : itemImage({ type: 'Costume', resolved: item });
+  return (
+    <Section title="Animation/Image Data">
+      <div className="space-y-2">
+        {rows.map((row, index) => (
+          <div key={index} className="flex flex-wrap gap-2">
+            {row.map((button) => (
+              <ToggleButton key={button.key} active={current?.key === button.key} onClick={() => setCurrent(button)}>
+                {button.label}
+              </ToggleButton>
+            ))}
+          </div>
+        ))}
+      </div>
+      <AnimationImage src={src} alt={skinDisplayName(item, langs)} />
+      {asArray(item?.costumeData?.WeaponSkins).length > 0 && (
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {asArray(item.costumeData.WeaponSkins).map((weapon) => (
+            <div key={weapon.WeaponSkinID} className="flex items-center gap-3 rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+              <ImageWithLoader src={`${host}/game/getGfx/UI_Icons/a_WeaponIcon_${weapon.BaseWeapon}/1`} className="h-8 w-8 bg-transparent" imgClassName="max-h-full max-w-full object-contain" small />
+              <ImageWithLoader src={`${host}/game/anim/weapon/${weapon.WeaponSkinID}/UI_TooltipAnimations/a__TooltipAnimation/${weapon.BaseWeapon}Pose/all`} className="h-24 w-24 rounded-lg bg-slate-900/80" small />
+              <div className="min-w-0 text-sm font-bold text-white">{label(weapon.DisplayNameKey || weapon.WeaponSkinName, langs)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function SkinCard({ item, legends, langs }) {
+  const legend = asArray(legends).find((entry) => String(entry?.heroData?.HeroID) === String(item?.HeroID));
+  const weapons = asArray(item?.costumeData?.WeaponSkins).slice(0, 2);
+  return (
+    <div className="flex w-full flex-col items-center justify-start gap-3 text-center">
+      <div className="absolute left-3 top-3 flex items-center gap-2 rounded-lg bg-slate-900/80 px-2 py-1 text-xs font-bold text-white">
+        {legend && <ImageWithLoader src={legendIconSrc(legend)} className="h-7 w-7 bg-transparent" imgClassName="max-h-full max-w-full object-contain" small />}
+        {legend?.heroData?.HeroName || item?.OwnerHero}
+      </div>
+      <div className="mt-4 min-w-0">
+        <div className="font-semibold text-gray-900 dark:text-white">{skinDisplayName(item, langs)}</div>
+      </div>
+      <div className="grid w-full grid-cols-[minmax(0,1fr)_4.5rem] items-center gap-2">
+        <ImageWithLoader src={itemImage({ type: 'Costume', resolved: item })} alt={skinDisplayName(item, langs)} className="h-40 w-full rounded-xl bg-slate-900/80" imgClassName="max-h-full max-w-full object-contain" />
+        <div className="flex flex-col gap-2">
+          {weapons.map((weapon) => (
+            <ImageWithLoader key={weapon.WeaponSkinID} src={`${host}/game/anim/weapon/${weapon.WeaponSkinID}/UI_TooltipAnimations/a__TooltipAnimation/${weapon.BaseWeapon}Pose/all`} className="h-16 w-16 rounded-lg bg-slate-900/80" small />
+          ))}
+        </div>
+      </div>
+      <TagChips tags={storeTags(item)} />
+      <CostBadges costs={storeRows(item).flatMap(storeCostBadges)} small />
+    </div>
+  );
+}
+
+function skinConfig(legends = []) {
+  return {
+    queryKey: 'skin',
+    id: (item) => item?.costumeData?.CostumeID,
+    defaultSort: 'indexDesc',
+    name: skinDisplayName,
+    search: (item, langs) => [
+      skinDisplayName(item, langs),
+      item?.costumeData?.CostumeName,
+      item?.costumeData?.CostumeID,
+      item?.OwnerHero,
+      item?.costumeData?.ReplacementHeroName,
+      item?.costumeData?.ParentCrossover,
+      ...storeRows(item).map((row) => [row.StoreName, row.DisplayNameKey, row.DescriptionKey, row.SearchTags, row.Label, row.Rarity].filter(Boolean).join(' ')),
+      item?.promo?.StoreName,
+      item?.promo?.Type,
+      item?.chest?.ChanceBoxName,
+      item?.bp?.ID,
+      item?.entitlement?.EntitlementName,
+    ],
+    filters: [
+      {
+        key: 'hero',
+        label: 'Legends',
+        type: 'iconMulti',
+        value: (item) => item?.HeroID,
+        options: (data) => asArray(legends)
+          .filter((legend) => data.some((item) => String(item?.HeroID) === String(legend?.heroData?.HeroID)))
+          .sort((a, b) => Number(a?.heroData?.ReleaseOrderID || a?.heroData?.HeroID || 0) - Number(b?.heroData?.ReleaseOrderID || b?.heroData?.HeroID || 0))
+          .map((legend) => legend?.heroData?.HeroID),
+        icon: (value) => legendIconSrc(asArray(legends).find((legend) => String(legend?.heroData?.HeroID) === String(value))),
+        iconLabel: (value) => asArray(legends).find((legend) => String(legend?.heroData?.HeroID) === String(value))?.heroData?.HeroName || value,
+      },
+      { key: 'cohort', label: 'Cohorts', value: (item) => asArray(item.store).map((row) => row.Cohort) },
+      { key: 'promo', label: 'Promotions', value: (item) => asArray(item.store).map((row) => row.TimedPromotion) },
+      { key: 'rarity', label: 'Rarity', value: (item) => asArray(item.store).map((row) => row.Rarity) },
+      { key: 'storeLabel', label: 'Store Label', value: (item) => asArray(item.store).map((row) => row.Label) },
+      { key: 'promoType', label: 'Promo Codes', value: (item) => item?.promo?.Type },
+      { key: 'chest', label: 'Chests', value: (item) => item?.chest?.ChanceBoxName },
+      { key: 'costumeIndex', label: 'Costume Index', value: (item) => item?.costumeData?.CostumeIndex },
+      { key: 'battlePass', label: 'Battle Pass', value: (item) => item?.bp?.ID, options: (data) => [...new Set(data.map((item) => item?.bp?.ID).filter(clean))].sort(sortedBattlePassValue) },
+      { key: 'storeOnly', label: 'Store Skins Only', type: 'toggle', value: (item) => asArray(item.store).length > 0 },
+      { key: 'entitlement', label: 'DLC Skins Only', type: 'toggle', value: (item) => !!item?.entitlement },
+    ],
+    card: (item, langs) => <SkinCard item={item} legends={legends} langs={langs} />,
+    detail: (item, langs) => {
+      const replacementPortrait = item?.costumeData?.ReplacementPortrait
+        ? `${host}/game/getGfx/${item.costumeData.ReplacementPortraitFileName}/${item.costumeData.ReplacementPortrait}M`
+        : null;
+      return (
+        <>
+          <Header
+            title={skinDisplayName(item, langs)}
+            subtitle={item?.costumeData?.CostumeName}
+            description={label(storeRows(item)[0]?.DescriptionKey || item?.costumeData?.DescriptionKey, langs)}
+            hero={replacementPortrait && <ImageWithLoader src={replacementPortrait} className="h-24 w-24 bg-transparent" imgClassName="max-h-full max-w-full object-contain" />}
+            tags={storeTags(item)}
+            inlineHero
+          />
+          <DetailColumns
+            left={<SkinAnimationSection item={item} langs={langs} />}
+            right={(
+              <>
+                <StoreDataSection rows={storeRows(item)} langs={langs} />
+                <FieldGrid data={item?.costumeData} langs={langs} title="Costume Data" exclude={['WeaponSkins']} />
+                <FieldGrid data={item?.entitlement} langs={langs} title="Entitlement Data" />
+              </>
+            )}
+          />
+        </>
+      );
+    },
+  };
+}
+
+function weaponDisplayName(item, langs) {
+  return label(item?.weaponData?.DisplayNameKey || item?.weaponData?.WeaponSkinName, langs);
+}
+
+function weaponAnimationBase(baseWeapon) {
+  if (baseWeapon === 'Pistol') return 'Pistols';
+  if (baseWeapon === 'RocketLance') return 'Lance';
+  return baseWeapon || 'Sword';
+}
+
+function weaponAnimationName(baseWeapon) {
+  return baseWeapon === 'Sword' ? 'a__1HandRearAnimation' : `a__${baseWeapon || 'Sword'}Animation`;
+}
+
+function WeaponImagesSection({ item, langs }) {
+  const base = item?.weaponData?.BaseWeapon || 'Sword';
+  return (
+    <Section title="Weapon Images">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="rounded-lg bg-slate-900/80 p-3">
+          <div className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">Tooltip</div>
+          <AnimationImage src={`${host}/game/anim/weapon/${item?.weaponData?.WeaponSkinID}/UI_TooltipAnimations/a__TooltipAnimation/${base}Pose/all`} alt={weaponDisplayName(item, langs)} />
+        </div>
+        <div className="rounded-lg bg-slate-900/80 p-3">
+          <div className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">In Game</div>
+          <AnimationImage src={`${host}/game/anim/weapon/${item?.weaponData?.WeaponSkinID}/Animation_${weaponAnimationBase(base)}/${weaponAnimationName(base)}/All/all`} alt={weaponDisplayName(item, langs)} />
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function WeaponCard({ item, legends, langs }) {
+  const owner = item?.skin?.OwnerHero;
+  const legend = asArray(legends).find((entry) => entry?.heroData?.HeroName === owner);
+  return (
+    <div className="flex w-full flex-col items-center justify-start gap-3 text-center">
+      {owner && (
+        <div className="absolute left-3 top-3 flex items-center gap-2 rounded-lg bg-slate-900/80 px-2 py-1 text-xs font-bold text-white">
+          {legend && <ImageWithLoader src={legendIconSrc(legend)} className="h-7 w-7 bg-transparent" imgClassName="max-h-full max-w-full object-contain" small />}
+          {owner}
+        </div>
+      )}
+      <div className="mt-4 min-w-0">
+        <div className="inline-flex items-center justify-center gap-2 font-semibold text-gray-900 dark:text-white">
+          <ImageWithLoader src={`${host}/game/getGfx/UI_Icons/a_WeaponIcon_${item?.weaponData?.BaseWeapon}/1`} className="h-7 w-7 bg-transparent" imgClassName="max-h-full max-w-full object-contain" small />
+          {weaponDisplayName(item, langs)}
+        </div>
+      </div>
+      <ImageWithLoader src={itemImage({ type: 'WeaponSkin', resolved: item })} alt={weaponDisplayName(item, langs)} className="h-36 w-36 rounded-xl bg-slate-900/80" imgClassName="max-h-full max-w-full object-contain" />
+      <TagChips tags={storeTags({ store: mixedStoreRows(item) })} />
+      <CostBadges costs={mixedStoreRows(item).flatMap(storeCostBadges)} small />
+    </div>
+  );
+}
+
+function weaponConfig(legends = []) {
+  return {
+    queryKey: 'weapon',
+    id: (item) => item?.weaponData?.WeaponSkinID,
+    defaultSort: 'indexDesc',
+    name: weaponDisplayName,
+    search: (item, langs) => [
+      weaponDisplayName(item, langs),
+      item?.weaponData?.WeaponSkinName,
+      item?.weaponData?.WeaponSkinID,
+      item?.weaponData?.BaseWeapon,
+      item?.skin?.OwnerHero,
+      ...mixedStoreRows(item).map((row) => [row.StoreName, row.DisplayNameKey, row.DescriptionKey, row.SearchTags, row.Label, row.Rarity].filter(Boolean).join(' ')),
+      item?.promo?.StoreName,
+      item?.skin?.promo?.StoreName,
+      item?.bp?.ID,
+      item?.skin?.bp?.ID,
+      item?.entitlement?.EntitlementName,
+      item?.skin?.entitlement?.EntitlementName,
+    ],
+    filters: [
+      {
+        key: 'baseWeapon',
+        label: 'Weapons',
+        type: 'iconMulti',
+        value: (item) => item?.weaponData?.BaseWeapon,
+        icon: (value) => `${host}/game/getGfx/UI_Icons/a_WeaponIcon_${value}/1`,
+      },
+      {
+        key: 'ownerHero',
+        label: 'Legends',
+        type: 'iconMulti',
+        value: (item) => item?.skin?.OwnerHero,
+        options: (data) => asArray(legends)
+          .filter((legend) => data.some((item) => item?.skin?.OwnerHero === legend?.heroData?.HeroName))
+          .sort((a, b) => Number(a?.heroData?.ReleaseOrderID || a?.heroData?.HeroID || 0) - Number(b?.heroData?.ReleaseOrderID || b?.heroData?.HeroID || 0))
+          .map((legend) => legend?.heroData?.HeroName),
+        icon: (value) => legendIconSrc(asArray(legends).find((legend) => legend?.heroData?.HeroName === value)),
+      },
+      { key: 'cohort', label: 'Cohorts', value: (item) => mixedStoreRows(item).map((row) => row.Cohort) },
+      { key: 'rarity', label: 'Rarity', value: (item) => [item?.weaponData?.Rarity, ...mixedStoreRows(item).map((row) => row.Rarity)] },
+      { key: 'storeLabel', label: 'Store Label', value: (item) => [item?.weaponData?.Label, item?.promo?.Label, item?.bp?.Label, item?.skin?.promo?.Label, item?.skin?.bp?.Label, ...mixedStoreRows(item).map((row) => row.Label)] },
+      { key: 'promoType', label: 'Promo Codes', value: (item) => item?.promo?.Type || item?.skin?.promo?.Type },
+      { key: 'chest', label: 'Chests', value: (item) => item?.skin?.chest?.ChanceBoxName },
+      { key: 'battlePass', label: 'Battle Pass', value: (item) => item?.bp?.ID || item?.skin?.bp?.ID, options: (data) => [...new Set(data.map((item) => item?.bp?.ID || item?.skin?.bp?.ID).filter(clean))].sort(sortedBattlePassValue) },
+      { key: 'storeOnly', label: 'Store Weapons Only', type: 'toggle', value: (item) => mixedStoreRows(item).length > 0 },
+      { key: 'entitlement', label: 'DLC Weapons Only', type: 'toggle', value: (item) => !!(item?.entitlement || item?.skin?.entitlement) },
+      { key: 'individual', label: 'Individual Weapons Only', type: 'toggle', value: (item) => !item?.skin?.OwnerHero },
+    ],
+    card: (item, langs) => <WeaponCard item={item} legends={legends} langs={langs} />,
+    detail: (item, langs) => (
+      <>
+        <Header
+          title={weaponDisplayName(item, langs)}
+          subtitle={item?.weaponData?.WeaponSkinName}
+          description={label(mixedStoreRows(item)[0]?.DescriptionKey || item?.weaponData?.DescriptionKey, langs)}
+          tags={storeTags({ store: mixedStoreRows(item) })}
+        />
+        <DetailColumns
+          left={<WeaponImagesSection item={item} langs={langs} />}
+          right={(
+            <>
+              <StoreDataSection rows={mixedStoreRows(item)} langs={langs} />
+              <FieldGrid data={item?.weaponData} langs={langs} title="Weapon Data" />
+              <FieldGrid data={item?.skin?.costumeData} langs={langs} title="Skin Data" exclude={['WeaponSkins']} />
+              <FieldGrid data={item?.entitlement || item?.skin?.entitlement} langs={langs} title="Entitlement Data" />
+            </>
+          )}
+        />
+      </>
+    ),
+  };
+}
+
+function colorDisplayName(item, langs) {
+  return label(item?.colorData?.DisplayNameKey || item?.colorData?.ColorSchemeName, langs);
+}
+
+function ColorIcon({ item, className = 'h-32 w-32' }) {
+  const bg = hex(item?.colorData?.IndicatorColor, '#334155');
+  return (
+    <div className={`${className} flex items-center justify-center rounded-xl border border-slate-700 p-3`} style={{ backgroundColor: bg, color: textColor(bg) }}>
+      {item?.colorData?.IconName ? (
+        <ImageWithLoader src={`${host}/game/getGfx/UI_Icons/${item.colorData.IconName}`} className="h-full w-full bg-transparent" imgClassName="max-h-full max-w-full object-contain" />
+      ) : (
+        <span className="text-lg font-bold">{colorDisplayName(item, {})}</span>
+      )}
+    </div>
+  );
+}
+
+function ColorDetailsSection({ item }) {
+  const rows = Object.entries(item?.colorData || {}).filter(([key, value]) => key.endsWith('_Swap') && clean(value));
+  if (!rows.length) return null;
+  return (
+    <Section title="Color Details">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        {rows.map(([key, value]) => {
+          const bg = hex(value);
+          return (
+            <div key={key} className="rounded-lg border border-slate-700 p-3 text-sm font-bold" style={{ backgroundColor: bg, color: textColor(bg) }}>
+              <div className="text-[10px] uppercase opacity-75">{key.replace(/_Swap$/, '')}</div>
+              <div>{hex(value)}</div>
+            </div>
+          );
+        })}
+      </div>
+    </Section>
+  );
+}
+
+function ColorExclusionSection({ item, colors, langs }) {
+  const names = String(item?.colorData?.ExcludeOpponentTeamColor || '').split(',').map((entry) => entry.trim()).filter(clean);
+  if (!names.length) return null;
+  const matches = names.map((name) => asArray(colors).find((color) => color?.colorData?.ColorSchemeName === name)).filter(Boolean);
+  return (
+    <Section title="Opponent Color Exclusion">
+      <div className="flex flex-wrap gap-3">
+        {matches.length ? matches.map((color) => (
+          <div key={color.colorData.ColorSchemeID} className="flex flex-col items-center gap-1">
+            <ColorIcon item={color} className="h-20 w-20" />
+            <div className="max-w-24 text-center text-xs text-gray-700 dark:text-gray-300">{colorDisplayName(color, langs)}</div>
+          </div>
+        )) : names.map((name) => <span key={name} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-bold text-white">{name}</span>)}
+      </div>
+    </Section>
+  );
+}
+
+function colorConfig(colors = []) {
+  return {
+    queryKey: 'color',
+    id: (item) => item?.colorData?.ColorSchemeID,
+    defaultSort: 'indexDesc',
+    index: (item) => Number(item?.colorData?.OrderID || item?.ArrayIndex || 0),
+    name: colorDisplayName,
+    search: (item, langs) => [
+      colorDisplayName(item, langs),
+      item?.colorData?.ColorSchemeName,
+      item?.colorData?.ColorSchemeID,
+      item?.colorData?.IconName,
+      item?.colorData?.ExcludeOpponentTeamColor,
+      ...storeRows(item).map((row) => [row.StoreName, row.DisplayNameKey, row.DescriptionKey, row.SearchTags, row.Label].filter(Boolean).join(' ')),
+      item?.promo?.StoreName,
+      item?.bp?.ID,
+      item?.entitlement?.EntitlementName,
+    ],
+    filters: [
+      { key: 'cohort', label: 'Cohorts', value: (item) => asArray(item.store).map((row) => row.Cohort) },
+      { key: 'promo', label: 'Promotions', value: (item) => asArray(item.store).map((row) => row.TimedPromotion) },
+      { key: 'storeLabel', label: 'Store Label', value: (item) => asArray(item.store).map((row) => row.Label) },
+      { key: 'promoType', label: 'Promo Codes', value: (item) => item?.promo?.Type },
+      { key: 'battlePass', label: 'Battle Pass', value: (item) => item?.bp?.ID, options: (data) => [...new Set(data.map((item) => item?.bp?.ID).filter(clean))].sort(sortedBattlePassValue) },
+      { key: 'storeOnly', label: 'Store Colors Only', type: 'toggle', value: (item) => asArray(item.store).length > 0 },
+      { key: 'entitlement', label: 'DLC Colors Only', type: 'toggle', value: (item) => !!item?.entitlement },
+    ],
+    card: (item, langs) => (
+      <div className="flex w-full flex-col items-center justify-start gap-3 text-center">
+        <div className="font-semibold text-gray-900 dark:text-white">{colorDisplayName(item, langs)}</div>
+        <ColorIcon item={item} className="h-24 w-24" />
+        <TagChips tags={storeTags(item)} />
+        <CostBadges costs={storeRows(item).flatMap(storeCostBadges)} small />
+      </div>
+    ),
+    detail: (item, langs) => (
+      <>
+        <Header
+          title={colorDisplayName(item, langs)}
+          subtitle={item?.colorData?.ColorSchemeName}
+          description={label(storeRows(item)[0]?.DescriptionKey || item?.colorData?.DescriptionKey, langs)}
+          hero={<ColorIcon item={item} className="h-28 w-28" />}
+          tags={storeTags(item)}
+          inlineHero
+        />
+        <DetailColumns
+          left={<ColorDetailsSection item={item} />}
+          right={(
+            <>
+              <ColorExclusionSection item={item} colors={colors} langs={langs} />
+              <FieldGrid data={item?.colorData} langs={langs} title="Color Scheme Data" />
+              <StoreDataSection rows={storeRows(item)} langs={langs} />
+              <FieldGrid data={item?.entitlement} langs={langs} title="Entitlement Data" />
+            </>
+          )}
+        />
+      </>
+    ),
+  };
+}
+
+function emojiDisplayName(item, langs) {
+  return label(item?.emojiData?.DisplayNameKey || item?.emojiData?.EmojiName, langs);
+}
+
+function emojiConfig(emojis = []) {
+  return {
+    queryKey: 'emoji',
+    id: (item) => item?.emojiData?.EmojiID,
+    defaultSort: 'indexDesc',
+    name: emojiDisplayName,
+    search: (item, langs) => [
+      emojiDisplayName(item, langs),
+      item?.emojiData?.EmojiName,
+      item?.emojiData?.EmojiID,
+      item?.emojiData?.Category,
+      ...storeRows(item).map((row) => [row.StoreName, row.DisplayNameKey, row.DescriptionKey, row.SearchTags, row.Label].filter(Boolean).join(' ')),
+      item?.promo?.StoreName,
+      item?.bp?.ID,
+      item?.entitlement?.EntitlementName,
+    ],
+    filters: [
+      {
+        key: 'category',
+        label: 'Categories',
+        type: 'iconMulti',
+        value: (item) => item?.emojiData?.Category,
+        icon: (value) => {
+          const match = asArray(emojis).find((item) => item?.emojiData?.Category === value);
+          return match ? `${host}/game/animEmoji/${match.emojiData.EmojiID}` : null;
+        },
+      },
+      { key: 'cohort', label: 'Cohorts', value: (item) => asArray(item.store).map((row) => row.Cohort) },
+      { key: 'promo', label: 'Promotions', value: (item) => asArray(item.store).map((row) => row.TimedPromotion) },
+      { key: 'storeLabel', label: 'Store Label', value: (item) => asArray(item.store).map((row) => row.Label) },
+      { key: 'promoType', label: 'Promo Codes', value: (item) => item?.promo?.Type },
+      { key: 'battlePass', label: 'Battle Pass', value: (item) => item?.bp?.ID, options: (data) => [...new Set(data.map((item) => item?.bp?.ID).filter(clean))].sort(sortedBattlePassValue) },
+      { key: 'storeOnly', label: 'Store Emojis Only', type: 'toggle', value: (item) => asArray(item.store).length > 0 },
+      { key: 'entitlement', label: 'DLC Emojis Only', type: 'toggle', value: (item) => !!item?.entitlement },
+      { key: 'bundle', label: 'Bundle Emojis Only', type: 'toggle', value: (item) => storeRows(item).some((row) => row.Type === 'Bundle') },
+    ],
+    card: (item, langs) => (
+      <div className="flex w-full flex-col items-center justify-start gap-3 text-center">
+        <div className="font-semibold text-gray-900 dark:text-white">{emojiDisplayName(item, langs)}</div>
+        <ImageWithLoader src={`${host}/game/animEmoji/${item?.emojiData?.EmojiID}`} alt={emojiDisplayName(item, langs)} className="h-28 w-28 rounded-xl bg-slate-900/80" imgClassName="max-h-full max-w-full object-contain" />
+        <TagChips tags={storeTags(item)} />
+        <CostBadges costs={storeRows(item).flatMap(storeCostBadges)} small />
+      </div>
+    ),
+    detail: (item, langs) => (
+      <>
+        <Header
+          title={emojiDisplayName(item, langs)}
+          subtitle={item?.emojiData?.EmojiName}
+          description={label(storeRows(item)[0]?.DescriptionKey || item?.emojiData?.DescriptionKey, langs)}
+          tags={storeTags(item)}
+        />
+        <DetailColumns
+          left={<Section title="Image Data"><div className="flex min-h-64 items-center justify-center rounded-lg bg-slate-900/80 p-3"><ImageWithLoader src={`${host}/game/animEmoji/${item?.emojiData?.EmojiID}`} className="h-48 w-48 bg-transparent" imgClassName="max-h-full max-w-full object-contain" /></div></Section>}
+          right={(
+            <>
+              <StoreDataSection rows={storeRows(item)} langs={langs} />
+              <FieldGrid data={item?.emojiData} langs={langs} title="Emoji Data" />
+              <FieldGrid data={item?.entitlement} langs={langs} title="Entitlement Data" />
+            </>
+          )}
+        />
+      </>
+    ),
+  };
+}
+
+const resolvedConfigs = {
+  avatars: resolvedStoreConfig({ title: 'Avatars', queryKey: 'avatar', type: 'Avatar', dataKey: 'avatarData', idKey: 'AvatarID', nameKey: 'AvatarName', dataTitle: 'Avatar Data', imageTitle: 'Avatar Image', cardImageClassName: 'h-32 w-32', defaultSort: 'indexDesc', rowHeight: 290 }),
+  taunts: {
+    rowHeight: 305,
+    queryKey: 'taunt',
+    id: (item) => item?.TauntID || item?.ArrayIndex,
+    defaultSort: 'indexDesc',
+    name: (item, langs) => label(item?.DisplayNameKey || item?.TauntName, langs),
+    search: (item, langs) => [
+      item?.TauntName,
+      item?.TauntID,
+      item?.PowerName,
+      item?.RandomPowers,
+      label(item?.DisplayNameKey, langs),
+      label(item?.DescriptionKey, langs),
+      ...storeRows(item).map((row) => [row.StoreName, row.DisplayNameKey, row.DescriptionKey, row.SearchTags, row.Label, row.Rarity].filter(Boolean).join(' ')),
+      item?.promo?.StoreName,
+      item?.promo?.Type,
+      item?.bp?.ID,
+      item?.entitlement?.EntitlementName,
+      item?.timedEvent?.TimedEventName,
+    ],
+    filters: [
+      { key: 'source', label: 'Source', value: (item) => item.source || (asArray(item.store).length ? 'Store' : 'Data') },
+      { key: 'rarity', label: 'Rarity', value: (item) => asArray(item.store).map((row) => row.Rarity) },
+      { key: 'team', label: 'Team Taunt', value: (item) => item?.powerData?.TeamTauntPower ? 'Team Taunt' : 'Solo Taunt' },
+      { key: 'event', label: 'Timed Event', value: (item) => item?.timedEvent?.TimedEventName },
+      { key: 'type', label: 'Taunt Type', value: (item) => item?.promo?.Type || item?.bp?.ID || item?.entitlement?.EntitlementName },
+      { key: 'storeOnly', label: 'Store Taunts Only', type: 'toggle', value: (item) => asArray(item.store).length > 0 },
+    ],
+    card: (item, langs) => (
+      <div className="flex w-full flex-col items-center justify-start gap-3 text-center">
+        <div className="min-w-0">
+          <div className="font-semibold text-gray-900 dark:text-white">{label(item?.DisplayNameKey || item?.TauntName, langs)}</div>
+        </div>
+        <div className="flex w-full justify-center">
+          <ItemThumb entry={{ type: 'Taunt', resolved: item, item: item?.TauntName }} langs={langs} />
+        </div>
+        <CostBadges costs={storeRows(item).flatMap(storeCostBadges)} small />
+      </div>
+    ),
+    detail: (item, langs) => (
+      <>
+        <Header
+          title={label(item?.DisplayNameKey || item?.TauntName, langs)}
+          subtitle={item?.TauntName}
+          description={label(item?.DescriptionKey, langs)}
+        />
+        <DetailColumns
+          left={<TauntAnimationSection item={item} langs={langs} />}
+          right={(
+            <>
+              <StoreDataSection rows={storeRows(item)} langs={langs} />
+              <FieldGrid data={item} langs={langs} title="Taunt Data" exclude={['store', 'promo', 'bp', 'entitlement', 'timedEvent', 'powerData']} />
+              <FieldGrid data={item?.powerData} langs={langs} title="Power Data" />
+            </>
+          )}
+        />
+      </>
+    ),
+  },
+  podiums: resolvedStoreConfig({ title: 'Podiums', queryKey: 'podium', type: 'Podium', dataKey: 'podiumData', idKey: 'PodiumID', nameKey: 'PodiumName', dataTitle: 'Podium Data', imageTitle: 'Animation Data', cardImageClassName: 'h-44 w-44', rowHeight: 345, animationSection: (item, langs) => <PodiumAnimationSection item={item} langs={langs} /> }),
+  ui: resolvedStoreConfig({ title: 'UI Themes', queryKey: 'theme', type: 'PlayerTheme', dataKey: 'themeData', idKey: 'PlayerThemeID', nameKey: 'PlayerThemeName', dataTitle: 'UI Theme Data', imageTitle: 'Image Data', rowHeight: 260 }),
+  companions: {
+    ...resolvedStoreConfig({
+    title: 'Companions',
+    queryKey: 'companion',
+    type: 'Companion',
+    dataKey: 'companionData',
+    idKey: 'CompanionID',
+    nameKey: 'CompanionName',
+    dataTitle: 'Companion Data',
+    imageTitle: 'Animation Data',
+    cardImageClassName: 'h-32 w-32',
+    rowHeight: 290,
+    extraFilters: [
+      { key: 'chest', label: 'Chest', value: (item) => item?.chest?.ChanceBoxName },
+      { key: 'event', label: 'Timed Event', value: (item) => item?.timedEvent?.TimedEventName },
+    ],
+    animationSection: (item, langs) => <CompanionAnimationSection item={item} langs={langs} />,
+    }),
+    detail: (item, langs) => (
+      <>
+        <Header
+          title={label(item?.companionData?.DisplayNameKey || item?.companionData?.CompanionName, langs)}
+          subtitle={item?.companionData?.CompanionName}
+          description={label(item?.companionData?.DescriptionKey, langs)}
+        />
+        <DetailColumns
+          left={<CompanionAnimationSection item={item} langs={langs} />}
+          right={(
+            <>
+              <StoreDataSection rows={storeRows(item)} langs={langs} />
+              <CompanionTraitsSection item={item} />
+              <FieldGrid
+                data={item?.companionData}
+                langs={langs}
+                title="Companion Data"
+                exclude={companionTraitDefinitions.map(([key]) => key)}
+              />
+            </>
+          )}
+        />
+      </>
+    ),
+  },
+  sidekicks: resolvedStoreConfig({
+    title: 'Sidekicks',
+    queryKey: 'sidekick',
+    type: 'SpawnBot',
+    dataKey: 'spawnBotData',
+    idKey: 'SpawnBotID',
+    nameKey: 'SpawnBotName',
+    dataTitle: 'Sidekick Data',
+    imageTitle: 'Animation Data',
+    cardImageClassName: 'h-32 w-32',
+    rowHeight: 290,
+    animationSection: (item, langs) => <SimpleAnimationSection src={`${host}/game/anim/spawnbot/${item?.spawnBotData?.SpawnBotID}/Animation_Robot/a__AnimationRobot/Ready/all`} alt={label(item?.spawnBotData?.DisplayNameKey || item?.spawnBotData?.SpawnBotName, langs)} />,
+  }),
+  koeffects: resolvedStoreConfig({
+    title: 'KO Effects',
+    queryKey: 'koeffect',
+    type: 'KOEffect',
+    dataKey: 'koEffectData',
+    idKey: 'TrailEffectID',
+    nameKey: 'TrailEffectName',
+    dataTitle: 'KO Effect Data',
+    imageTitle: 'Animation Data',
+    cardImageClassName: 'h-32 w-32',
+    rowHeight: 290,
+    animationSection: (item, langs) => <SimpleAnimationSection src={`${host}/game/animTrail/${item?.koEffectData?.TrailEffectID}`} alt={label(item?.koEffectData?.DisplayNameKey || item?.koEffectData?.TrailEffectName, langs)} />,
+  }),
+  smokeTrails: resolvedStoreConfig({
+    title: 'Smoke Trails',
+    queryKey: 'smoketrail',
+    type: 'EmitterGroup',
+    dataKey: 'emitterTrailData',
+    idKey: 'EmitterGroupID',
+    nameKey: 'EmitterGroupName',
+    dataTitle: 'Smoke Trail Data',
+    imageTitle: 'Animation Data',
+    cardImageClassName: 'h-32 w-32',
+    rowHeight: 290,
+    animationSection: (item, langs) => <SmokeTrailAnimationSection item={item} langs={langs} />,
+  }),
+  titles: resolvedStoreConfig({ title: 'Titles', queryKey: 'title', type: 'Moniker', dataKey: 'monikerData', idKey: 'MonikerID', nameKey: 'MonikerName', displayKey: 'DisplayNameKey', descriptionKey: 'DescriptionKey', dataTitle: 'Title Data', cardClassName: 'p-2 pt-8 min-h-0', badgeClassName: 'absolute left-1/2 top-1.5 z-10 -translate-x-1/2 pointer-events-none', rowHeight: 135 }),
 };
 
 function entitlementItems(item) {
@@ -891,10 +2220,16 @@ function groupRewards(rewards) {
 }
 
 function rewardCondition(reward) {
-  if (String(reward?.rewardData?.ForWinningFaction).toLowerCase() === 'true') return 'Win only';
-  if (String(reward?.rewardData?.ForLosingFaction).toLowerCase() === 'true') return 'Participation';
-  if (clean(reward?.rewardData?.InfluenceThreshold) && Number(reward.rewardData.InfluenceThreshold) > 0) return `${reward.rewardData.InfluenceThreshold} influence`;
-  return '';
+  return rewardConditions(reward)[0] || '';
+}
+
+function rewardConditions(reward) {
+  const data = reward?.rewardData || {};
+  return [
+    clean(data.InfluenceThreshold) && Number(data.InfluenceThreshold) > 0 ? `${Number(data.InfluenceThreshold).toLocaleString()} influence XP` : '',
+    String(data.ForWinningFaction).toLowerCase() === 'true' ? 'Faction win reward' : '',
+    String(data.ForLosingFaction).toLowerCase() === 'true' ? 'Participation reward' : '',
+  ].filter(Boolean);
 }
 
 function isMissionReward(reward) {
@@ -946,24 +2281,41 @@ function Tooltip({ lines, children, className = '' }) {
   );
 }
 
-function RewardStrip({ rewards, langs }) {
+function RewardStrip({ rewards, langs, renderThumb }) {
   const visible = asArray(rewards).filter(Boolean);
   if (!visible.length) return null;
   return (
     <div className="flex flex-wrap gap-3">
       {visible.map((reward, index) => (
-        <div key={itemKey(reward, index)} className={itemType(reward) === 'PlayerTheme' ? 'max-w-80' : 'max-w-32'}>
-          <ItemThumb entry={reward} langs={langs} small={itemType(reward) !== 'PlayerTheme'} />
+        <div key={itemKey(reward, index)} className={itemType(reward) === 'PlayerTheme' ? 'w-full' : 'max-w-32'}>
+          {renderThumb ? renderThumb(reward) : <ItemThumb entry={reward} langs={langs} small={itemType(reward) !== 'PlayerTheme'} />}
           <div className="mt-1 text-xs text-gray-700 dark:text-gray-300">{itemLabel(reward, langs)}</div>
-          {rewardCondition(reward) && <div className="mt-1 text-[10px] font-bold text-amber-700 dark:text-amber-300">{rewardCondition(reward)}</div>}
+          {rewardConditions(reward).length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1">
+              {rewardConditions(reward).map((condition) => (
+                <span key={condition} className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">{condition}</span>
+              ))}
+            </div>
+          )}
         </div>
       ))}
     </div>
   );
 }
 
+function SkirmishRewardThumb({ reward, langs }) {
+  if (itemType(reward) === 'PlayerTheme') {
+    return <UiThemePieces entry={reward} />;
+  }
+  return <ItemThumb entry={reward} langs={langs} small />;
+}
+
 function factionRewards(item, factionName) {
   return asArray(item.rewards).filter((reward) => !factionName || reward.rewardData?.ForFaction === factionName);
+}
+
+function factionLabel(faction, langs) {
+  return label(faction?.DisplayNameKey || faction?.FactionName, langs);
 }
 
 export function BundleStoreView({ bundles, langs }) {
@@ -986,9 +2338,72 @@ export function BorderStoreView({ borders, langs }) {
   return <DatabaseView title="Borders" items={borders} langs={langs} config={configs.borders} />;
 }
 
+export function SkinMetadataStoreView({ skins, legends, langs }) {
+  const config = useMemo(() => skinConfig(legends), [legends]);
+  return <DatabaseView title="Skins" items={skins} langs={langs} config={config} />;
+}
+
+export function WeaponMetadataStoreView({ weapons, legends, langs }) {
+  const data = useMemo(() => asArray(weapons).map((item, index) => ({ ...item, ArrayIndex: item?.ArrayIndex ?? index })), [weapons]);
+  const config = useMemo(() => weaponConfig(legends), [legends]);
+  return <DatabaseView title="Weapon Skins" items={data} langs={langs} config={config} />;
+}
+
+export function ColorSchemeMetadataStoreView({ colors, langs }) {
+  const data = useMemo(() => asArray(colors).map((item) => ({ ...item, store: storeRows(item) })), [colors]);
+  const config = useMemo(() => colorConfig(data), [data]);
+  return <DatabaseView title="Colors" items={data} langs={langs} config={config} />;
+}
+
+export function EmojiMetadataStoreView({ emojis, langs }) {
+  const data = useMemo(() => asArray(emojis).map((item) => ({ ...item, store: storeRows(item) })), [emojis]);
+  const config = useMemo(() => emojiConfig(data), [data]);
+  return <DatabaseView title="Emojis" items={data} langs={langs} config={config} />;
+}
+
+export function AvatarMetadataStoreView({ avatars, langs }) {
+  return <DatabaseView title="Avatars" items={avatars} langs={langs} config={resolvedConfigs.avatars} />;
+}
+
+export function TauntMetadataStoreView({ taunts, langs }) {
+  return <DatabaseView title="Taunts" items={taunts} langs={langs} config={resolvedConfigs.taunts} />;
+}
+
+export function PodiumMetadataStoreView({ podiums, langs }) {
+  return <DatabaseView title="Podiums" items={podiums} langs={langs} config={resolvedConfigs.podiums} />;
+}
+
+export function UIThemeMetadataStoreView({ themes, langs }) {
+  return <DatabaseView title="UI Themes" items={themes} langs={langs} config={resolvedConfigs.ui} />;
+}
+
+export function CompanionMetadataStoreView({ companions, langs }) {
+  return <DatabaseView title="Companions" items={companions} langs={langs} config={resolvedConfigs.companions} />;
+}
+
+export function SpawnBotMetadataStoreView({ spawnbots, langs }) {
+  return <DatabaseView title="Sidekicks" items={spawnbots} langs={langs} config={resolvedConfigs.sidekicks} />;
+}
+
+export function KOEffectMetadataStoreView({ koEffects, langs }) {
+  return <DatabaseView title="KO Effects" items={koEffects} langs={langs} config={resolvedConfigs.koeffects} />;
+}
+
+export function SmokeTrailMetadataStoreView({ smokeTrails, langs }) {
+  return <DatabaseView title="Smoke Trails" items={smokeTrails} langs={langs} config={resolvedConfigs.smokeTrails} />;
+}
+
+export function TitlesMetadataStoreView({ titles, langs }) {
+  return <DatabaseView title="Titles" items={titles} langs={langs} config={resolvedConfigs.titles} />;
+}
+
 export function SkirmishStoreView({ skirmishes, langs }) {
-  const config = {
+  const config = useMemo(() => ({
     id: (item) => item.skirmishData?.SkirmishID,
+    defaultSort: 'indexDesc',
+    maxColumns: 3,
+    rowHeight: 380,
+    rowHeightMobile: 330,
     name: (item) => item.skirmishData?.SkirmishName,
     search: (item, langs) => [item.skirmishData?.SkirmishName, label(item.skirmishData?.SkirmishDesc, langs), asArray(item.factions).map((f) => label(f.DisplayNameKey || f.FactionName, langs)).join(' ')],
     filters: [
@@ -1001,30 +2416,39 @@ export function SkirmishStoreView({ skirmishes, langs }) {
     },
     detail: (item, langs) => {
       const factions = asArray(item.factions);
+      const leftFaction = factions[0] || {};
+      const rightFaction = factions[1] || {};
+      const matchup = [factionLabel(leftFaction, langs), factionLabel(rightFaction, langs)].filter(Boolean).join(' vs ');
+      const factionSection = (faction) => {
+        const grouped = groupRewards(factionRewards(item, faction.FactionName));
+        return (
+          <Section key={faction.FactionName} title={factionLabel(faction, langs)}>
+            <div className="mb-3 rounded-xl border border-slate-700 p-4" style={{ backgroundColor: hex(faction.FactionColor), color: textColor(faction.FactionColor) }}>
+              <FactionFace item={item} faction={faction} langs={langs} large />
+            </div>
+            <div className="space-y-4">
+              {Object.entries(grouped).map(([type, rewards]) => (
+                <div key={type}>
+                  <div className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">{typeLabel(type)}</div>
+                  <RewardStrip rewards={rewards} langs={langs} renderThumb={(reward) => <SkirmishRewardThumb reward={reward} langs={langs} />} />
+                </div>
+              ))}
+            </div>
+          </Section>
+        );
+      };
       return (
         <>
-          <Header title={item.skirmishData?.SkirmishName} subtitle={label(item.skirmishData?.SkirmishDesc, langs)} badges={[`${asArray(item.rewards).length} rewards`]} />
-          <Section title="Matchup"><SkirmishCard item={item} factions={factions} langs={langs} large /></Section>
-          {factions.map((faction) => {
-            const grouped = groupRewards(factionRewards(item, faction.FactionName));
-            return (
-              <Section key={faction.FactionName} title={label(faction.DisplayNameKey || faction.FactionName, langs)}>
-                <div className="space-y-4">
-                  {Object.entries(grouped).map(([type, rewards]) => (
-                    <div key={type}>
-                      <div className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">{type}</div>
-                      <RewardStrip rewards={rewards} langs={langs} />
-                    </div>
-                  ))}
-                </div>
-              </Section>
-            );
-          })}
-          <FieldGrid data={item.skirmishData} langs={langs} />
+          <Header title={matchup || item.skirmishData?.SkirmishName} subtitle={item.skirmishData?.SkirmishName} description={label(item.skirmishData?.SkirmishDesc, langs)} />
+          <DetailColumns
+            left={leftFaction.FactionName ? factionSection(leftFaction) : null}
+            right={rightFaction.FactionName ? factionSection(rightFaction) : null}
+          />
+          <FieldGrid data={item.skirmishData} langs={langs} title="Skirmish Data" />
         </>
       );
     },
-  };
+  }), []);
   return <DatabaseView title="Skirmishes" items={skirmishes} langs={langs} config={config} />;
 }
 
@@ -1080,7 +2504,7 @@ export function BattlePassStoreView({ battlePasses, langs }) {
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-slate-900 p-3 lg:p-4 text-gray-900 dark:text-white">
       <div className="space-y-4">
-        <div className="flex gap-2 overflow-x-auto pb-2">
+        <div className="flex gap-2 overflow-x-auto app-scrollbar pb-2">
           {sorted.map((bp, index) => {
             const release = battlePassReleaseInfo(bp);
             return (
@@ -1260,26 +2684,33 @@ function FeatureThumb({ entry, langs, small = false, size = 'normal' }) {
 
 function UiThemePieces({ entry }) {
   const theme = entry?.resolved?.themeData || entry?.themeData || {};
-  const pieces = [
+  const topPieces = [
     { label: 'Nameplate', asset: theme.NameplateAsset },
     { label: 'Killplate', asset: theme.KillplateAsset },
-    { label: 'Scoreplate', asset: theme.ScoreplateAsset },
   ].filter((piece) => clean(piece.asset));
+  const scoreplate = clean(theme.ScoreplateAsset) ? { label: 'Scoreplate', asset: theme.ScoreplateAsset } : null;
+  const pieces = [...topPieces, scoreplate].filter(Boolean);
   if (!pieces.length) return <FeatureThumb entry={entry} small={false} size="supportWide" />;
+  const Piece = ({ piece, wide = false }) => (
+    <div className={`${wide ? 'w-full' : 'min-w-0 flex-1'} rounded-xl bg-slate-900/80 border border-slate-700 p-2`}>
+      <div className="mb-1 text-[10px] font-black uppercase tracking-wide text-slate-400">{piece.label}</div>
+      <ImageWithLoader
+        src={`${host}/game/getGfx/UI_PlayerThemes/${piece.asset}`}
+        alt={piece.label}
+        className={`${wide ? 'h-20' : 'h-16'} w-full`}
+        imgClassName="max-h-full max-w-full object-contain"
+        small
+      />
+    </div>
+  );
   return (
-    <div className="flex w-full flex-col gap-2">
-      {pieces.map((piece) => (
-        <div key={piece.label} className="rounded-xl bg-slate-900/80 border border-slate-700 p-2">
-          <div className="mb-1 text-[10px] font-black uppercase tracking-wide text-slate-400">{piece.label}</div>
-          <ImageWithLoader
-            src={`${host}/game/getGfx/UI_PlayerThemes/${piece.asset}`}
-            alt={piece.label}
-            className="h-20 w-full"
-            imgClassName="max-h-full max-w-full object-contain"
-            small
-          />
+    <div className="flex w-full max-w-full flex-col gap-2">
+      {topPieces.length > 0 && (
+        <div className="flex w-full gap-2">
+          {topPieces.map((piece) => <Piece key={piece.label} piece={piece} />)}
         </div>
-      ))}
+      )}
+      {scoreplate && <Piece piece={scoreplate} wide />}
     </div>
   );
 }
@@ -1626,7 +3057,7 @@ function battlePassTiers(rewards) {
 
 function BattlePassGrid({ tiers, langs }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-950/30 dark:border-slate-700 bg-[#06213a] shadow-lg">
+    <div className="overflow-x-auto app-scrollbar rounded-xl border border-slate-950/30 dark:border-slate-700 bg-[#06213a] shadow-lg">
       <div className="min-w-max">
         <div className="grid" style={{ gridTemplateColumns: `112px repeat(${tiers.length}, 150px)` }}>
           <div className="bg-slate-800 text-white font-black text-sm p-3 ring-1 ring-slate-900/70">Tiers</div>
@@ -1761,7 +3192,7 @@ export function RawMetadataView({ catalog }) {
             <div className="mb-3 text-sm text-gray-500 dark:text-gray-400">{rows.length} rows</div>
             <details className="rounded-xl bg-gray-100 dark:bg-slate-950 p-3">
               <summary className="cursor-pointer select-none text-lg font-bold">Full Raw Data</summary>
-              <pre className="mt-3 max-h-[70vh] overflow-auto rounded-lg bg-gray-100 dark:bg-slate-950 p-3 text-xs">{JSON.stringify(payload?.data, null, 2)}</pre>
+              <pre className="mt-3 max-h-[70vh] overflow-auto app-scrollbar rounded-lg bg-gray-100 dark:bg-slate-950 p-3 text-xs">{JSON.stringify(payload?.data, null, 2)}</pre>
             </details>
           </>
         ) : (
@@ -1777,7 +3208,7 @@ export function RawMetadataView({ catalog }) {
             </div>
             <details className="rounded-xl bg-gray-100 dark:bg-slate-950 p-3">
               <summary className="cursor-pointer select-none text-lg font-bold">Selected Record Raw Data</summary>
-              <pre className="mt-3 max-h-[70vh] overflow-auto rounded-lg bg-gray-100 dark:bg-slate-950 p-3 text-xs">{JSON.stringify(selectedRow, null, 2)}</pre>
+              <pre className="mt-3 max-h-[70vh] overflow-auto app-scrollbar rounded-lg bg-gray-100 dark:bg-slate-950 p-3 text-xs">{JSON.stringify(selectedRow, null, 2)}</pre>
             </details>
           </>
         )}

@@ -1,9 +1,9 @@
 import { host } from '../../../stuff';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { XMarkIcon } from '@heroicons/react/20/solid';
-import { Virtuoso, VirtuosoGrid } from 'react-virtuoso';
 import { useMediaQuery } from 'react-responsive';
-import { ImageWithLoader, RawDataDetails } from './comp/LoadingImage';
+import { AddedBadge, ImageWithLoader, RawDataDetails, getAddedPatch, getPatchFilterCounts, getPatchGroups, patchFilterMatches, PatchFilterSelect } from './comp/LoadingImage';
+import { VirtualCardGrid } from './comp/VirtualCardGrid';
 
 function uniq(a) { return [...new Set(a)]; }
 function uniqueValues(array, path) {
@@ -169,8 +169,11 @@ export function EmojiStoreView({ emojis, langs }) {
   const [filterEntitlement, setFilterEntitlement] = useState(false);
   const [filterBundle, setFilterBundle] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState('');
-  const [viewMode, setViewMode] = useState('list');
+  const [viewMode] = useState('grid');
   const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filterPatch, setFilterPatch] = useState('');
+  const patchGroups = useMemo(() => getPatchGroups(data), [data]);
+  const patchCounts = useMemo(() => getPatchFilterCounts(data), [data]);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const topRef = useRef(null);
   const filterSectionRef = useRef(null);
@@ -222,7 +225,8 @@ export function EmojiStoreView({ emojis, langs }) {
     PromoType: e => e.promo?.Type ?? '',
     BPSeason: e => e.bp?.ID ?? '',
     Entitlement: e => !!e.entitlement,
-    Bundle: e => normalizeStore(e).some(s => s.Type === 'Bundle')
+    Bundle: e => normalizeStore(e).some(s => s.Type === 'Bundle'),
+    Patch: getAddedPatch
   }), []);
 
   const getDisplayNameKey = e => (normalizeStore(e)[0]?.DisplayNameKey) ?? e.emojiData?.DisplayNameKey ?? '';
@@ -252,7 +256,8 @@ export function EmojiStoreView({ emojis, langs }) {
       BPSeason: filterBPSeason,
       Entitlement: filterEntitlement,
       StoreOnly: storeOnly,
-      Bundle: filterBundle
+      Bundle: filterBundle,
+      Patch: filterPatch
     },
     helpers
   );
@@ -260,6 +265,7 @@ export function EmojiStoreView({ emojis, langs }) {
   const filtered = useMemo(() => {
     const q = debouncedSearch.toLowerCase();
     const arr = data.filter(e => {
+      if (filterPatch && !patchFilterMatches(getAddedPatch(e), filterPatch)) return false;
       if (filterCategory.length && !filterCategory.includes(e.emojiData?.Category)) return false;
       if (filterCohort && !normalizeStore(e).some(s => s.Cohort === filterCohort)) return false;
       if (filterPromo && !normalizeStore(e).some(s => s.TimedPromotion === filterPromo)) return false;
@@ -334,12 +340,11 @@ export function EmojiStoreView({ emojis, langs }) {
     const emojiId = params.get('emoji') ? String(params.get('emoji')) : null;
     let emoji = null;
     if (emojiId) emoji = filtered.find(e => String(e.emojiData?.EmojiID) === emojiId);
-    if (!emoji && !isMobile) emoji = filtered[0];
     setSelectedEmoji(emoji || null);
   }, [data, filtered, isMobile]);
 
   useEffect(() => {
-    if (isMobile && selectedEmoji && !filtered.some(e => e.emojiData?.EmojiID === selectedEmoji.emojiData?.EmojiID)) {
+    if (selectedEmoji && !filtered.some(e => e.emojiData?.EmojiID === selectedEmoji.emojiData?.EmojiID)) {
       setSelectedEmoji(null);
     }
   }, [filtered, isMobile, selectedEmoji]);
@@ -348,17 +353,15 @@ export function EmojiStoreView({ emojis, langs }) {
     const currentParams = new URLSearchParams();
     if (selectedEmoji) currentParams.set('emoji', String(selectedEmoji.emojiData?.EmojiID));
     const newUrl = currentParams.toString() ? `${window.location.pathname}?${currentParams}` : window.location.pathname;
-    window.history.pushState({}, '', newUrl);
+    window.history.replaceState({}, '', newUrl);
     const handlePop = () => {
       const params = new URLSearchParams(window.location.search);
       const emojiId = params.get('emoji') ? String(params.get('emoji')) : null;
       if (emojiId && filtered.length > 0) {
         const emoji = filtered.find(e => String(e.emojiData?.EmojiID) === emojiId);
         if (emoji) setSelectedEmoji(emoji);
-        else if (!isMobile) setSelectedEmoji(filtered[0] || null);
         else setSelectedEmoji(null);
-      } else if (!isMobile) setSelectedEmoji(filtered[0] || null);
-      else setSelectedEmoji(null);
+      } else setSelectedEmoji(null);
     };
     window.addEventListener('popstate', handlePop);
     return () => window.removeEventListener('popstate', handlePop);
@@ -377,9 +380,9 @@ export function EmojiStoreView({ emojis, langs }) {
     setFilterPromoType('');
     setFilterBPSeason('');
     setFilterEntitlement(false);
+    setFilterPatch('');
     setFilterBundle(false);
-    if (isMobile) { setSelectedEmoji(null); filtersChanged.current = true; }
-    else { setSelectedEmoji(filtered[0] || null); }
+    setSelectedEmoji(null); filtersChanged.current = true;
   }, [filtered, isMobile]);
 
   const handleCopyLink = useCallback(() => {
@@ -402,18 +405,24 @@ export function EmojiStoreView({ emojis, langs }) {
     const isSelected = selectedEmoji?.emojiData?.EmojiID === emoji.emojiData?.EmojiID;
     return (
       <div
-        className={viewMode === 'grid' ? 'p-1 w-full h-[245px]' : 'p-0 px-2 min-h-[160px]'}
+        className={viewMode === 'grid' ? 'h-full w-full p-1' : 'p-0 px-2 min-h-[160px]'}
         onClick={() => { setSelectedEmoji(emoji); filtersChanged.current = false; }}
       >
-        <div className={`bg-white dark:bg-slate-800 rounded-lg cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-700 p-3 transition-all duration-200 ${isSelected ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} ${viewMode === 'grid' ? 'flex flex-col items-center text-center' : 'flex'}`}>
-          <ImageWithLoader src={`${host}/game/animEmoji/${emoji.emojiData?.EmojiID}`} alt="" className="h-32 w-32 rounded-lg bg-slate-900/80" />
-          <div className={`flex-1 flex flex-col ${viewMode === 'grid' ? 'items-center mt-2' : 'ml-4'}`}>
-            <div className={`flex flex-col gap-1 ${viewMode === 'grid' ? 'items-center text-center' : ''}`}>
-              <div className={`mt-1 flex justify-start text-gray-900 dark:text-white font-bold ${viewMode === 'grid' ? 'text-base' : 'text-lg'}`}>
+        <div className={`relative h-full self-start text-left bg-white dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-xl cursor-pointer p-3 pt-10 transition border border-gray-200 dark:border-slate-700 min-h-52 shadow-sm hover:-translate-y-0.5 ${isSelected ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} flex flex-col`}>
+          {viewMode === 'grid' && (
+            <div className="mb-2 flex max-w-full justify-center px-1 text-sm font-bold leading-tight text-gray-900 dark:text-white sm:px-2 sm:text-base">
+              <span className="break-words">{langs.content?.[getDisplayNameKey(emoji)] || emoji.emojiData?.EmojiName}</span>
+            </div>
+          )}
+          <ImageWithLoader src={`${host}/game/animEmoji/${emoji.emojiData?.EmojiID}`} alt="" className="h-24 w-24 self-center rounded-lg bg-slate-900/80 sm:h-32 sm:w-32" />
+          <div className="flex-1 flex w-full flex-col items-center text-center mt-2 min-w-0">
+            <div className="flex flex-col gap-1">
+              <div className={`mt-1 justify-start text-gray-900 dark:text-white font-bold ${viewMode === 'grid' ? 'hidden' : 'flex text-lg'}`}>
                 <span >{langs.content?.[getDisplayNameKey(emoji)] || emoji.emojiData?.EmojiName}</span>
               </div>
+              <AddedBadge item={emoji} className="absolute left-1/2 top-2 z-10 -translate-x-1/2 pointer-events-none" />
               {viewMode !== 'grid' && (
-                <div className="flex flex-wrap gap-1">
+                <div className="hidden max-w-full flex-wrap justify-center gap-1 pb-1 sm:flex">
                   {!emoji.store?.length && !emoji.bp && !emoji.promo && !emoji.entitlement && (emoji.emojiData?.DefaultUnlocked?.toString()?.toLowerCase() !== 'true') && (
                     <div className="bg-gray-500 dark:bg-gray-600 text-white text-xs font-bold px-2 py-0.5 rounded-lg">Not Obtainable</div>
                   )}
@@ -438,14 +447,14 @@ export function EmojiStoreView({ emojis, langs }) {
                 </div>
               )}
               {viewMode === 'grid' && (
-                <div className="flex flex-wrap gap-1">
+                <div className="hidden max-w-full flex-wrap justify-center gap-1 pb-1 sm:flex">
                   {emoji.bp && (
                     <div className="bg-emerald-600 dark:bg-emerald-700 text-black dark:text-white text-[10px] font-bold px-2 py-0.5 rounded-lg">{`Battle Pass Season ${String(emoji.bp.ID).replace('BP', '').replace('-', ' ')}`}</div>
                   )}
                 </div>
               )}
             </div>
-            <div className="text-gray-900 flex flex-wrap items-center gap-x-3 dark:text-white">
+            <div className="text-gray-900 flex flex-wrap items-center justify-center gap-x-3 dark:text-white">
               {storeData.map((sd, idx) => (
                 <div key={`costs-${idx}`} className="flex flex-wrap gap-2">
                   {sd.Type === 'Bundle' ? (
@@ -524,30 +533,37 @@ export function EmojiStoreView({ emojis, langs }) {
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-gray-100 dark:bg-slate-900" style={{ fontFamily: langs.font || 'BHLatinBold' }}>
-      <div ref={topRef} className="flex-1 p-3 lg:p-4 bg-gray-100 dark:bg-slate-900 lg:w-[35%] h-full">
+      <div ref={topRef} className="flex-1 p-3 lg:p-4 bg-gray-100 dark:bg-slate-900 w-full h-full">
         <div ref={filterSectionRef} className="space-y-4 mb-4 rounded-xl bg-white/70 dark:bg-slate-800/70 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
           <button onClick={() => setFiltersOpen((open) => !open)} className="flex w-full items-center justify-between rounded-lg bg-gray-100 dark:bg-slate-700 px-3 py-2 text-left text-sm font-bold text-gray-900 dark:text-white">
             <span>Filters</span>
             <span className="text-xs text-gray-500 dark:text-gray-300">{filtersOpen ? 'Hide' : 'Show'}</span>
           </button>
           {filtersOpen && (<>
-          <div className="flex flex-wrap gap-2 items-center overflow-x-auto pt-2">
+          <div className="flex flex-wrap gap-2 items-center overflow-x-auto app-scrollbar pt-2">
             {categories
               .filter(cat => optionCounts.Category[cat] > 0)
               .map(cat => {
                 const firstEmoji = getFirstEmojiForCategory(data, cat);
                 if (!firstEmoji) return null;
+                const selected = filterCategory.includes(cat);
                 return (
-                  <div key={cat} className="relative">
-                    <img
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => handleFilterChange(setFilterCategory, selected ? filterCategory.filter(c => c !== cat) : [...filterCategory, cat])}
+                    title={cat}
+                    className={`relative flex h-14 w-14 items-center justify-center rounded-xl border bg-gray-100 p-1 transition dark:bg-slate-700 ${selected ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-300 opacity-55 hover:opacity-100 dark:border-slate-600'}`}
+                  >
+                    <ImageWithLoader
                       src={`${host}/game/animEmoji/${firstEmoji.emojiData?.EmojiID}`}
-                      className={`h-12 w-12 object-contain rounded-lg cursor-pointer ${filterCategory.includes(cat) ? '' : 'opacity-40'}`}
-                      onClick={() => handleFilterChange(setFilterCategory, filterCategory.includes(cat) ? filterCategory.filter(c => c !== cat) : [...filterCategory, cat])}
-                      title={cat}
+                      className="h-full w-full bg-transparent"
+                      imgClassName="max-h-full max-w-full object-contain"
+                      small
                       onError={handleImgError}
                     />
-                    <span className="absolute top-0.5 -right-2 bg-blue-500 text-white text-xs rounded-full px-1">{optionCounts.Category[cat] || 0}</span>
-                  </div>
+                    <span className="absolute -right-1 -top-1 rounded-full bg-blue-500 px-1 text-[10px] font-bold leading-4 text-white">{optionCounts.Category[cat] || 0}</span>
+                  </button>
                 );
               })}
           </div>
@@ -557,7 +573,7 @@ export function EmojiStoreView({ emojis, langs }) {
                 <select
                   value={filterCohort}
                   onChange={e => handleFilterChange(setFilterCohort, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
                 >
                   <option value="">Cohorts</option>
                   {cohorts.filter(c => optionCounts.Cohort[c] > 0).map(c => (
@@ -569,7 +585,7 @@ export function EmojiStoreView({ emojis, langs }) {
                 <select
                   value={filterPromo}
                   onChange={e => handleFilterChange(setFilterPromo, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
                 >
                   <option value="">Promotions</option>
                   {promotions.filter(p => optionCounts.TimedPromotion[p] > 0).map(p => (
@@ -581,7 +597,7 @@ export function EmojiStoreView({ emojis, langs }) {
                 <select
                   value={filterStoreLabel}
                   onChange={e => handleFilterChange(setFilterStoreLabel, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
                 >
                   <option value="">Store Label</option>
                   {storeLabels.filter(n => optionCounts.StoreLabel[n] > 0).map(n => (
@@ -593,7 +609,7 @@ export function EmojiStoreView({ emojis, langs }) {
                 <select
                   value={filterPromoType}
                   onChange={e => handleFilterChange(setFilterPromoType, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
                 >
                   <option value="">Promo Codes</option>
                   {promoTypes.filter(n => optionCounts.PromoType[n] > 0).map(n => (
@@ -605,7 +621,7 @@ export function EmojiStoreView({ emojis, langs }) {
                 <select
                   value={filterBPSeason}
                   onChange={e => handleFilterChange(setFilterBPSeason, e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gray-900 dark:text-white text-sm font-semibold min-w-[150px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
+                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
                 >
                   <option value="">Battle Pass</option>
                   {optionCounts.AllBP > 0 && <option value="AllBP">All Battle Pass Emojis ({optionCounts.AllBP})</option>}
@@ -628,6 +644,15 @@ export function EmojiStoreView({ emojis, langs }) {
                 <input type="checkbox" checked={!!filterBundle} onChange={() => handleFilterChange(setFilterBundle, !filterBundle)} className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer" />
                 Bundles Only ({optionCounts.Bundle || 0})
               </label>
+              {patchGroups.length > 0 && (
+                <PatchFilterSelect
+                  value={filterPatch}
+                  onChange={(value) => handleFilterChange(setFilterPatch, value)}
+                  groups={patchGroups}
+                  counts={patchCounts}
+                />
+              )}
+
               <button onClick={resetFilters} aria-label="Reset all filters" className="cursor-pointer flex items-center gap-2 text-sm bg-red-500 dark:bg-red-600 hover:bg-red-600 dark:hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                 Reset Filters
@@ -638,24 +663,8 @@ export function EmojiStoreView({ emojis, langs }) {
 
           <div className="lg:flex lg:flex-col gap-4">
             <div className="order-first flex justify-between items-center w-full sm:w-auto py-2 gap-4">
-            <div className="text-lg text-blue-600 dark:text-blue-400 font-bold">
+            <div className="text-sm font-bold text-blue-600 dark:text-blue-400 sm:text-lg">
               Showing {filtered.length} Emoji{filtered.length !== 1 ? 's' : ''}
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setViewMode('list')}
-                className={`cursor-pointer p-2 rounded-lg ${viewMode === 'list' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-900 dark:text-white'}`}
-                title="List View"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
-              </button>
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`cursor-pointer p-2 rounded-lg ${viewMode === 'grid' ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-900 dark:text-white'}`}
-                title="Grid View"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h6v6H4V6zm10 0h6v6h-6V6zm-10 10h6v6H4v-6zm10 0h6v6h-6v-6z"></path></svg>
-              </button>
             </div>
             </div>
             <div className="relative">
@@ -689,28 +698,19 @@ export function EmojiStoreView({ emojis, langs }) {
             <svg className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
           </div>
         </div>
-        <div className="h-[100vh] overflow-y-auto">
-          {viewMode === 'list' ? (
-            <Virtuoso
-              data={filtered}
-              totalCount={filtered.length}
-              itemContent={(index) => <Row index={index} data={filtered} />}
-            />
-          ) : (
-            <VirtuosoGrid
-              data={filtered}
-              totalCount={filtered.length}
-              listClassName="grid grid-cols-2 2xl:grid-cols-3 gap-2"
-              itemContent={(index) => <Row index={index} data={filtered} />}
-              useWindowScroll={false}
-            />
-          )}
-        </div>
+        <VirtualCardGrid
+          items={filtered}
+          rowHeight={305}
+          rowHeightMobile={260}
+          className="h-[calc(100dvh-9rem)] min-h-[22rem] app-scrollbar"
+          getKey={(emoji, index) => emoji?.emojiData?.EmojiID || index}
+          renderItem={(emoji, index) => <Row key={emoji?.emojiData?.EmojiID || index} index={index} data={filtered} />}
+        />
       </div>
-      <div ref={detailPanelRef} className={`h-full lg:w-[65%] fixed inset-0 bg-black bg-opacity-50 z-50 lg:static lg:bg-transparent lg:flex lg:flex-col lg:gap-4 lg:shadow-none ${selectedEmoji ? 'block' : 'hidden lg:block'}`}>
-        <div className="bg-white dark:bg-slate-900 p-3 lg:p-4 h-full overflow-y-auto relative">
+      <div ref={detailPanelRef} className={`fixed inset-0 bg-black/70 z-50 ${selectedEmoji ? 'flex items-stretch justify-center p-0 sm:items-center sm:p-4' : 'hidden'}`} onClick={() => setSelectedEmoji(null)}> 
+        <div className="relative flex h-dvh max-h-dvh w-full max-w-[min(96vw,100rem)] flex-col gap-3 overflow-y-auto app-scrollbar rounded-none border border-gray-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:h-auto sm:max-h-[92vh] sm:rounded-xl sm:p-3 lg:gap-4 lg:p-4" onClick={(event) => event.stopPropagation()}>
           <div className="flex items-center justify-between">
-            <button className="lg:hidden text-gray-900 dark:text-white cursor-pointer" onClick={() => setSelectedEmoji(null)}>
+            <button className="text-gray-900 dark:text-white cursor-pointer" onClick={() => setSelectedEmoji(null)}>
               <XMarkIcon className="w-6 h-6" />
             </button>
             {isMobile && selectedEmoji && (
@@ -721,8 +721,8 @@ export function EmojiStoreView({ emojis, langs }) {
             )}
           </div>
           {selectedEmoji ? (
-            <div className="gap-2 flex flex-col">
-              <div className="flex flex-col gap-2 pb-3 dark:bg-slate-800 bg-gray-100 p-2 rounded-lg">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start">
+              <div className="xl:col-span-2 flex flex-col gap-2 pb-3 relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
                 <div className="flex items-center gap-2">
                   <img
                     src={`${host}/game/animEmoji/${selectedEmoji.emojiData?.EmojiID}`}
@@ -730,7 +730,7 @@ export function EmojiStoreView({ emojis, langs }) {
                     onError={handleImgError}
                     alt=""
                   />
-                  <span className="text-2xl font-bold text-gray-900 dark:text-white">
+                  <span className="text-xl font-bold text-gray-900 dark:text-white sm:text-2xl">
                     {langs.content?.[getDisplayNameKey(selectedEmoji)] || selectedEmoji.emojiData?.EmojiName}
                   </span>
                 </div>
@@ -740,16 +740,16 @@ export function EmojiStoreView({ emojis, langs }) {
                   </div>
                 )}
                 {Array.isArray(selectedEmoji.store) && selectedEmoji.store.flatMap(s => splitTags(s.SearchTags)).filter(Boolean).length > 0 && (
-                  <div className="flex flex-col flex-wrap">
+                  <div className="flex flex-col">
                     <span className="text-gray-900 dark:text-white">Store Search Tags</span>
-                    <div className="flex flex-wrap gap-2 mt-1">
+                    <div className="mt-1 flex max-w-full flex-wrap gap-2 pb-1">
                       {[...new Set(selectedEmoji.store.flatMap(s => splitTags(s.SearchTags)).filter(Boolean))].map((tag, idx) => (
                         <span key={idx} className="bg-gray-200 dark:bg-slate-700 rounded-full px-3 py-1 text-xs font-bold text-gray-900 dark:text-white">{tag}</span>
                       ))}
                     </div>
                   </div>
                 )}
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex max-w-full flex-wrap gap-2 pb-1">
                   {selectedEmoji.promo && (
                     <span className="text-sm px-3 py-1 rounded-lg bg-purple-500 dark:bg-purple-700 text-gray-900 dark:text-white">Promo Type: {selectedEmoji.promo.Type}</span>
                   )}
@@ -773,48 +773,48 @@ export function EmojiStoreView({ emojis, langs }) {
                   ))}
                 </div>
               </div>
-              <div className="flex flex-col gap-2">
-                <div className="order-2 w-full flex flex-col gap-2">
-                  <div className="dark:bg-slate-800 bg-gray-100 p-2 rounded-lg">
-                    <span className="text-lg text-gray-900 dark:text-white">Emoji Data</span>
-                    <div className="grid grid-cols-2 gap-2 text-lg mt-2">
-                      <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                        <span className="font-bold text-gray-600 dark:text-gray-300">Emoji Name</span>
-                        <span className="text-gray-900 dark:text-white">{selectedEmoji.emojiData?.EmojiName}</span>
+              <div className="contents">
+                <div className="xl:col-start-2 xl:row-start-2 w-full flex flex-col gap-2">
+                  <div className="relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
+                    <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Emoji Data</span>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                      <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                        <span className="text-[11px] uppercase tracking-wide text-slate-400">Emoji Name</span>
+                        <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.emojiData?.EmojiName}</span>
                       </div>
-                      <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                        <span className="font-bold text-gray-600 dark:text-gray-300">Emoji ID</span>
-                        <span className="text-gray-900 dark:text-white">{selectedEmoji.emojiData?.EmojiID}</span>
+                      <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                        <span className="text-[11px] uppercase tracking-wide text-slate-400">Emoji ID</span>
+                        <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.emojiData?.EmojiID}</span>
                       </div>
                       {selectedEmoji.emojiData?.Category && (
-                        <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                          <span className="font-bold text-gray-600 dark:text-gray-300">Category</span>
-                          <span className="text-gray-900 dark:text-white">{selectedEmoji.emojiData?.Category}</span>
+                        <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <span className="text-[11px] uppercase tracking-wide text-slate-400">Category</span>
+                          <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.emojiData?.Category}</span>
                         </div>
                       )}
                       {selectedEmoji.emojiData?.DefaultUnlocked && (
-                        <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                          <span className="font-bold text-gray-600 dark:text-gray-300">Default Unlocked</span>
-                          <span className="text-gray-900 dark:text-white">{String(selectedEmoji.emojiData?.DefaultUnlocked)}</span>
+                        <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <span className="text-[11px] uppercase tracking-wide text-slate-400">Default Unlocked</span>
+                          <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{String(selectedEmoji.emojiData?.DefaultUnlocked)}</span>
                         </div>
                       )}
                     </div>
                   </div>
                   {getProcessedStoreData(selectedEmoji).map((sd, idx) => (
-                    <div key={`store-${idx}`} className="dark:bg-slate-800 bg-gray-100 p-2 rounded-lg">
-                      <span className="text-lg text-gray-900 dark:text-white">Store Data{sd.Type === 'Bundle' ? ' (Bundle)' : ''}</span>
-                      <div className="grid grid-cols-2 gap-2 text-lg mt-2">
-                        <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                          <span className="font-bold text-gray-600 dark:text-gray-300">Store Name</span>
-                          <span className="text-gray-900 dark:text-white">{sd.StoreName}</span>
+                    <div key={`store-${idx}`} className="relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
+                      <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Store Data{sd.Type === 'Bundle' ? ' (Bundle)' : ''}</span>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                        <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <span className="text-[11px] uppercase tracking-wide text-slate-400">Store Name</span>
+                          <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.StoreName}</span>
                         </div>
-                        <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                          <span className="font-bold text-gray-600 dark:text-gray-300">Store ID</span>
-                          <span className="text-gray-900 dark:text-white">{sd.StoreID}</span>
+                        <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <span className="text-[11px] uppercase tracking-wide text-slate-400">Store ID</span>
+                          <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.StoreID}</span>
                         </div>
                         {sd.ItemList && sd.ItemList.length > 0 ? (
-                          <div className='flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg'>
-                            <span className="font-bold text-gray-600 dark:text-gray-300">Bundle Cost</span>
+                          <div className='flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3'>
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">Bundle Cost</span>
                             <div className="flex items-center gap-1">
                               <img src={`${host}/game/getGfx/storeIcon/mc`} className="h-5 inline" onError={handleImgError} />
                               <span className="line-through text-red-600 dark:text-red-400">{
@@ -840,19 +840,19 @@ export function EmojiStoreView({ emojis, langs }) {
                             </div>
                           </div>
                         ) : (
-                          <div className='col-span-2 grid grid-cols-2 gap-2'>
+                          <div className='col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3'>
                             {(sd.IdolCost != 0 && sd.IdolCost != '') && (
-                              <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                                <span className="font-bold text-gray-600 dark:text-gray-300">Mammoth Coin Cost</span>
+                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Mammoth Coin Cost</span>
                                 <div>
                                   <img src={`${host}/game/getGfx/storeIcon/mc`} className="h-5 pr-1 inline" onError={handleImgError} />
-                                  <span className="text-gray-900 dark:text-white">{sd.IdolCost}</span>
+                                  <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.IdolCost}</span>
                                 </div>
                               </div>
                             )}
                             {sd.IdolSaleCost && (
-                              <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                                <span className="font-bold text-gray-600 dark:text-gray-300">Mammoth Sale Price</span>
+                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Mammoth Sale Price</span>
                                 <div className="flex items-center gap-1">
                                   <img src={`${host}/game/getGfx/storeIcon/mc`} className="h-5 inline" onError={handleImgError} />
                                   <span className="line-through text-red-600 dark:text-red-400">{sd.IdolCost}</span>
@@ -861,17 +861,17 @@ export function EmojiStoreView({ emojis, langs }) {
                               </div>
                             )}
                             {sd.GoldCost && (
-                              <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                                <span className="font-bold text-gray-600 dark:text-gray-300">Gold Cost</span>
+                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Gold Cost</span>
                                 <div>
                                   <img src={`${host}/game/getGfx/storeIcon/gold`} className="h-5 pr-1 inline" onError={handleImgError} />
-                                  <span className="text-gray-900 dark:text-white">{sd.GoldCost}</span>
+                                  <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.GoldCost}</span>
                                 </div>
                               </div>
                             )}
                             {sd.GoldSaleCost && (
-                              <div className="flex flex-col bg-gray-100 dark:bg-slate-800 p-2 rounded-lg">
-                                <span className="font-bold text-gray-600 dark:text-gray-300">Gold Sale Price</span>
+                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Gold Sale Price</span>
                                 <div className="flex items-center gap-1">
                                   <img src={`${host}/game/getGfx/storeIcon/gold`} className="h-5 inline" onError={handleImgError} />
                                   <span className="line-through text-red-600 dark:text-red-400">{sd.GoldCost}</span>
@@ -880,151 +880,151 @@ export function EmojiStoreView({ emojis, langs }) {
                               </div>
                             )}
                             {sd.GoldBundleDiscount && (
-                              <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                                <span className="font-bold text-gray-600 dark:text-gray-300">Gold Bundle Discount</span>
+                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Gold Bundle Discount</span>
                                 <div>
                                   <img src={`${host}/game/getGfx/storeIcon/gold`} className="h-5 pr-1 inline" onError={handleImgError} />
-                                  <span className="text-gray-900 dark:text-white">{sd.GoldBundleDiscount}</span>
+                                  <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.GoldBundleDiscount}</span>
                                 </div>
                               </div>
                             )}
                             {sd.RankedPointsCost && (
-                              <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                                <span className="font-bold text-gray-600 dark:text-gray-300">Glory Cost</span>
+                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Glory Cost</span>
                                 <div>
                                   <img src={`${host}/game/getGfx/storeIcon/glory`} className="h-5 pr-1 inline" onError={handleImgError} />
-                                  <span className="text-gray-900 dark:text-white">{sd.RankedPointsCost}</span>
+                                  <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.RankedPointsCost}</span>
                                 </div>
                               </div>
                             )}
                             {sd.SpecialCurrencyType && sd.SpecialCurrencyCost && (
-                              <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                                <span className="font-bold text-gray-600 dark:text-gray-300">{sd.SpecialCurrencyType} Cost</span>
-                                <span className="text-gray-900 dark:text-white">{sd.SpecialCurrencyCost}</span>
+                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                                <span className="text-[11px] uppercase tracking-wide text-slate-400">{sd.SpecialCurrencyType} Cost</span>
+                                <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.SpecialCurrencyCost}</span>
                               </div>
                             )}
                           </div>
                         )}
                         {sd.Cohort && (
-                          <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                            <span className="font-bold text-gray-600 dark:text-gray-300">Cohort</span>
-                            <span className="text-gray-900 dark:text-white">{sd.Cohort}</span>
+                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">Cohort</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.Cohort}</span>
                           </div>
                         )}
                         {sd.Popularity && (
-                          <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                            <span className="font-bold text-gray-600 dark:text-gray-300">Popularity</span>
-                            <span className="text-gray-900 dark:text-white">{sd.Popularity}</span>
+                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">Popularity</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.Popularity}</span>
                           </div>
                         )}
                         {sd.Label && (
-                          <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                            <span className="font-bold text-gray-600 dark:text-gray-300">Label</span>
-                            <span className="text-gray-900 dark:text-white">{sd.Label === 'LastChance' ? 'No Longer Purchasable' : sd.Label}</span>
+                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">Label</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.Label === 'LastChance' ? 'No Longer Purchasable' : sd.Label}</span>
                           </div>
                         )}
                         {sd.TimedPromotion && (
-                          <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                            <span className="font-bold text-gray-600 dark:text-gray-300">Timed Promotion</span>
-                            <span className="text-gray-900 dark:text-white">{formatLabel(sd.TimedPromotion)}</span>
+                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">Timed Promotion</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{formatLabel(sd.TimedPromotion)}</span>
                           </div>
                         )}
                       </div>
                     </div>
                   ))}
                   {selectedEmoji.entitlement && (
-                    <div className='dark:bg-slate-800 bg-gray-100 p-2 rounded-lg'>
-                      <span className="text-lg text-gray-900 dark:text-white">Entitlement Data</span>
-                      <div className="grid grid-cols-2 gap-2 text-lg mt-2">
-                        <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                          <span className="font-bold text-gray-600 dark:text-gray-300">Entitlement Name</span>
-                          <span className="text-gray-900 dark:text-white">{selectedEmoji.entitlement.EntitlementName}</span>
+                    <div className='relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm'>
+                      <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Entitlement Data</span>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                        <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <span className="text-[11px] uppercase tracking-wide text-slate-400">Entitlement Name</span>
+                          <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.EntitlementName}</span>
                         </div>
                         {selectedEmoji.entitlement.EntitlementID && (
-                          <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                            <span className="font-bold text-gray-600 dark:text-gray-300">Entitlement ID</span>
-                            <span className="text-gray-900 dark:text-white">{selectedEmoji.entitlement.EntitlementID}</span>
+                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">Entitlement ID</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.EntitlementID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.SteamAppID && (
-                          <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
-                            <span className="font-bold text-gray-600 dark:text-gray-300">Steam App ID</span>
-                            <span className="text-gray-900 dark:text-white">{selectedEmoji.entitlement.SteamAppID}</span>
+                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">Steam App ID</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.SteamAppID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.SonyEntitlementID && (
-                          <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-2xl">
-                            <span className="font-bold text-gray-600 dark:text-gray-300">Sony Entitlement ID</span>
-                            <span className="text-gray-900 dark:text-white">{selectedEmoji.entitlement.SonyEntitlementID}</span>
+                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">Sony Entitlement ID</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.SonyEntitlementID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.SonyProductID && (
-                          <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-2xl">
-                            <span className="font-bold text-gray-600 dark:text-gray-300">Sony Product ID</span>
-                            <span className="text-gray-900 dark:text-white">{selectedEmoji.entitlement.SonyProductID}</span>
+                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">Sony Product ID</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.SonyProductID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.NintendoConsumableID && (
-                          <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-2xl">
-                            <span className="font-bold text-gray-600 dark:text-gray-300">Nintendo Consumable ID</span>
-                            <span className="text-gray-900 dark:text-white">{selectedEmoji.entitlement.NintendoConsumableID}</span>
+                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">Nintendo Consumable ID</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.NintendoConsumableID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.NintendoEntitlementID && (
-                          <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-2xl">
-                            <span className="font-bold text-gray-600 dark:text-gray-300">Nintendo Entitlement ID</span>
-                            <span className="text-gray-900 dark:text-white">{selectedEmoji.entitlement.NintendoEntitlementID}</span>
+                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">Nintendo Entitlement ID</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.NintendoEntitlementID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.XB1EntitlementID && (
-                          <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-2xl">
-                            <span className="font-bold text-gray-600 dark:text-gray-300">XB1 Entitlement ID</span>
-                            <span className="text-gray-900 dark:text-white">{selectedEmoji.entitlement.XB1EntitlementID}</span>
+                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">XB1 Entitlement ID</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.XB1EntitlementID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.XB1ProductID && (
-                          <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-2xl">
-                            <span className="font-bold text-gray-600 dark:text-gray-300">XB1 Product ID</span>
-                            <span className="text-gray-900 dark:text-white">{selectedEmoji.entitlement.XB1ProductID}</span>
+                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">XB1 Product ID</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.XB1ProductID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.XB1StoreID && (
-                          <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-2xl">
-                            <span className="font-bold text-gray-600 dark:text-gray-300">XB1 Store ID</span>
-                            <span className="text-gray-900 dark:text-white">{selectedEmoji.entitlement.XB1StoreID}</span>
+                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">XB1 Store ID</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.XB1StoreID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.AppleEntitlementID && (
-                          <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-2xl">
-                            <span className="font-bold text-gray-600 dark:text-gray-300">Apple Entitlement ID</span>
-                            <span className="text-gray-900 dark:text-white">{selectedEmoji.entitlement.AppleEntitlementID}</span>
+                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">Apple Entitlement ID</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.AppleEntitlementID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.AndroidEntitlementID && (
-                          <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-2xl">
-                            <span className="font-bold text-gray-600 dark:text-gray-300">Android Entitlement ID</span>
-                            <span className="text-gray-900 dark:text-white">{selectedEmoji.entitlement.AndroidEntitlementID}</span>
+                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">Android Entitlement ID</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.AndroidEntitlementID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.UbiConnectID && (
-                          <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-2xl">
-                            <span className="font-bold text-gray-600 dark:text-gray-300">Ubi Connect ID</span>
-                            <span className="text-gray-900 dark:text-white">{selectedEmoji.entitlement.UbiConnectID}</span>
+                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">Ubi Connect ID</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.UbiConnectID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.UbiConnectPackageID && (
-                          <div className="flex flex-col bg-gray-100 dark:bg-slate-900 p-2 rounded-2xl">
-                            <span className="font-bold text-gray-600 dark:text-gray-300">Ubi Connect Package ID</span>
-                            <span className="text-gray-900 dark:text-white">{selectedEmoji.entitlement.UbiConnectPackageID}</span>
+                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">Ubi Connect Package ID</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.UbiConnectPackageID}</span>
                           </div>
                         )}
                       </div>
                     </div>
                   )}
                 </div>
-                <div className="order-1 w-full flex flex-col gap-2 dark:bg-slate-800 bg-gray-100 p-2 rounded-lg">
-                  <span className="text-gray-900 dark:text-white text-lg">Image Data</span>
-                  <div className="mt-2 flex justify-center bg-gray-100 dark:bg-slate-900 p-2 rounded-lg">
+                <div className="order-[-1] xl:order-none xl:col-start-1 xl:row-start-2 w-full flex flex-col gap-2 relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
+                  <span className="text-base text-gray-900 dark:text-white sm:text-lg">Image Data</span>
+                  <div className="mt-2 flex justify-center rounded-lg bg-slate-950/70 border border-slate-700 p-3">
                     <img
                       src={`${host}/game/animEmoji/${selectedEmoji.emojiData?.EmojiID}`}
                       className="max-w-64 h-auto"

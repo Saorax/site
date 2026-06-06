@@ -1,6 +1,26 @@
 import React, { useEffect, useState } from "react";
 import moment from 'moment';
 import '../../../fonts/style.css';
+import { host } from "../../stuff";
+
+const apiAsset = (src) => typeof src === 'string' && src.startsWith('/game/') ? `${host}${src}` : src;
+const releaseDateValue = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return numeric < 100000000000 ? numeric * 1000 : numeric;
+};
+const formatReleaseDate = (value, locale = 'en-US', includeAgo = false) => {
+  const ms = releaseDateValue(value);
+  if (!ms) return 'Unknown release date';
+  const date = new Date(ms);
+  const formatted = date.toLocaleString(locale, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  if (!includeAgo) return formatted;
+  return `${formatted} (${((Date.now() - ms) / (1000 * 3600 * 24)).toFixed()} days ago)`;
+};
 
 function useIsClient() {
   const [isClient, setIsClient] = useState(false);
@@ -17,15 +37,15 @@ function NextPrevLegend({ legend, className }) {
     <a href={`/game/legends/${legend.bio.name.normal.toLowerCase()}`} className={`mx-1 text-white ${className}`} key={legend.bio.name.normal}>
       <div className="flex justify-center">
         <div className="flex flex-col">
-          <img src={legend.weapons.main.image} className="max-w-8 h-8" alt="Main weapon" />
-          <img src={legend.weapons.secondary.image} className="max-w-8 h-8" alt="Secondary weapon" />
+          <img src={apiAsset(legend.weapons.main.image)} className="max-w-8 h-8" alt="Main weapon" />
+          <img src={apiAsset(legend.weapons.secondary.image)} className="max-w-8 h-8" alt="Secondary weapon" />
         </div>
-        <img src={legend.image} className="rounded-xl h-16 w-16" alt={legend.bio.name.normal} />
+        <img src={apiAsset(legend.image)} className="rounded-xl h-16 w-16" alt={legend.bio.name.normal} />
       </div>
       <div className="pr-0.5 flex flex-col ml-1.5 min-w-[20%]">
         <span className="text-sm font-normal">{legend.bio.aka.split(', ')[0]}</span>
         <span className="text-lg font-bold">{legend.bio.name.normal}</span>
-        <span className="text-sm font-normal">{legend.release}</span>
+        <span className="text-sm font-normal">{formatReleaseDate(legend.release)}</span>
       </div>
     </a>
   );
@@ -69,10 +89,10 @@ function MakeProfile({ legend, prevLegends, nextLegends }) {
         <div className="flex items-center flex-col lg:flex-row">
           <div className="flex mt-2 lg:mt-0">
             <div>
-              <img src={legend.weapons.main.image} className="w-12 h-12 lg:w-16 lg:h-16" alt="Main weapon" />
-              <img src={legend.weapons.secondary.image} className="w-12 h-12 lg:w-16 lg:h-16" alt="Secondary weapon" />
+              <img src={apiAsset(legend.weapons.main.image)} className="w-12 h-12 lg:w-16 lg:h-16" alt="Main weapon" />
+              <img src={apiAsset(legend.weapons.secondary.image)} className="w-12 h-12 lg:w-16 lg:h-16" alt="Secondary weapon" />
             </div>
-            <img src={legend.image} className="rounded-xl h-24 w-24 lg:h-32 lg:w-32 mx-4" alt={legend.bio.name.normal} />
+            <img src={apiAsset(legend.image)} className="rounded-xl h-24 w-24 lg:h-32 lg:w-32 mx-4" alt={legend.bio.name.normal} />
           </div>
           
           <div className="pr-3 flex flex-col min-w-[20%] text-center lg:text-left">
@@ -116,13 +136,8 @@ const LegendPage = ({ legend, prevLegends, nextLegends, history }) => {
   const stanceChanges = legend.stances.stanceChanges;
 
   const releaseDate = isClient
-    ? new Date(legend.release).toLocaleString(navigator.language, {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      }) +
-      ` (${((new Date() - new Date(legend.release)) / (1000 * 3600 * 24)).toFixed()} days ago)`
-    : "";
+    ? formatReleaseDate(legend.release, navigator.language, true)
+    : formatReleaseDate(legend.release);
 
   const compareToBase = (value, base, int) => {
     if (int == 0 && value >= 1) return "742";
