@@ -18,6 +18,7 @@ import {
   ChestStoreView,
   CompanionMetadataStoreView,
   KOEffectMetadataStoreView,
+  MetadataTypeView,
   PromoStoreView,
   PurchaseStoreView,
   RawMetadataView,
@@ -59,6 +60,14 @@ const NAV_PAGES = [
   'Chests',
   'Skirmishes',
   'Battle Passes',
+  'Missions',
+  'Achievements',
+  'Tournament Events',
+  'Splash Arts',
+  'Music',
+  'Helpful Hints',
+  'Guild Missions',
+  'Client Themes',
 ];
 
 const STORE_DATA_SECTIONS = [
@@ -86,6 +95,14 @@ const STORE_DATA_SECTIONS = [
 ];
 
 const STORE_DATA_LABELS = Object.fromEntries(STORE_DATA_SECTIONS.map((section) => [section.key, section.label]));
+
+const pageSlug = (page) => String(page || '')
+  .toLowerCase()
+  .replace(/&/g, 'and')
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '');
+
+const PAGE_BY_SLUG = Object.fromEntries(NAV_PAGES.map((page) => [pageSlug(page), page]));
 
 function Spinner({ stage, completed = [], steps = [] }) {
   return (
@@ -169,51 +186,62 @@ export default function GameDatabase() {
   const sidebarScrollRef = useRef(null);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const legendId = params.get('legend');
-    const skinId = params.get('skin');
-    const tauntId = params.get('taunt');
-    const weaponId = params.get('weapon');
-    const spawnbotId = params.get('spawnbot');
-    const colorId = params.get('color');
-    const koEffectId = params.get('koEffect') || params.get('koeffect');
-    const smokeTrailId = params.get('smoketrail') || params.get('smokeTrail');
-    const avatarId = params.get('avatar');
-    const podiumId = params.get('podium');
+    const applyUrlPage = () => {
+      const params = new URLSearchParams(window.location.search);
+      const rawPageParam = params.get('page') === 'raw-metadata';
+      const pageParam = PAGE_BY_SLUG[params.get('page') || ''];
+      const legendId = params.get('legend');
+      const skinId = params.get('skin');
+      const tauntId = params.get('taunt');
+      const weaponId = params.get('weapon');
+      const spawnbotId = params.get('spawnbot');
+      const colorId = params.get('color');
+      const koEffectId = params.get('koEffect') || params.get('koeffect');
+      const smokeTrailId = params.get('smoketrail') || params.get('smokeTrail');
+      const avatarId = params.get('avatar');
+      const podiumId = params.get('podium');
 
-    if (skinId || legendId) {
-      setSelectedCategory('Game Database');
-      setSelectedSubcategory('Skins');
-    } else if (tauntId) {
-      setSelectedCategory('Game Database');
-      setSelectedSubcategory('Taunts');
-    } else if (weaponId) {
-      setSelectedCategory('Game Database');
-      setSelectedSubcategory('Weapon Skins');
-    } else if (spawnbotId) {
-      setSelectedCategory('Game Database');
-      setSelectedSubcategory('Sidekicks');
-    } else if (colorId) {
-      setSelectedCategory('Game Database');
-      setSelectedSubcategory('Colors');
-    } else if (koEffectId) {
-      setSelectedCategory('Game Database');
-      setSelectedSubcategory('KO Effects');
-    } else if (smokeTrailId) {
-      setSelectedCategory('Game Database');
-      setSelectedSubcategory('Smoke Trails');
-    } else if (avatarId) {
-      setSelectedCategory('Game Database');
-      setSelectedSubcategory('Avatars');
-    } else if (podiumId) {
-      setSelectedCategory('Game Database');
-      setSelectedSubcategory('Podiums');
-    } else {
-      setSelectedCategory('Game Database');
-      setSelectedSubcategory('Skins');
-      const newUrl = window.location.pathname;
-      window.history.pushState({}, '', newUrl);
-    }
+      if (rawPageParam) {
+        setSelectedCategory('Raw Metadata');
+        setSelectedSubcategory(null);
+      } else if (pageParam) {
+        setSelectedCategory('Game Database');
+        setSelectedSubcategory(pageParam);
+      } else if (skinId || legendId) {
+        setSelectedCategory('Game Database');
+        setSelectedSubcategory('Skins');
+      } else if (tauntId) {
+        setSelectedCategory('Game Database');
+        setSelectedSubcategory('Taunts');
+      } else if (weaponId) {
+        setSelectedCategory('Game Database');
+        setSelectedSubcategory('Weapon Skins');
+      } else if (spawnbotId) {
+        setSelectedCategory('Game Database');
+        setSelectedSubcategory('Sidekicks');
+      } else if (colorId) {
+        setSelectedCategory('Game Database');
+        setSelectedSubcategory('Colors');
+      } else if (koEffectId) {
+        setSelectedCategory('Game Database');
+        setSelectedSubcategory('KO Effects');
+      } else if (smokeTrailId) {
+        setSelectedCategory('Game Database');
+        setSelectedSubcategory('Smoke Trails');
+      } else if (avatarId) {
+        setSelectedCategory('Game Database');
+        setSelectedSubcategory('Avatars');
+      } else if (podiumId) {
+        setSelectedCategory('Game Database');
+        setSelectedSubcategory('Podiums');
+      } else {
+        setSelectedCategory('Game Database');
+        setSelectedSubcategory('Skins');
+      }
+    };
+    applyUrlPage();
+    window.addEventListener('popstate', applyUrlPage);
+    return () => window.removeEventListener('popstate', applyUrlPage);
   }, []);
 
   useEffect(() => {
@@ -310,8 +338,11 @@ export default function GameDatabase() {
     setSelectedCategory(category);
     setSelectedSubcategory(subcategory);
     setIsMenuOpen(false);
-    const newUrl = window.location.pathname;
-    window.history.pushState({}, '', newUrl);
+    const params = new URLSearchParams();
+    if (category === 'Game Database' && subcategory) params.set('page', pageSlug(subcategory));
+    if (category === 'Raw Metadata') params.set('page', 'raw-metadata');
+    const query = params.toString();
+    window.history.pushState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
     requestAnimationFrame(() => {
       if (sidebarScrollRef.current) sidebarScrollRef.current.scrollTop = scrollTop;
     });
@@ -401,6 +432,22 @@ export default function GameDatabase() {
           return <SkirmishStoreView skirmishes={storeData.skirmishes} langs={langs[selectedLang]} />;
         case 'Battle Passes':
           return <BattlePassStoreView battlePasses={storeData.battlePasses} langs={langs[selectedLang]} />;
+        case 'Missions':
+          return <MetadataTypeView typeKey="missions" langs={langs[selectedLang]} />;
+        case 'Achievements':
+          return <MetadataTypeView typeKey="achievements" langs={langs[selectedLang]} />;
+        case 'Tournament Events':
+          return <MetadataTypeView typeKey="tournamentEvents" langs={langs[selectedLang]} />;
+        case 'Splash Arts':
+          return <MetadataTypeView typeKey="splashArts" langs={langs[selectedLang]} />;
+        case 'Music':
+          return <MetadataTypeView typeKey="music" langs={langs[selectedLang]} />;
+        case 'Helpful Hints':
+          return <MetadataTypeView typeKey="helpfulHints" langs={langs[selectedLang]} />;
+        case 'Guild Missions':
+          return <MetadataTypeView typeKey="guildMissions" langs={langs[selectedLang]} />;
+        case 'Client Themes':
+          return <MetadataTypeView typeKey="clientThemes" langs={langs[selectedLang]} />;
         default:
           return <div className="text-white text-sm italic p-4 bg-slate-900">Select a subcategory to view items.</div>;
       }

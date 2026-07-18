@@ -27,6 +27,14 @@ function queryKeyForTitle(title) {
   return String(title || 'item').toLowerCase().replace(/[^a-z0-9]+/g, '') || 'item';
 }
 
+function pageSlugForTitle(title) {
+  return String(title || '')
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 function label(value, langs) {
   if (!clean(value)) return '';
   return langs?.content?.[value] || String(value).replace(/([a-z])([A-Z])/g, '$1 $2');
@@ -1039,20 +1047,28 @@ function DatabaseView({ title, description, items, langs, config }) {
 
   useEffect(() => {
     if (!urlHydrated.current || urlSyncing.current) return;
-    const params = new URLSearchParams();
+    const params = new URLSearchParams(window.location.search);
+    params.set('page', pageSlugForTitle(title));
     if (selected) params.set(queryKey, String(config.id(selected)));
+    else params.delete(queryKey);
     if (search.trim()) params.set('search', search.trim());
+    else params.delete('search');
     if (sort !== (config.defaultSort || 'indexDesc')) params.set('sort', sort);
+    else params.delete('sort');
     for (const filter of filterDefs) {
       const value = filters[filter.key];
-      if (!value) continue;
+      if (!value || (Array.isArray(value) && !value.length)) {
+        params.delete(filter.key);
+        continue;
+      }
       if (filter.type === 'toggle') params.set(filter.key, '1');
       else if (filter.type === 'iconMulti' && asArray(value).length) params.set(filter.key, asArray(value).map(encodeURIComponent).join(','));
       else if (String(value)) params.set(filter.key, String(value));
+      else params.delete(filter.key);
     }
     const query = params.toString();
     window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
-  }, [config, filterDefs, filters, queryKey, search, selected, sort]);
+  }, [config, filterDefs, filters, queryKey, search, selected, sort, title]);
 
   useEffect(() => {
     if (selected && !filtered.includes(selected)) setSelected(null);
@@ -1152,6 +1168,389 @@ function Header({ title, subtitle, badges, hero, description, tags, inlineHero =
         {!inlineHero && hero && <div className="rounded-xl bg-gray-100 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3 flex items-center justify-center">{hero}</div>}
       </div>
     </div>
+  );
+}
+
+function metadataEvents(item, prefix = 'Event') {
+  return Object.entries(item || {})
+    .filter(([key, value]) => new RegExp(`^${prefix}\\d+$`, 'i').test(key) && clean(value) && !String(value).includes('--------------'))
+    .sort(([a], [b]) => Number(a.match(/\d+/)?.[0] || 0) - Number(b.match(/\d+/)?.[0] || 0))
+    .map(([key, value]) => ({ key, value: String(value) }));
+}
+
+function metadataCheckList(item) {
+  return Object.entries(item || {})
+    .filter(([key, value]) => /^CheckListKey\d+$/i.test(key) && clean(value))
+    .sort(([a], [b]) => Number(a.match(/\d+/)?.[0] || 0) - Number(b.match(/\d+/)?.[0] || 0))
+    .map(([key, value]) => ({ key, value: String(value) }));
+}
+
+function metadataRewards(item) {
+  return Object.entries(item || {})
+    .filter(([key, value]) => /^Reward/i.test(key) && clean(value) && Number(value) !== 0)
+    .map(([key, value]) => ({ key, value: String(value) }));
+}
+
+function prettyEvent(value) {
+  return String(value || '')
+    .split('.')
+    .map((part) => part.replace(/([a-z])([A-Z])/g, '$1 $2'))
+    .join(' / ');
+}
+
+function metadataImage(pathOrFile, folders = ['UI']) {
+  if (!clean(pathOrFile)) return null;
+  const file = String(pathOrFile).replace(/\\/g, '/').split('/').pop();
+  if (!file || !/\.(png|jpe?g|gif|webp)$/i.test(file)) return null;
+  return folders.map((folder) => `${host}/game/images/images/${folder}/${file}`);
+}
+
+function metadataUrl(value) {
+  if (!clean(value)) return '';
+  const url = String(value).trim();
+  return /^https?:\/\//i.test(url) ? url : '';
+}
+
+function SteamAchievementLink({ item }) {
+  if (!clean(item?.SteamLinkageName)) return null;
+  return (
+    <a
+      href="https://steamcommunity.com/stats/291550/achievements/"
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex rounded-lg bg-blue-500 px-3 py-2 text-sm font-black text-white transition hover:bg-blue-400"
+      onClick={(event) => event.stopPropagation()}
+    >
+      Open Steam Achievements
+    </a>
+  );
+}
+
+function MetadataLinkCards({ rows }) {
+  const visible = asArray(rows).filter(([, value]) => metadataUrl(value));
+  if (!visible.length) return null;
+  return (
+    <Section title="Links">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {visible.map(([labelText, value]) => (
+          <a
+            key={labelText}
+            href={metadataUrl(value)}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg border border-blue-400/40 bg-blue-500/15 p-3 text-sm font-black text-blue-700 transition hover:bg-blue-500 hover:text-white dark:text-blue-200"
+          >
+            <div>{labelText}</div>
+            <div className="mt-1 break-words text-xs font-semibold opacity-80">{value}</div>
+          </a>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+function guildMissionGroups(items) {
+  const rows = asArray(items).filter(Boolean);
+  const byName = new Map(rows.map((item) => [String(item.GuildMissionName), item]));
+  const referenced = new Set(rows.map((item) => item.FollowUp).filter(clean).map(String));
+  const visited = new Set();
+  const groups = [];
+
+  const totalsFor = (tiers) => ({
+    RewardGuildPoints: tiers.reduce((total, tier) => total + Number(tier.RewardGuildPoints || 0), 0),
+    RewardIndividualPoints: tiers.reduce((total, tier) => total + Number(tier.RewardIndividualPoints || 0), 0),
+  });
+
+  const addChain = (start) => {
+    const tiers = [];
+    let current = start;
+    while (current && !visited.has(current.GuildMissionName)) {
+      tiers.push(current);
+      visited.add(current.GuildMissionName);
+      current = clean(current.FollowUp) ? byName.get(String(current.FollowUp)) : null;
+    }
+    if (tiers.length) {
+      groups.push({
+        ...tiers[0],
+        GuildMissionID: tiers[0].GuildMissionID,
+        __tiers: tiers,
+        __tierCount: tiers.length,
+        __lastTier: tiers[tiers.length - 1],
+        __rewardTotals: totalsFor(tiers),
+      });
+    }
+  };
+
+  rows
+    .filter((item) => !referenced.has(String(item.GuildMissionName)))
+    .sort((a, b) => Number(a.GuildMissionID || 0) - Number(b.GuildMissionID || 0))
+    .forEach(addChain);
+
+  rows
+    .filter((item) => !visited.has(item.GuildMissionName))
+    .sort((a, b) => Number(a.GuildMissionID || 0) - Number(b.GuildMissionID || 0))
+    .forEach(addChain);
+
+  return groups;
+}
+
+function MetadataQuickStats({ rows }) {
+  const visible = asArray(rows).filter((row) => clean(row?.value));
+  if (!visible.length) return null;
+  return (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      {visible.map((row) => (
+        <div key={row.label} className="rounded-lg bg-slate-950/70 border border-slate-700 p-3 text-center">
+          <div className="text-[11px] uppercase tracking-wide text-slate-400">{row.label}</div>
+          <div className="mt-1 text-sm font-black text-white break-words">{row.value}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MetadataEventList({ title = 'Events', events }) {
+  const visible = asArray(events).filter(Boolean);
+  if (!visible.length) return null;
+  return (
+    <Section title={title}>
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+        {visible.map((event) => (
+          <div key={`${event.key}-${event.value}`} className="rounded-lg bg-gray-100 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3">
+            <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">{event.key}</div>
+            <div className="mt-1 text-sm font-bold text-gray-900 dark:text-white">{prettyEvent(event.value)}</div>
+            <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 break-words">{event.value}</div>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+function MetadataRewardList({ rewards }) {
+  const visible = asArray(rewards).filter(Boolean);
+  if (!visible.length) return null;
+  return (
+    <Section title="Rewards">
+      <div className="flex flex-wrap gap-2">
+        {visible.map((reward) => (
+          <span key={`${reward.key}-${reward.value}`} className="rounded-lg bg-blue-500/15 px-3 py-2 text-sm font-bold text-blue-700 dark:text-blue-300">
+            {reward.key.replace(/^Reward/, '')}: {reward.value}
+          </span>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
+function missionRewardBadges(item, guild = false) {
+  const rows = guild
+    ? [
+        { label: 'Guild Points', value: item?.RewardGuildPoints, tone: 'emerald' },
+        { label: 'Player Points', value: item?.RewardIndividualPoints, tone: 'blue' },
+      ]
+    : [
+        { label: 'Battle Stars', value: item?.RewardBattleStars, tone: 'blue' },
+        { label: 'Gold', value: item?.RewardGold, tone: 'amber' },
+      ];
+  return rows.filter((row) => clean(row.value) && Number(row.value) !== 0);
+}
+
+function MetadataRewardCorner({ item, guild = false }) {
+  const rewards = missionRewardBadges(item, guild);
+  if (!rewards.length) return null;
+  const toneClass = {
+    amber: 'bg-amber-400/20 text-amber-700 dark:text-amber-200 border-amber-400/40',
+    blue: 'bg-blue-500/15 text-blue-700 dark:text-blue-200 border-blue-400/40',
+    emerald: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-200 border-emerald-400/40',
+  };
+  return (
+    <div className="absolute right-2 top-2 z-10 flex max-w-[55%] flex-wrap justify-end gap-1">
+      {rewards.map((reward) => (
+        <span key={reward.label} className={`rounded-lg border px-2 py-0.5 text-[10px] font-black leading-tight ${toneClass[reward.tone]}`}>
+          {Number(reward.value).toLocaleString()} {reward.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function MetadataRewardSummary({ item, guild = false }) {
+  const rewards = missionRewardBadges(item, guild);
+  if (!rewards.length) return null;
+  return (
+    <div className="flex flex-wrap gap-2">
+      {rewards.map((reward) => (
+        <span key={reward.label} className="rounded-lg bg-blue-500/15 px-3 py-2 text-sm font-bold text-blue-700 dark:text-blue-300">
+          {reward.label}: {Number(reward.value).toLocaleString()}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function MetadataImageCard({ src, label }) {
+  return (
+    <OptionalImageBlock
+      src={src}
+      label={label}
+      className="rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm"
+      imageClassName="min-h-40 w-full rounded-lg bg-slate-900/80"
+      imgClassName="max-h-72 max-w-full object-contain"
+    />
+  );
+}
+
+function metadataAssetImageSrc(asset) {
+  if (!asset?.exists || !clean(asset.path) || !/\.(png|jpe?g|gif|webp)$/i.test(asset.path)) return null;
+  return `${host}/game/images/${asset.path}`;
+}
+
+function MetadataAssetPill({ asset, label }) {
+  if (!asset) return null;
+  const text = label || asset.name || asset.rig || asset.declared || asset.file || asset.path;
+  if (!clean(text)) return null;
+  return (
+    <div className={`rounded-lg border px-3 py-2 text-sm ${asset.exists ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100' : 'border-amber-500/30 bg-amber-500/10 text-amber-100'}`}>
+      <div className="font-bold break-words">{text}</div>
+      <div className="mt-1 text-[11px] uppercase tracking-wide opacity-75">{asset.exists ? 'Found' : 'Missing'}{asset.path ? ` • ${asset.path}` : ''}</div>
+    </div>
+  );
+}
+
+function MetadataAnimationFiles({ asset, title = 'Animation Files' }) {
+  if (!asset?.rig) return null;
+  const files = asArray(asset.files);
+  return (
+    <Section title={title}>
+      <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="text-sm font-black text-white break-words">{asset.rig}</div>
+            <div className="mt-1 text-xs text-slate-400">{asset.path || `${asset.folder}/${asset.rig}`}</div>
+          </div>
+          <span className={`rounded-lg px-2 py-1 text-xs font-bold ${asset.exists ? 'bg-emerald-500/20 text-emerald-200' : 'bg-amber-500/20 text-amber-200'}`}>
+            {asset.exists ? `${files.length} states` : 'Missing rig folder'}
+          </span>
+        </div>
+        {files.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {files.map((file) => (
+              <span key={file.path || file.file} className="rounded-lg bg-slate-800 px-2 py-1 text-xs font-semibold text-slate-100" title={file.path}>
+                {file.name}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </Section>
+  );
+}
+
+function MetadataRigPreview({ kind, asset, customArt, title = 'Animation Preview', className = 'min-h-64' }) {
+  const states = asArray(asset?.files).map((file) => file.name).filter(Boolean);
+  const initialState = states.includes('Ready') ? 'Ready' : states[0] || 'Ready';
+  const [state, setState] = useState(initialState);
+
+  useEffect(() => {
+    setState(initialState);
+  }, [asset?.rig, initialState]);
+
+  if (!asset?.rig) return null;
+  if (!asset.exists) {
+    return (
+      <Section title={title}>
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+          <div className="font-black">{asset.rig}</div>
+          <div className="mt-1 text-xs uppercase tracking-wide opacity-80">Missing animation rig folder</div>
+        </div>
+      </Section>
+    );
+  }
+
+  const src = metadataRigSrc(kind, asset.rig, state, customArt);
+
+  return (
+    <Section title={title}>
+      <div className={`flex items-center justify-center rounded-xl bg-slate-950/80 p-3 ${className}`}>
+        <ImageWithLoader src={src} className="h-full w-full" imgClassName="max-h-full max-w-full object-contain" />
+      </div>
+      {states.length > 1 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {states.map((stateName) => (
+            <ToggleButton key={stateName} active={stateName === state} onClick={() => setState(stateName)}>
+              {stateName}
+            </ToggleButton>
+          ))}
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function metadataRigSrc(kind, rig, state = 'Ready', customArt = '') {
+  if (!clean(kind) || !clean(rig) || !clean(state)) return null;
+  return `${host}/game/animMetadataRig/${encodeURIComponent(kind)}/${encodeURIComponent(rig)}/${encodeURIComponent(state)}${clean(customArt) ? `?customArt=${encodeURIComponent(customArt)}` : ''}`;
+}
+
+function MetadataAssetGrid({ title, assets }) {
+  const visible = asArray(assets).filter((entry) => entry?.asset || entry?.name || entry?.rig || entry?.declared);
+  if (!visible.length) return null;
+  return (
+    <Section title={title}>
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+        {visible.map((entry, index) => {
+          const asset = entry.asset || entry;
+          return <MetadataAssetPill key={`${entry.field || asset.name || asset.rig || index}-${index}`} asset={asset} label={entry.field || entry.label} />;
+        })}
+      </div>
+    </Section>
+  );
+}
+
+function MetadataGfxAssetGrid({ title, assets }) {
+  const visible = asArray(assets).filter((entry) => entry?.asset);
+  if (!visible.length) return null;
+  return (
+    <Section title={title}>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {visible.map((entry, index) => {
+          const asset = entry.asset;
+          const src = asset?.exists && asset.folder && asset.name ? `${host}/game/getGfx/${asset.folder}/${asset.name}` : null;
+          return (
+            <div key={`${entry.field || asset?.name || index}-${index}`} className="rounded-lg border border-slate-700 bg-slate-950/70 p-2 text-center">
+              <div className="flex h-20 items-center justify-center rounded-md bg-slate-900/80 p-2">
+                {src ? (
+                  <ImageWithLoader src={src} className="h-full w-full" imgClassName="max-h-full max-w-full object-contain" small />
+                ) : (
+                  <span className="text-xs font-bold text-amber-200">Missing</span>
+                )}
+              </div>
+              <div className="mt-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">{entry.field}</div>
+              <div className="mt-1 break-words text-xs text-white">{asset?.name}</div>
+            </div>
+          );
+        })}
+      </div>
+    </Section>
+  );
+}
+
+function MetadataThemeBackground({ asset }) {
+  if (!asset) return null;
+  return (
+    <Section title="Background Art">
+      {asset.exists ? (
+        <OptionalImageBlock
+          src={metadataAssetImageSrc(asset)}
+          imageClassName="min-h-48 w-full rounded-lg bg-slate-900/80"
+          imgClassName="h-full w-full object-cover"
+        />
+      ) : null}
+      <div className={asset.exists ? 'mt-3' : ''}>
+        <MetadataAssetPill asset={asset} label={asset.declared || 'Background'} />
+      </div>
+    </Section>
   );
 }
 
@@ -2255,11 +2654,23 @@ function formatUnixDate(value) {
   return new Date(parsed * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+function formatUnixDateTime(value) {
+  const parsed = Number(value || 0);
+  if (!Number.isFinite(parsed) || parsed <= 0) return '';
+  return new Date(parsed * 1000).toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 function battlePassReleaseInfo(pass) {
   const data = pass?.battlePassData || {};
   return {
-    patch: data.SegmentStartedPatch || data.SourcePatch || '',
-    date: data.SegmentStartedDate || data.SourceDate || '',
+    patch: pass?.release?.patch || data.SegmentStartedPatch || data.SourcePatch || '',
+    date: pass?.release?.date || data.SegmentStartedDate || data.SourceDate || '',
   };
 }
 
@@ -2397,6 +2808,348 @@ export function TitlesMetadataStoreView({ titles, langs }) {
   return <DatabaseView title="Titles" items={titles} langs={langs} config={resolvedConfigs.titles} />;
 }
 
+const metadataTypeConfigs = {
+  missions: {
+    title: 'Missions',
+    file: 'MissionTypes.xml',
+    maxColumns: 2,
+    rowHeight: 210,
+    rowHeightMobile: 190,
+    cardClassName: 'p-3 pt-9 min-h-40 sm:p-4 sm:pt-10',
+    badgeClassName: 'absolute left-2 top-2 z-10 pointer-events-none',
+    id: (item) => item.MissionID,
+    name: (item, langs) => label(item.DescriptionKey || item.MissionName, langs) || item.MissionName,
+    search: (item, langs) => [item.MissionName, item.Category, item.Sets, label(item.DescriptionKey, langs), label(item.ToolTipKey, langs), metadataEvents(item).map((event) => event.value).join(' ')],
+    filters: [
+      { key: 'category', label: 'Category', value: (item) => item.Category },
+      { key: 'sets', label: 'Sets', value: (item) => String(item.Sets || '').split(',') },
+      { key: 'reward', label: 'Reward Type', value: (item) => metadataRewards(item).map((reward) => reward.key.replace(/^Reward/, '')) },
+      { key: 'autoStart', label: 'Auto Start', type: 'toggle', value: (item) => String(item.AutoStart).toLowerCase() === 'true' },
+      { key: 'newPlayers', label: 'Hidden From New Players', type: 'toggle', value: (item) => String(item.NotForNewPlayers).toLowerCase() === 'true' },
+    ],
+    card: (item, langs) => (
+      <div className="relative flex h-full flex-col justify-start text-left">
+        <MetadataRewardCorner item={item} />
+        <div className="pr-28 text-xs font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">{item.Category || 'Mission'}</div>
+        <div className="mt-1 font-semibold leading-tight text-gray-900 dark:text-white">{label(item.DescriptionKey || item.MissionName, langs)}</div>
+        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">{item.MissionName}</div>
+        <div className="mt-3"><MetadataQuickStats rows={[{ label: 'Goal', value: item.SuccessCount }]} /></div>
+      </div>
+    ),
+    detail: (item, langs) => (
+      <>
+        <Header title={label(item.DescriptionKey || item.MissionName, langs)} subtitle={item.MissionName} description={label(item.ToolTipKey, langs)} badges={[item.Category, item.Sets]} />
+        <DetailColumns
+          left={<><Section title="Rewards"><MetadataRewardSummary item={item} /></Section><MetadataQuickStats rows={[{ label: 'Success Count', value: item.SuccessCount }, { label: 'Ranked Points', value: item.RewardRankedPoints }]} /><MetadataEventList events={metadataEvents(item)} /><MetadataRewardList rewards={metadataRewards(item)} /></>}
+          right={<><MetadataEventList title="Checklist Text" events={metadataCheckList(item)} /><FieldGrid data={item} langs={langs} title="Mission Data" exclude={['DescriptionKey', 'ToolTipKey', ...metadataEvents(item).map((event) => event.key), ...metadataCheckList(item).map((event) => event.key)]} /></>}
+        />
+      </>
+    ),
+  },
+  achievements: {
+    title: 'Achievements',
+    file: 'AchievementTypes.xml',
+    maxColumns: 2,
+    rowHeight: 190,
+    rowHeightMobile: 170,
+    cardClassName: 'p-3 min-h-36 sm:p-4',
+    id: (item) => item.AchievementID,
+    name: (item) => item.AchievementName,
+    search: (item) => [item.AchievementName, item.SteamLinkageName, metadataEvents(item).map((event) => event.value).join(' ')],
+    filters: [
+      { key: 'offline', label: 'Tracks Offline', type: 'toggle', value: (item) => String(item.TrackOffline).toLowerCase() === 'true' },
+      { key: 'completeAtOnce', label: 'Complete At Once', type: 'toggle', value: (item) => String(item.CompleteAtOnce).toLowerCase() === 'true' },
+      { key: 'bool', label: 'Boolean Completion', type: 'toggle', value: (item) => String(item.CompleteAsBool).toLowerCase() === 'true' },
+    ],
+    card: (item) => (
+      <div className="flex h-full flex-col justify-start text-left">
+        <div className="text-xs font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">Steam</div>
+        <div className="mt-1 font-semibold text-gray-900 dark:text-white">{item.AchievementName}</div>
+        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 break-words">{item.SteamLinkageName}</div>
+        <div className="mt-3"><MetadataQuickStats rows={[{ label: 'Goal', value: item.SuccessCount }, { label: 'Events', value: metadataEvents(item).length }]} /></div>
+      </div>
+    ),
+    detail: (item, langs) => (
+      <>
+        <Header title={item.AchievementName} subtitle={item.SteamLinkageName} badges={['Steam achievement']} />
+        <DetailColumns
+          left={<><Section title="Steam"><SteamAchievementLink item={item} /></Section><MetadataQuickStats rows={[{ label: 'Success Count', value: item.SuccessCount }, { label: 'Events', value: metadataEvents(item).length }]} /><MetadataEventList events={metadataEvents(item)} /></>}
+          right={<FieldGrid data={item} langs={langs} title="Achievement Data" exclude={metadataEvents(item).map((event) => event.key)} />}
+        />
+      </>
+    ),
+  },
+  tournamentEvents: {
+    title: 'Tournament Events',
+    file: 'TournamentEventTypes.xml',
+    virtual: false,
+    gridClassName: 'grid grid-cols-1 items-start gap-3 xl:grid-cols-2',
+    cardClassName: 'p-3 min-h-0 sm:p-4',
+    id: (item) => item.TournamentEventID || item.Title,
+    name: (item) => item.Title,
+    search: (item) => [item.Title, item.Location, item.PrizeType, item.PrizePool, item.RegistrationURL, item.LiveStreamURL],
+    filters: [
+      { key: 'location', label: 'Location', value: (item) => item.Location },
+      { key: 'prizeType', label: 'Prize Type', value: (item) => item.PrizeType },
+      { key: 'official', label: 'Official', type: 'toggle', value: (item) => String(item.IsOfficial).toLowerCase() === 'true' },
+      { key: 'featured', label: 'Featured', type: 'toggle', value: (item) => String(item.IsFeatured).toLowerCase() === 'true' },
+      { key: 'pinned', label: 'Pinned', type: 'toggle', value: (item) => String(item.IsPinned).toLowerCase() === 'true' },
+    ],
+    card: (item) => (
+      <div className="flex h-full flex-col gap-3 text-left sm:flex-row">
+        <OptionalImageBlock src={metadataAssetImageSrc(item.__assets?.icon) || metadataImage(item.IconImageName, ['events', 'UI', 'tournaments', 'thumbnails'])} imageClassName="h-20 w-20 shrink-0 rounded-lg bg-slate-900/80" small />
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-gray-900 dark:text-white">{item.Title}</div>
+          <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{item.Location}</div>
+          <div className="mt-2 grid grid-cols-1 gap-1 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-2">
+            <div><span className="font-black text-gray-900 dark:text-white">Starts:</span> {formatUnixDateTime(item.StartTime)}</div>
+            <div><span className="font-black text-gray-900 dark:text-white">Stream:</span> {formatUnixDateTime(item.StreamTime)}</div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {metadataUrl(item.RegistrationURL) && <a href={item.RegistrationURL} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="rounded-lg bg-blue-500 px-3 py-1 text-xs font-black text-white hover:bg-blue-400">Register</a>}
+            {metadataUrl(item.LiveStreamURL) && <a href={item.LiveStreamURL} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()} className="rounded-lg bg-purple-500 px-3 py-1 text-xs font-black text-white hover:bg-purple-400">Stream</a>}
+          </div>
+        </div>
+      </div>
+    ),
+    detail: (item, langs) => (
+      <>
+        <Header title={item.Title} subtitle={item.Location} badges={[item.IsOfficial === 'true' ? 'Official' : null, item.IsFeatured === 'true' ? 'Featured' : null, item.IsPinned === 'true' ? 'Pinned' : null]} />
+        <DetailColumns
+          left={<><MetadataImageCard src={metadataAssetImageSrc(item.__assets?.icon) || metadataImage(item.IconImageName, ['events', 'UI', 'tournaments', 'thumbnails'])} label="Icon" /><Section title="Schedule"><MetadataQuickStats rows={[{ label: 'Registration Ends', value: formatUnixDateTime(item.RegistrationEnds) }, { label: 'Starts', value: formatUnixDateTime(item.StartTime) }, { label: 'Stream', value: formatUnixDateTime(item.StreamTime) }, { label: 'Ends', value: formatUnixDateTime(item.EndTime) }]} /></Section></>}
+          right={<><MetadataLinkCards rows={[['Registration', item.RegistrationURL], ['Live Stream', item.LiveStreamURL]]} /><FieldGrid data={item} langs={langs} title="Tournament Data" exclude={['__assets']} /></>}
+        />
+      </>
+    ),
+  },
+  splashArts: {
+    title: 'Splash Arts',
+    file: 'SplashArtTypes.xml',
+    id: (item) => item.SplashArtID,
+    name: (item, langs) => label(item.UITextHeaderKey || item.SplashArtName, langs),
+    search: (item, langs) => [item.SplashArtName, item.AnimRig, item.AnimCustomArt, label(item.UITextHeaderKey, langs), label(item.UITextFooterKey, langs)],
+    filters: [
+      { key: 'rig', label: 'Animation Rig', value: (item) => item.AnimRig },
+      { key: 'customArt', label: 'Custom Art', value: (item) => item.AnimCustomArt },
+      { key: 'hideButton', label: 'Hides Button', type: 'toggle', value: (item) => String(item.ShouldHideButton).toLowerCase() === 'true' },
+    ],
+    card: (item, langs) => (
+      <div className="flex h-full flex-col justify-start text-center">
+        {item.__assets?.animation?.exists && (
+          <div className="mb-3 flex h-36 items-center justify-center rounded-xl bg-slate-950/80 p-2">
+            <ImageWithLoader
+              src={metadataRigSrc('splash', item.AnimRig, 'Ready', item.AnimCustomArt || item.SplashArtName)}
+              className="h-full w-full"
+              imgClassName="max-h-full max-w-full object-contain"
+              small
+            />
+          </div>
+        )}
+        <div className="text-xs font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">{item.__assets?.animation?.exists ? 'Animation Found' : 'Animation Missing'}</div>
+        <div className="mt-1 font-semibold text-gray-900 dark:text-white">{label(item.UITextHeaderKey || item.SplashArtName, langs)}</div>
+        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">{item.SplashArtName}</div>
+        <div className="mt-2 text-[11px] text-slate-400 break-words">{item.AnimRig}</div>
+        <TagChips tags={[item.AnimCustomArt, item.ShouldHideButton === 'True' ? 'Hidden Button' : null]} />
+      </div>
+    ),
+    detail: (item, langs) => (
+      <>
+        <Header title={label(item.UITextHeaderKey || item.SplashArtName, langs)} subtitle={item.SplashArtName} description={label(item.UITextFooterKey, langs)} badges={[item.AnimCustomArt, item.ShouldHideButton === 'True' ? 'Hidden Button' : null]} />
+        <DetailColumns
+          left={<><MetadataRigPreview kind="splash" asset={item.__assets?.animation} customArt={item.AnimCustomArt || item.SplashArtName} title="Splash Art Preview" className="min-h-80" /><MetadataAnimationFiles asset={item.__assets?.animation} title="Splash Animation Rig" /><Section title="Text"><FieldCards rows={[['Header', label(item.UITextHeaderKey, langs)], ['Footer', label(item.UITextFooterKey, langs)]].filter(([, value]) => clean(value))} /></Section></>}
+          right={<FieldGrid data={item} langs={langs} title="Splash Art Data" exclude={['__assets']} />}
+        />
+      </>
+    ),
+  },
+  music: {
+    title: 'Music',
+    file: 'MusicTypes.xml',
+    id: (item) => item.MusicID,
+    name: (item) => item.DisplayName || item.MusicName,
+    search: (item) => [item.DisplayName, item.MusicName, item.SoundBank, item.StartEvent, item.StopEvent],
+    filters: [
+      { key: 'bank', label: 'Sound Bank', value: (item) => item.SoundBank },
+      { key: 'hasEvents', label: 'Has Events', type: 'toggle', value: (item) => clean(item.StartEvent) || clean(item.StopEvent) },
+    ],
+    card: (item) => (
+      <div className="flex h-full flex-col justify-start text-center">
+        <div className="text-xs font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">Music</div>
+        <div className="mt-1 font-semibold text-gray-900 dark:text-white">{item.DisplayName || item.MusicName}</div>
+        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 break-words">{item.SoundBank}</div>
+      </div>
+    ),
+    detail: (item, langs) => (
+      <>
+        <Header title={item.DisplayName || item.MusicName} subtitle={item.MusicName} badges={[item.SoundBank]} description="Playback needs an audio extraction endpoint before this can stream in-site." />
+        <DetailColumns
+          left={<Section title="Playback"><div className="rounded-lg bg-slate-950/70 border border-slate-700 p-4 text-sm text-slate-300">Audio metadata is available, but no decrypted playable audio file is exposed by the API yet.</div></Section>}
+          right={<FieldGrid data={item} langs={langs} title="Music Data" />}
+        />
+      </>
+    ),
+  },
+  helpfulHints: {
+    title: 'Helpful Hints',
+    file: 'HelpfulhintsTypes.xml',
+    maxColumns: 2,
+    rowHeight: 170,
+    rowHeightMobile: 155,
+    cardClassName: 'p-3 min-h-32 sm:p-4',
+    id: (item) => item.HelpfulHintID || item.HelpfulhintsName,
+    name: (item, langs) => label(item.DescriptionKey || item.HelpfulhintsName, langs),
+    search: (item, langs) => [item.HelpfulhintsName, item.Category, item.PlatformRequirements, label(item.DescriptionKey, langs)],
+    filters: [
+      { key: 'category', label: 'Category', value: (item) => String(item.Category || '').split(',') },
+      { key: 'platform', label: 'Platform', value: (item) => String(item.PlatformRequirements || '').split(',') },
+      { key: 'weighted', label: 'Weighted', type: 'toggle', value: (item) => Number(item.Weight || 0) > 0 },
+    ],
+    card: (item, langs) => (
+      <div className="relative flex h-full flex-col justify-start pr-24 text-left">
+        <div className="absolute right-2 top-2 rounded-lg border border-slate-600 bg-slate-950/70 px-2 py-1 text-right text-[10px] font-black leading-tight text-slate-100">
+          {clean(item.Weight) && <div>Weight {item.Weight}</div>}
+          {(clean(item.MinLevel) || clean(item.MaxLevel)) && <div>Lv {item.MinLevel || '?'}-{item.MaxLevel || '?'}</div>}
+        </div>
+        <div className="text-xs font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">{item.Category}</div>
+        <div className="mt-1 font-semibold leading-tight text-gray-900 dark:text-white">{label(item.DescriptionKey || item.HelpfulhintsName, langs)}</div>
+      </div>
+    ),
+    detail: (item, langs) => (
+      <>
+        <Header title={label(item.DescriptionKey || item.HelpfulhintsName, langs)} subtitle={item.HelpfulhintsName} badges={[item.Category, item.PlatformRequirements]} />
+        <DetailColumns
+          left={<Section title="Hint Text"><div className="rounded-lg bg-slate-950/70 border border-slate-700 p-4 text-lg font-bold text-white">{label(item.DescriptionKey, langs)}</div></Section>}
+          right={<FieldGrid data={item} langs={langs} title="Helpful Hint Data" />}
+        />
+      </>
+    ),
+  },
+  guildMissions: {
+    title: 'Guild Missions',
+    file: 'GuildMissionTypes.xml',
+    maxColumns: 2,
+    rowHeight: 330,
+    rowHeightMobile: 315,
+    cardClassName: 'p-3 pt-9 min-h-48 sm:p-4 sm:pt-10',
+    badgeClassName: 'absolute left-2 top-2 z-10 pointer-events-none',
+    transformItems: guildMissionGroups,
+    id: (item) => item.GuildMissionID,
+    name: (item, langs) => label(item.DescriptionKey || item.GuildMissionName, langs),
+    search: (item, langs) => [item.GuildMissionName, item.Group, item.FollowUp, label(item.DescriptionKey, langs), label(item.ToolTipKey, langs), label(item.LobbyDescription, langs), asArray(item.__tiers).map((tier) => tier.GuildMissionName).join(' '), metadataEvents(item).map((event) => event.value).join(' ')],
+    filters: [
+      { key: 'group', label: 'Group', value: (item) => item.Group },
+      { key: 'bottom', label: 'Bottom Mission', type: 'toggle', value: (item) => String(item.BottomMission).toLowerCase() === 'true' },
+      { key: 'futureCredit', label: 'Future Credit', type: 'toggle', value: (item) => clean(item.GetIndividualCreditForFutureMissions) },
+    ],
+    card: (item, langs) => (
+      <div className="relative flex h-full flex-col justify-start text-left">
+        <MetadataRewardCorner item={item.__rewardTotals || item} guild />
+        <div className="pr-32 text-xs font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">Group {item.Group}</div>
+        <div className="mt-1 font-semibold text-gray-900 dark:text-white">{label(item.DescriptionKey || item.GuildMissionName, langs)}</div>
+        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">{item.__tierCount || 1} tier{(item.__tierCount || 1) === 1 ? '' : 's'}</div>
+        <div className="mt-2 grid grid-cols-1 gap-1">
+          {asArray(item.__tiers || [item]).map((tier, index) => (
+            <div key={tier.GuildMissionName || index} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg bg-gray-100 px-2 py-1.5 text-xs font-bold text-gray-700 dark:bg-slate-900 dark:text-gray-200">
+              <span>Tier {index + 1}</span>
+              <span className="text-center">{Number(tier.SuccessCount || 0).toLocaleString()} goal</span>
+              <span className="text-right">
+                {missionRewardBadges(tier, true).map((reward) => `${Number(reward.value).toLocaleString()} ${reward.label}`).join(' / ')}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    ),
+    detail: (item, langs) => (
+      <>
+        <Header title={label(item.DescriptionKey || item.GuildMissionName, langs)} subtitle={item.GuildMissionName} description={label(item.ToolTipKey, langs)} badges={[`Group ${item.Group}`, item.BottomMission === 'True' ? 'Bottom Mission' : null]} />
+        <DetailColumns
+          left={<><Section title="Tiers"><div className="space-y-3">{asArray(item.__tiers || [item]).map((tier, index) => <div key={tier.GuildMissionName || index} className="rounded-lg border border-slate-700 bg-slate-950/70 p-3"><div className="mb-2 flex flex-wrap items-start justify-between gap-2"><div><div className="text-xs font-black uppercase tracking-wide text-blue-300">Tier {index + 1}</div><div className="text-sm font-bold text-white">{tier.GuildMissionName}</div></div><MetadataRewardSummary item={tier} guild /></div><MetadataQuickStats rows={[{ label: 'Success Count', value: tier.SuccessCount }, { label: 'Future Credit', value: tier.GetIndividualCreditForFutureMissions }]} /></div>)}</div></Section><MetadataEventList events={metadataEvents(item)} /></>}
+          right={<FieldGrid data={item} langs={langs} title="Guild Mission Data" exclude={['__tiers', '__tierCount', '__lastTier', '__rewardTotals', ...metadataEvents(item).map((event) => event.key)]} />}
+        />
+      </>
+    ),
+  },
+  clientThemes: {
+    title: 'Client Themes',
+    file: 'ClientThemeTypes.xml',
+    id: (item) => item.ClientThemeID,
+    name: (item) => item.ClientThemeName,
+    search: (item) => [item.ClientThemeName, item.AnimRig, item.AnimCustomArt, item.BackgroundArt, item.SplashArtTypeName, item.MainMenuMusic, item.CharSelectMusic, item.WinThemeMusic, item.FeaturedStoreTypes],
+    filters: [
+      { key: 'rig', label: 'Animation Rig', value: (item) => item.AnimRig },
+      { key: 'splash', label: 'Splash Art', value: (item) => item.SplashArtTypeName },
+      { key: 'music', label: 'Menu Music', value: (item) => item.MainMenuMusic },
+      { key: 'hasBg', label: 'Has Background', type: 'toggle', value: (item) => clean(item.BackgroundArt) },
+      { key: 'hasStore', label: 'Featured Store', type: 'toggle', value: (item) => clean(item.FeaturedStoreTypes) },
+    ],
+    card: (item) => (
+      <div className="flex h-full flex-col justify-start text-center">
+        <OptionalImageBlock
+          src={[
+            item.__assets?.logoAnimation?.exists && metadataRigSrc('clienttheme', item.AnimRig, 'Ready', item.AnimCustomArt),
+            metadataAssetImageSrc(item.__assets?.backgroundArt),
+            ...asArray(metadataImage(item.BackgroundArt, ['UI'])),
+          ]}
+          imageClassName="mb-3 h-28 w-full rounded-lg bg-slate-900/80"
+          imgClassName="max-h-full max-w-full object-contain"
+          small
+        />
+        <div className="font-semibold text-gray-900 dark:text-white">{item.ClientThemeName}</div>
+        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">{item.AnimCustomArt || item.AnimRig}</div>
+        <TagChips tags={[item.SplashArtTypeName, item.MainMenuMusic]} />
+      </div>
+    ),
+    detail: (item, langs) => (
+      <>
+        <Header title={item.ClientThemeName} subtitle={item.AnimCustomArt || item.AnimRig} badges={[item.SplashArtTypeName, item.SplashArtUIScreen, item.HolidayRibbonLabel]} />
+        <DetailColumns
+          left={<><MetadataThemeBackground asset={item.__assets?.backgroundArt} /><MetadataRigPreview kind="clienttheme" asset={item.__assets?.logoAnimation} customArt={item.AnimCustomArt} title="Logo Preview" className="min-h-64" /><MetadataAnimationFiles asset={item.__assets?.logoAnimation} title="Logo Animation Rig" /><Section title="Music"><FieldCards rows={[['Main Menu', item.MainMenuMusic], ['Character Select', item.CharSelectMusic], ['Win Theme', item.WinThemeMusic], ['Welcome Announcer', item.WelcomeAnnouncer]].filter(([, value]) => clean(value))} /></Section></>}
+          right={<><MetadataGfxAssetGrid title="Main Menu Buttons" assets={item.__assets?.buttons} /><MetadataGfxAssetGrid title="Login Bonus Assets" assets={[{ field: 'LoginBonusFrame', asset: item.__assets?.loginBonus?.frame }, { field: 'LoginBonusIconAnimation', asset: item.__assets?.loginBonus?.iconAnimation }]} /><MetadataGfxAssetGrid title="Theme Accent Assets" assets={[{ field: 'TileAccent', asset: item.__assets?.tileAccent }, { field: 'MainMenuAccent', asset: item.__assets?.mainMenuAccent }]} /><MetadataAssetGrid title="Background Clouds" assets={[{ field: 'BackgroundClouds', asset: item.__assets?.backgroundClouds }]} /><Section title="Featured Store"><TagChips tags={String(item.FeaturedStoreTypes || '').split(',')} /></Section><FieldGrid data={item} langs={langs} title="Client Theme Data" exclude={['__assets']} /></>}
+        />
+      </>
+    ),
+  },
+};
+
+function shouldHideTemplateRecord(row) {
+  const name = String(row?.MissionName || row?.AchievementName || row?.SplashArtName || row?.HelpfulhintsName || row?.GuildMissionName || row?.ClientThemeName || row?.Title || row?.MusicName || '').toLowerCase();
+  return name.includes('template');
+}
+
+export function MetadataTypeView({ typeKey, langs }) {
+  const config = metadataTypeConfigs[typeKey];
+  const [payload, setPayload] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!config?.file) return;
+    setLoading(true);
+    fetch(`${host}/game/metadata/Game/${config.file}`)
+      .then((res) => res.json())
+      .then(setPayload)
+      .catch((error) => setPayload({ error: error.message }))
+      .finally(() => setLoading(false));
+  }, [config?.file]);
+
+  if (!config) {
+    return <div className="min-h-screen bg-gray-100 p-4 text-gray-900 dark:bg-slate-900 dark:text-white">Unknown metadata page.</div>;
+  }
+  if (loading || !payload) {
+    return <div className="min-h-screen bg-gray-100 p-4 text-gray-900 dark:bg-slate-900 dark:text-white"><LoadingSpinner /></div>;
+  }
+  if (payload.error) {
+    return <div className="min-h-screen bg-gray-100 p-4 text-red-500 dark:bg-slate-900">{payload.error}</div>;
+  }
+
+  const rawItems = asArray(payload.data)
+    .map((item, index) => ({ ...item, ArrayIndex: item.ArrayIndex ?? index, metadataPatch: payload.patch, metadataDate: payload.date }))
+    .filter((item) => !shouldHideTemplateRecord(item));
+  const items = config.transformItems ? config.transformItems(rawItems, langs) : rawItems;
+
+  return <DatabaseView title={config.title} items={items} langs={langs} config={config} />;
+}
+
 export function SkirmishStoreView({ skirmishes, langs }) {
   const config = useMemo(() => ({
     id: (item) => item.skirmishData?.SkirmishID,
@@ -2489,34 +3242,71 @@ export function BattlePassStoreView({ battlePasses, langs }) {
     if (numDiff) return numDiff;
     return Number(isClassicPass(a)) - Number(isClassicPass(b));
   }), [battlePasses]);
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const selected = sorted[selectedIndex] || sorted[0];
-  const rewards = asArray(selected?.rewards).filter(validBattlePassReward);
-  const paths = useMemo(() => battlePassPaths(rewards, selected), [rewards, selected]);
+  const [selectedKey, setSelectedKey] = useState('');
   const [selectedPath, setSelectedPath] = useState('0');
+  const [selectedTier, setSelectedTier] = useState(null);
+  const urlHydrated = useRef(false);
+  const selected = sorted.find((pass) => battlePassKey(pass) === selectedKey) || sorted[0];
+  const rewards = asArray(selected?.rewards).filter(validBattlePassReward);
+  const paths = useMemo(() => normalizedBattlePassPaths(selected, rewards), [rewards, selected]);
   useEffect(() => {
-    setSelectedPath(paths[0]?.path || '0');
-  }, [selected]);
+    if (!sorted.length || urlHydrated.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const season = params.get('pass');
+    const variant = params.get('variant');
+    const path = params.get('path');
+    const tier = params.get('tier');
+    const match = sorted.find((pass) =>
+      (!season || String(battlePassNumber(pass)) === String(season)) &&
+      (!variant || battlePassVariant(pass) === String(variant).toLowerCase())
+    );
+    setSelectedKey(battlePassKey(match || sorted[0]));
+    if (path) setSelectedPath(path);
+    if (tier) setSelectedTier(Number(tier) || null);
+    urlHydrated.current = true;
+  }, [sorted]);
+  useEffect(() => {
+    if (!selected || !paths.length) return;
+    if (!paths.some((path) => path.path === selectedPath)) setSelectedPath(paths[0]?.path || '0');
+  }, [paths, selected, selectedPath]);
+  useEffect(() => {
+    if (!urlHydrated.current || !selected) return;
+    const params = new URLSearchParams(window.location.search);
+    params.set('page', pageSlugForTitle('Battle Passes'));
+    params.set('pass', String(battlePassNumber(selected)));
+    params.set('variant', battlePassVariant(selected));
+    if (selectedPath && selectedPath !== '0') params.set('path', selectedPath);
+    else params.delete('path');
+    if (selectedTier) params.set('tier', String(selectedTier));
+    else params.delete('tier');
+    window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+  }, [selected, selectedPath, selectedTier]);
   const activePath = paths.find((path) => path.path === selectedPath) || paths[0];
-  const summary = useMemo(() => battlePassSummary(rewards), [rewards]);
-  const deluxePurchases = uniqueDeluxePurchases(selected);
+  const summary = normalizeBattlePassSummary(selected?.summary, rewards);
+  const deluxePurchases = asArray(selected?.deluxePurchases).length ? asArray(selected.deluxePurchases) : uniqueDeluxePurchases(selected);
+  const selectedTierData = activePath?.tiers?.find((tier) => Number(tier.tier) === Number(selectedTier));
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-slate-900 p-3 lg:p-4 text-gray-900 dark:text-white">
+    <div className="min-h-screen bg-gray-100 dark:bg-slate-900 p-3 text-gray-900 dark:text-white lg:p-4">
       <div className="space-y-4">
-        <div className="flex gap-2 overflow-x-auto app-scrollbar pb-2">
+        <Section title="Seasons">
+          <div className="flex gap-2 overflow-x-auto app-scrollbar pb-2">
           {sorted.map((bp, index) => {
             const release = battlePassReleaseInfo(bp);
+            const active = selected === bp;
             return (
               <button
-                key={bp.ArrayIndex || index}
-                onClick={() => setSelectedIndex(index)}
-                className={`${selected === bp ? 'bg-blue-500 text-white' : 'bg-white dark:bg-slate-800 text-gray-900 dark:text-white'} rounded-xl px-3 py-2 text-left w-60 shrink-0 border border-gray-200 dark:border-slate-700 shadow-sm`}
+                key={battlePassKey(bp) || index}
+                onClick={() => {
+                  setSelectedKey(battlePassKey(bp));
+                  setSelectedTier(null);
+                }}
+                className={`${active ? 'border-blue-400 bg-blue-500 text-white shadow-blue-500/20' : 'border-gray-200 bg-gray-50 text-gray-900 hover:bg-gray-100 dark:border-slate-700 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-700'} flex w-64 shrink-0 flex-col rounded-xl border px-3 py-2 text-left shadow-sm transition`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <div className="font-black leading-tight">BP {battlePassNumber(bp)}</div>
-                    <div className="text-xs font-bold opacity-80">{isClassicPass(bp) ? 'Classic' : 'Original'}</div>
+                    <div className="font-black leading-tight">Battle Pass {battlePassNumber(bp)}</div>
+                    <div className="text-xs font-bold opacity-80">{battlePassVariantLabel(bp)}</div>
                   </div>
                   {(release.patch || release.date) && (
                     <div className="text-right text-[10px] font-black uppercase leading-tight opacity-80">
@@ -2529,16 +3319,18 @@ export function BattlePassStoreView({ battlePasses, langs }) {
               </button>
             );
           })}
-        </div>
+          </div>
+        </Section>
       </div>
       {selected && (
         <div className="mt-4 flex flex-col gap-4">
           <Header
             title={`Battle Pass ${battlePassNumber(selected)}`}
-            subtitle=""
+            subtitle={battlePassVariantLabel(selected)}
             badges={[
-              `${rewards.length} items`,
-              `${asArray(selected.purchases).length} purchases`,
+              `${rewards.length} rewards`,
+              `${paths.length} path${paths.length === 1 ? '' : 's'}`,
+              deluxePurchases.length && 'Deluxe',
               battlePassReleaseInfo(selected).patch && `Patch ${battlePassReleaseInfo(selected).patch}`,
               battlePassReleaseInfo(selected).date && formatUnixDate(battlePassReleaseInfo(selected).date),
             ]}
@@ -2546,42 +3338,127 @@ export function BattlePassStoreView({ battlePasses, langs }) {
           <BattlePassFeaturedRewards pass={selected} langs={langs} />
           <BattlePassSummary summary={summary} langs={langs} />
           {deluxePurchases.length > 0 && (
-            <Section title="Deluxe">
-              <div className="space-y-3">
-                {deluxePurchases.map((purchase, index) => (
-                  <div key={purchase.entitlementData?.EntitlementName || index} className="rounded-lg bg-gray-100 dark:bg-slate-900 p-3">
-                    <div className="mb-2 font-bold text-gray-900 dark:text-white">{label(purchase.entitlementData?.DisplayNameKey || purchase.entitlementData?.EntitlementName, langs)}</div>
-                    <div className="mb-3 flex flex-wrap gap-2">
-                      {clean(purchase.entitlementData?.DeluxeBattlePassTiers) && <SummaryPill label="Tier Skips" value={purchase.entitlementData.DeluxeBattlePassTiers} />}
-                      {clean(purchase.entitlementData?.IncludesRewardsFrom) && <SummaryPill label="Includes" value={purchase.entitlementData.IncludesRewardsFrom} />}
-                      {entitlementItems(purchase).length > 0 && <SummaryPill label="Items" value={entitlementItems(purchase).length} />}
-                    </div>
-                    <ItemStrip items={entitlementItems(purchase)} langs={langs} small limit={18} />
-                  </div>
-                ))}
-              </div>
-            </Section>
+            <BattlePassDeluxeSection purchases={deluxePurchases} langs={langs} />
           )}
           {paths.length > 1 && (
-            <div className="flex flex-wrap gap-2">
+            <Section title="Paths">
+              <div className="flex flex-wrap gap-2">
               {paths.map((pathGroup) => (
                 <button
                   key={pathGroup.path}
-                  onClick={() => setSelectedPath(pathGroup.path)}
-                  className={`${activePath?.path === pathGroup.path ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-slate-700 text-gray-900 dark:text-white'} rounded-lg px-4 py-2 text-sm font-bold`}
+                  onClick={() => {
+                    setSelectedPath(pathGroup.path);
+                    setSelectedTier(null);
+                  }}
+                  className={`${activePath?.path === pathGroup.path ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-900 hover:bg-gray-300 dark:bg-slate-700 dark:text-white dark:hover:bg-slate-600'} rounded-lg px-4 py-2 text-sm font-bold transition`}
                 >
                   {pathGroup.label}
                 </button>
               ))}
-            </div>
+              </div>
+            </Section>
           )}
           {activePath && (
             <Section title={activePath.label}>
-              <BattlePassGrid tiers={activePath.tiers} langs={langs} />
+              <BattlePassGrid tiers={activePath.tiers} langs={langs} selectedTier={selectedTier} setSelectedTier={setSelectedTier} />
             </Section>
           )}
+          {selectedTierData && <BattlePassTierInspector tier={selectedTierData} langs={langs} onClose={() => setSelectedTier(null)} />}
           <RawDataSection data={selected.battlePassData} />
         </div>
+      )}
+    </div>
+  );
+}
+
+function battlePassKey(pass) {
+  if (!pass) return '';
+  return `${battlePassNumber(pass)}-${battlePassVariant(pass)}-${pass?.ArrayIndex ?? pass?.battlePassData?.SourceManifest ?? ''}`;
+}
+
+function battlePassVariant(pass) {
+  return String(pass?.variant || pass?.battlePassData?.Variant || (isClassicPass(pass) ? 'classic' : 'original')).toLowerCase() === 'classic' ? 'classic' : 'original';
+}
+
+function battlePassVariantLabel(pass) {
+  return battlePassVariant(pass) === 'classic' ? 'Classic' : 'Original';
+}
+
+function normalizedBattlePassPaths(pass, rewards) {
+  const apiPaths = asArray(pass?.paths);
+  if (apiPaths.length) {
+    return apiPaths.map((path) => ({
+      ...path,
+      path: String(path.path ?? '0'),
+      label: path.label || battlePassPathLabel(String(path.path ?? '0'), pass),
+      tiers: asArray(path.tiers).map((tier) => ({
+        ...tier,
+        tier: Number(tier.tier || 0),
+        free: asArray(tier.free),
+        gold: asArray(tier.gold),
+      })).filter((tier) => tier.tier > 0),
+    }));
+  }
+  return battlePassPaths(rewards, pass);
+}
+
+function BattlePassDeluxeSection({ purchases, langs }) {
+  return (
+    <Section title="Deluxe">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+        {asArray(purchases).map((purchase, index) => {
+          const entitlement = purchase.entitlementData || {};
+          const items = entitlementItems(purchase);
+          return (
+            <div key={entitlement.EntitlementName || index} className="rounded-xl border border-gray-200 bg-gray-100 p-3 dark:border-slate-700 dark:bg-slate-900">
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="text-base font-black leading-tight text-gray-900 dark:text-white">{label(entitlement.DisplayNameKey || entitlement.EntitlementName, langs)}</div>
+                  {entitlement.EntitlementName && <div className="text-xs text-gray-500 dark:text-gray-400">{entitlement.EntitlementName}</div>}
+                </div>
+                <div className="flex flex-wrap gap-1 sm:justify-end">
+                  {clean(entitlement.DeluxeBattlePassTiers) && <SummaryPill label="Tier Skips" value={entitlement.DeluxeBattlePassTiers} />}
+                  {clean(entitlement.IncludesRewardsFrom) && <SummaryPill label="Includes" value={entitlement.IncludesRewardsFrom} />}
+                </div>
+              </div>
+              {items.length > 0 && <ItemStrip items={items} langs={langs} small limit={99} />}
+              <FieldCards rows={Object.entries(entitlement).filter(([key, value]) => !['DisplayNameKey', 'EntitlementName'].includes(key) && clean(value))} />
+            </div>
+          );
+        })}
+      </div>
+    </Section>
+  );
+}
+
+function BattlePassTierInspector({ tier, langs, onClose }) {
+  const rewards = [...asArray(tier.free), ...asArray(tier.gold)];
+  return (
+    <Section
+      title={`Tier ${tier.tier}`}
+      action={<button onClick={onClose} className="rounded-lg bg-gray-200 px-3 py-1 text-xs font-bold text-gray-900 hover:bg-gray-300 dark:bg-slate-700 dark:text-white dark:hover:bg-slate-600">Close</button>}
+    >
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <TierRewardLane title="Free Pass" rewards={tier.free} langs={langs} tone="free" />
+        <TierRewardLane title="Gold Pass" rewards={tier.gold} langs={langs} tone="gold" />
+      </div>
+      <RawDataSection data={rewards.map((reward) => reward.rewardData || reward)} title="Tier Data" />
+    </Section>
+  );
+}
+
+function TierRewardLane({ title, rewards, langs, tone }) {
+  return (
+    <div className={`${tone === 'gold' ? 'bg-[#a9772a]' : 'bg-[#405f88]'} rounded-xl border border-slate-950/30 p-3`}>
+      <div className="mb-3 text-sm font-black text-white drop-shadow">{title}</div>
+      {asArray(rewards).length ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {asArray(rewards).map((reward, index) => (
+            <BattlePassReward key={reward.rewardData?.RewardID || index} reward={reward} langs={langs} large />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-lg bg-black/15 p-3 text-sm font-bold text-white/80">No reward on this lane.</div>
       )}
     </div>
   );
@@ -2848,7 +3725,7 @@ function BattlePassRewardGroups({ rewards, langs }) {
                   {group.title !== 'Titles' && <div className="mt-2 w-full text-xs font-bold leading-tight text-gray-900 dark:text-white whitespace-normal break-words">{itemLabel(entry, langs)}</div>}
                   {entry?.rewardData?.Tier && (
                     <div className="absolute -right-1 -top-1 rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-black text-white shadow">
-                      {entry.rewardData.Tier}
+                      Tier {entry.rewardData.Tier}
                     </div>
                   )}
                 </div>
@@ -2989,6 +3866,33 @@ function battlePassSummary(rewards) {
   return { free: makeSummary(free), gold: makeSummary(gold), all: makeSummary(valid) };
 }
 
+function normalizeBattlePassSummary(summary, rewards) {
+  if (!summary?.free || !summary?.gold || !summary?.all) return battlePassSummary(rewards);
+  const convert = (block) => ({
+    counts: block.byType || block.counts || {},
+    coins: block.totals?.mammothCoins || block.coins || 0,
+    xp: block.totals?.battlePassXp || block.xp || 0,
+    total: block.totals?.rewards || block.total || 0,
+    entries: asArray(block.entries || block.useful).map((entry) => (
+      entry?.entry ? entry : {
+        entry: {
+          type: entry?.type || entry?.rewardData?.Type,
+          item: entry?.item || entry?.rewardData?.Item || entry?.rewardData?.Amount,
+          resolved: entry?.resolved,
+          rewardData: entry?.rewardData,
+        },
+        count: 1,
+        amount: itemType(entry) === 'MammothCoins' || itemType(entry) === 'BattlePassXP' ? num(entry?.amount || entry?.rewardData?.Amount) : 1,
+      }
+    )),
+  });
+  return {
+    free: convert(summary.free),
+    gold: convert(summary.gold),
+    all: convert(summary.all),
+  };
+}
+
 function SummaryPill({ label, value }) {
   if (!value) return null;
   return <span className="rounded-lg bg-gray-200 dark:bg-slate-700 px-3 py-1 text-xs font-bold text-gray-900 dark:text-white">{label}: {value}</span>;
@@ -3007,28 +3911,131 @@ function SummaryBlock({ title, data, langs, tone }) {
 }
 
 function RewardSummaryStrip({ entries, langs }) {
-  const visible = asArray(entries).filter(Boolean);
+  const visible = sortBattlePassSummaryEntries(collapseColorSchemeSummaryEntries(entries));
+  const titleEntries = visible.filter((summary) => itemType(summary.entry) === 'Moniker');
+  const iconEntries = visible.filter((summary) => itemType(summary.entry) !== 'Moniker');
   if (!visible.length) return null;
   return (
-    <div className="mt-3 flex flex-wrap gap-2">
-      {visible.map((summary, index) => {
-        const type = itemType(summary.entry);
-        const quantity = type === 'MammothCoins' || type === 'BattlePassXP' ? summary.amount : summary.count;
-        return (
-          <Tooltip key={`${itemKey(summary.entry, index)}-${index}`} lines={entryTooltipLines(summary.entry, `${itemLabel(summary.entry, langs)} (${quantity} total)`)}>
-            <div className="relative">
-              <ItemThumb entry={summary.entry} small langs={langs} />
-              {quantity > 1 && (
-                <div className="absolute -right-1 -top-1 rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-black text-white shadow">
-                  {type === 'BattlePassXP' ? `+${quantity}%` : `x${quantity}`}
-                </div>
-              )}
-            </div>
-          </Tooltip>
-        );
-      })}
+    <div className="mt-3 space-y-4">
+      {titleEntries.length > 0 && (
+        <div className="flex flex-wrap items-start gap-2">
+          {titleEntries.map((summary, index) => (
+            <BattlePassSummaryTile key={`${itemKey(summary.entry, index)}-title-${index}`} summary={summary} index={index} langs={langs} />
+          ))}
+        </div>
+      )}
+      {iconEntries.length > 0 && (
+        <div
+          className="grid gap-2"
+          style={{
+            gridTemplateColumns: 'repeat(auto-fill, minmax(4rem, 4rem))',
+            gridAutoRows: '4rem',
+            gridAutoFlow: 'dense',
+          }}
+        >
+          {iconEntries.map((summary, index) => (
+            <BattlePassSummaryTile key={`${itemKey(summary.entry, index)}-${index}`} summary={summary} index={index} langs={langs} />
+          ))}
+        </div>
+      )}
     </div>
   );
+}
+
+function BattlePassSummaryTile({ summary, index, langs }) {
+  const type = itemType(summary.entry);
+  const quantity = type === 'MammothCoins' || type === 'BattlePassXP' ? summary.amount : summary.count;
+  const tooltipLabel = summary.entry?.__summaryLabel || itemLabel(summary.entry, langs);
+  return (
+    <Tooltip lines={entryTooltipLines(summary.entry, `${tooltipLabel} (${quantity} total)`)} className={battlePassSummaryTileClass(summary)}>
+      <div className="relative flex h-full w-full items-center justify-center">
+        <BattlePassSummaryThumb summary={summary} langs={langs} />
+        {(quantity > 1 || type === 'ColorScheme') && (
+          <div className="absolute -right-1 -top-1 rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] font-black text-white shadow">
+            {type === 'BattlePassXP' ? `+${quantity}%` : `x${quantity}`}
+          </div>
+        )}
+      </div>
+    </Tooltip>
+  );
+}
+
+function battlePassSummaryTileClass(summary) {
+  const type = itemType(summary?.entry);
+  if (type === 'Border' || type === 'Podium' || type === 'KOEffect') return 'col-span-2 row-span-3 h-full w-full';
+  if (type === 'PlayerTheme') return 'col-span-4 row-span-3 h-full w-full';
+  if (type === 'Costume' || summary?.entry?.resolved?.costumeData) return 'col-span-2 row-span-2 h-full w-full';
+  if (type === 'Moniker') return 'h-auto w-auto';
+  return 'col-span-1 row-span-1 h-full w-full';
+}
+
+function battlePassSummaryOrder(summary) {
+  const type = itemType(summary?.entry);
+  const theme = summary?.entry?.resolved?.themeData || {};
+  const rewardItem = String(summary?.entry?.item || summary?.entry?.rewardData?.Item || '').toLowerCase();
+  const rewardIcon = String(summary?.entry?.rewardData?.IconName || '').toLowerCase();
+  if (type === 'PlayerTheme') {
+    if (/nameplate/.test(rewardItem) || clean(theme.NameplateAsset)) return 0;
+    if (/killplate/.test(rewardItem) || clean(theme.KillplateAsset)) return 1;
+    if (/scoreplate/.test(rewardItem) || clean(theme.ScoreplateAsset)) return 2;
+    return 2;
+  }
+  if (type === 'Podium') return 10;
+  if (type === 'Border') return 11;
+  if (type === 'KOEffect') return 12;
+  if (type === 'Costume') return 20;
+  if (type === 'WeaponSkin') return 30;
+  if (type === 'Taunt') return 40;
+  if (type === 'Moniker') return 50;
+  if (type === 'ColorScheme') return 60;
+  if (/nameplate/.test(rewardIcon)) return 0;
+  if (/killplate/.test(rewardIcon)) return 1;
+  if (/scoreplate/.test(rewardIcon)) return 2;
+  return 90;
+}
+
+function sortBattlePassSummaryEntries(entries) {
+  return asArray(entries).slice().sort((a, b) => {
+    const orderDiff = battlePassSummaryOrder(a) - battlePassSummaryOrder(b);
+    if (orderDiff) return orderDiff;
+    return String(itemLabel(a.entry, null)).localeCompare(String(itemLabel(b.entry, null)));
+  });
+}
+
+function BattlePassSummaryThumb({ summary, langs }) {
+  const type = itemType(summary?.entry);
+  if (type === 'Podium' || type === 'KOEffect') {
+    return <ItemThumb entry={summary.entry} langs={langs} className="h-40 w-28 sm:h-48 sm:w-32" />;
+  }
+  if (type === 'Costume' || summary?.entry?.resolved?.costumeData) {
+    return <ItemThumb entry={summary.entry} langs={langs} className="h-full w-full" />;
+  }
+  return <ItemThumb entry={summary.entry} small langs={langs} />;
+}
+
+function collapseColorSchemeSummaryEntries(entries) {
+  const visible = [];
+  let colorSummary = null;
+  for (const summary of asArray(entries).filter(Boolean)) {
+    if (itemType(summary.entry) !== 'ColorScheme') {
+      visible.push(summary);
+      continue;
+    }
+
+    if (!colorSummary) {
+      colorSummary = {
+        ...summary,
+        entry: { ...summary.entry, __summaryLabel: 'Color Schemes' },
+        count: 0,
+        amount: 0,
+      };
+      visible.push(colorSummary);
+    }
+    const count = num(summary.count) || num(summary.amount) || 1;
+    colorSummary.count += count;
+    colorSummary.amount += count;
+  }
+  return visible;
 }
 
 function BattlePassSummary({ summary, langs }) {
@@ -3055,19 +4062,25 @@ function battlePassTiers(rewards) {
   return [...map.values()].sort((a, b) => a.tier - b.tier);
 }
 
-function BattlePassGrid({ tiers, langs }) {
+function BattlePassGrid({ tiers, langs, selectedTier, setSelectedTier }) {
   return (
     <div className="overflow-x-auto app-scrollbar rounded-xl border border-slate-950/30 dark:border-slate-700 bg-[#06213a] shadow-lg">
       <div className="min-w-max">
         <div className="grid" style={{ gridTemplateColumns: `112px repeat(${tiers.length}, 150px)` }}>
-          <div className="bg-slate-800 text-white font-black text-sm p-3 ring-1 ring-slate-900/70">Tiers</div>
+          <div className="sticky left-0 z-20 bg-slate-800 text-white font-black text-sm p-3 ring-1 ring-slate-900/70">Tiers</div>
           {tiers.map((tier) => (
-            <div key={tier.tier} className="bg-slate-800 text-white font-black text-center text-sm p-3 ring-1 ring-slate-900/70">{tier.tier}</div>
+            <button
+              key={tier.tier}
+              onClick={() => setSelectedTier(Number(tier.tier))}
+              className={`${Number(selectedTier) === Number(tier.tier) ? 'bg-blue-500' : 'bg-slate-800 hover:bg-slate-700'} text-white font-black text-center text-sm p-3 ring-1 ring-slate-900/70 transition`}
+            >
+              {tier.tier}
+            </button>
           ))}
           <PassLaneLabel label="Free Pass" color="blue" />
-          {tiers.map((tier) => <TierCell key={`free-${tier.tier}`} rewards={tier.free} lane="free" langs={langs} />)}
+          {tiers.map((tier) => <TierCell key={`free-${tier.tier}`} rewards={tier.free} lane="free" langs={langs} active={Number(selectedTier) === Number(tier.tier)} onClick={() => setSelectedTier(Number(tier.tier))} />)}
           <PassLaneLabel label="Gold Pass" color="gold" />
-          {tiers.map((tier) => <TierCell key={`gold-${tier.tier}`} rewards={tier.gold} lane="gold" langs={langs} />)}
+          {tiers.map((tier) => <TierCell key={`gold-${tier.tier}`} rewards={tier.gold} lane="gold" langs={langs} active={Number(selectedTier) === Number(tier.tier)} onClick={() => setSelectedTier(Number(tier.tier))} />)}
         </div>
       </div>
     </div>
@@ -3082,12 +4095,12 @@ function PassLaneLabel({ label, color }) {
   );
 }
 
-function TierCell({ rewards, lane, langs }) {
+function TierCell({ rewards, lane, langs, active, onClick }) {
   const oneReward = asArray(rewards).length === 1;
   return (
-    <div className={`${lane === 'gold' ? 'bg-[#a9772a]' : 'bg-[#405f88]'} min-h-44 p-2 ring-1 ring-slate-900/70 grid ${oneReward ? 'grid-cols-1 place-items-center' : 'grid-cols-2 content-center'} gap-2`}>
+    <button onClick={onClick} className={`${lane === 'gold' ? 'bg-[#a9772a]' : 'bg-[#405f88]'} ${active ? 'outline outline-2 -outline-offset-2 outline-cyan-300' : ''} min-h-44 p-2 ring-1 ring-slate-900/70 grid ${oneReward ? 'grid-cols-1 place-items-center' : 'grid-cols-2 content-center'} gap-2 text-left transition hover:brightness-110`}>
       {asArray(rewards).map((reward, index) => <BattlePassReward key={reward.rewardData?.RewardID || index} reward={reward} langs={langs} large={oneReward} />)}
-    </div>
+    </button>
   );
 }
 
@@ -3143,6 +4156,7 @@ export function RawMetadataView({ catalog }) {
   const [loading, setLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showRaw, setShowRaw] = useState(false);
+  const [recordSearch, setRecordSearch] = useState('');
 
   const files = catalog?.sections?.[selectedSection] || [];
 
@@ -3154,6 +4168,7 @@ export function RawMetadataView({ catalog }) {
     if (!selectedSection || !selectedFile) return;
     setLoading(true);
     setSelectedIndex(0);
+    setRecordSearch('');
     fetch(`${host}/game/metadata/${selectedSection}/${selectedFile}`)
       .then((res) => res.json())
       .then(setPayload)
@@ -3163,7 +4178,15 @@ export function RawMetadataView({ catalog }) {
 
   const rows = asArray(payload?.data);
   const objectRows = rows.filter((row) => row && typeof row === 'object' && !Array.isArray(row));
-  const selectedRow = objectRows.length ? objectRows[Math.min(selectedIndex, objectRows.length - 1)] : null;
+  const recordQuery = recordSearch.trim().toLowerCase();
+  const filteredObjectRows = recordQuery
+    ? objectRows.filter((row) => JSON.stringify(row).toLowerCase().includes(recordQuery))
+    : objectRows;
+  const selectedRow = filteredObjectRows.length ? filteredObjectRows[Math.min(selectedIndex, filteredObjectRows.length - 1)] : null;
+
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [recordSearch, selectedSection, selectedFile]);
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-slate-900 p-3 lg:p-4 text-gray-900 dark:text-white">
@@ -3197,19 +4220,35 @@ export function RawMetadataView({ catalog }) {
           </>
         ) : (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+            <div className="grid grid-cols-1 gap-3 mb-4 md:grid-cols-4">
               <select value={selectedIndex} onChange={(event) => setSelectedIndex(Number(event.target.value))} className="md:col-span-2 rounded-md bg-gray-100 dark:bg-slate-900 border border-gray-300 dark:border-slate-700 px-3 py-2 text-sm">
-                {objectRows.map((row, index) => {
+                {filteredObjectRows.map((row, index) => {
                   const key = Object.keys(row).find((field) => /Name$/i.test(field)) || Object.keys(row).find((field) => /ID$/i.test(field)) || Object.keys(row)[0];
                   return <option key={index} value={index}>{String(row[key] || `Row ${index + 1}`)}</option>;
                 })}
               </select>
-              <div className="rounded-md bg-gray-100 dark:bg-slate-900 px-3 py-2 text-sm text-gray-500 dark:text-gray-400">{rows.length} rows</div>
+              <div className="relative">
+                <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                <input
+                  type="text"
+                  value={recordSearch}
+                  onChange={(event) => setRecordSearch(event.target.value)}
+                  placeholder="Search records"
+                  className="w-full rounded-md border border-gray-300 bg-gray-100 py-2 pl-10 pr-3 text-sm dark:border-slate-700 dark:bg-slate-900"
+                />
+              </div>
+              <div className="rounded-md bg-gray-100 dark:bg-slate-900 px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
+                {filteredObjectRows.length} of {rows.length} rows
+              </div>
             </div>
-            <details className="rounded-xl bg-gray-100 dark:bg-slate-950 p-3">
-              <summary className="cursor-pointer select-none text-lg font-bold">Selected Record Raw Data</summary>
-              <pre className="mt-3 max-h-[70vh] overflow-auto app-scrollbar rounded-lg bg-gray-100 dark:bg-slate-950 p-3 text-xs">{JSON.stringify(selectedRow, null, 2)}</pre>
-            </details>
+            {selectedRow ? (
+              <details className="rounded-xl bg-gray-100 dark:bg-slate-950 p-3">
+                <summary className="cursor-pointer select-none text-lg font-bold">Selected Record Raw Data</summary>
+                <pre className="mt-3 max-h-[70vh] overflow-auto app-scrollbar rounded-lg bg-gray-100 dark:bg-slate-950 p-3 text-xs">{JSON.stringify(selectedRow, null, 2)}</pre>
+              </details>
+            ) : (
+              <div className="rounded-xl bg-gray-100 p-4 text-sm text-gray-500 dark:bg-slate-950 dark:text-gray-400">No records match that search.</div>
+            )}
           </>
         )}
       </div>

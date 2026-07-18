@@ -4,6 +4,7 @@ import { XMarkIcon } from '@heroicons/react/20/solid';
 import { useMediaQuery } from 'react-responsive';
 import { AddedBadge, ImageWithLoader, RawDataDetails, getAddedPatch, getPatchFilterCounts, getPatchGroups, patchFilterMatches, PatchFilterSelect } from './comp/LoadingImage';
 import { VirtualCardGrid } from './comp/VirtualCardGrid';
+import { pageSlugForLabel, readArrayParam, readBoolParam, writeArrayParam, writeBoolParam, writeStringParam } from './comp/urlQuery';
 
 function uniqueValues(array, path) {
   if (typeof path === 'string') {
@@ -190,11 +191,38 @@ export function WeaponStoreView({ weapons, langs, legends }) {
   const isMobile = useMediaQuery({ query: '(max-width: 1023px)' });
   const isInitialMount = useRef(true);
   const filtersChanged = useRef(false);
+  const urlHydrated = useRef(false);
+  const urlSyncing = useRef(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery), 250);
     return () => clearTimeout(t);
   }, [searchQuery]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    urlSyncing.current = true;
+    setSearchQuery(params.get('search') || '');
+    setSortType(params.get('sort') || 'ArrayIndexDesc');
+    setFilterBaseWeapons(readArrayParam(params, 'baseWeapon'));
+    setFilterOwnerHeroes(readArrayParam(params, 'ownerHero'));
+    setFilterCohort(params.get('cohort') || '');
+    setFilterPromo(params.get('promo') || '');
+    setFilterRarity(params.get('rarity') || '');
+    setFilterStoreID(params.get('store') || '');
+    setStoreOnly(readBoolParam(params, 'storeOnly'));
+    setFilterStoreLabel(params.get('storeLabel') || '');
+    setFilterPromoType(params.get('promoType') || '');
+    setFilterChestName(params.get('chest') || '');
+    setFilterBPSeason(params.get('battlePass') || '');
+    setFilterEntitlement(readBoolParam(params, 'entitlement'));
+    setFilterPatch(params.get('patch') || '');
+    setFilterIndividualWeapons(readBoolParam(params, 'individualWeapons'));
+    urlHydrated.current = true;
+    window.setTimeout(() => {
+      urlSyncing.current = false;
+    }, 0);
+  }, []);
 
   useEffect(() => {
     if (filterSectionRef.current) {
@@ -505,10 +533,28 @@ export function WeaponStoreView({ weapons, langs, legends }) {
   }, [filteredWeapons, isMobile, selectedWeapon]);
 
   useEffect(() => {
+    if (!urlHydrated.current || urlSyncing.current) return;
     const currentParams = new URLSearchParams();
+    currentParams.set('page', pageSlugForLabel('Weapon Skins'));
     if (selectedWeapon) {
       currentParams.set('weapon', String(selectedWeapon.weaponData.WeaponSkinID));
     }
+    writeStringParam(currentParams, 'search', searchQuery.trim());
+    writeStringParam(currentParams, 'sort', sortType, 'ArrayIndexDesc');
+    writeArrayParam(currentParams, 'baseWeapon', filterBaseWeapons);
+    writeArrayParam(currentParams, 'ownerHero', filterOwnerHeroes);
+    writeStringParam(currentParams, 'cohort', filterCohort);
+    writeStringParam(currentParams, 'promo', filterPromo);
+    writeStringParam(currentParams, 'rarity', filterRarity);
+    writeStringParam(currentParams, 'store', filterStoreID);
+    writeBoolParam(currentParams, 'storeOnly', storeOnly);
+    writeStringParam(currentParams, 'storeLabel', filterStoreLabel);
+    writeStringParam(currentParams, 'promoType', filterPromoType);
+    writeStringParam(currentParams, 'chest', filterChestName);
+    writeStringParam(currentParams, 'battlePass', filterBPSeason);
+    writeBoolParam(currentParams, 'entitlement', filterEntitlement);
+    writeStringParam(currentParams, 'patch', filterPatch);
+    writeBoolParam(currentParams, 'individualWeapons', filterIndividualWeapons);
     const newUrl = currentParams.toString() ? `${window.location.pathname}?${currentParams}` : window.location.pathname;
     window.history.replaceState({}, '', newUrl);
 
@@ -528,7 +574,7 @@ export function WeaponStoreView({ weapons, langs, legends }) {
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [selectedWeapon, filteredWeapons, isMobile]);
+  }, [selectedWeapon, filteredWeapons, isMobile, searchQuery, sortType, filterBaseWeapons, filterOwnerHeroes, filterCohort, filterPromo, filterRarity, filterStoreID, storeOnly, filterStoreLabel, filterPromoType, filterChestName, filterBPSeason, filterEntitlement, filterPatch, filterIndividualWeapons]);
 
   const resetFilters = useCallback(() => {
     setSortType('ArrayIndexDesc');
@@ -1031,13 +1077,15 @@ export function WeaponStoreView({ weapons, langs, legends }) {
       </div>
       <div ref={detailPanelRef} className={`fixed inset-0 bg-black/70 z-50 ${selectedWeapon ? 'flex items-stretch justify-center p-0 sm:items-center sm:p-4' : 'hidden'}`} onClick={() => setSelectedWeapon(null)}> 
         <div className="relative flex h-dvh max-h-dvh w-full max-w-[min(96vw,100rem)] flex-col gap-3 overflow-y-auto app-scrollbar rounded-none border border-gray-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:h-auto sm:max-h-[92vh] sm:rounded-xl sm:p-3 lg:gap-4 lg:p-4" onClick={(event) => event.stopPropagation()}>
-          <div className="flex items-center justify-between">
-            <button
-              className="text-gray-900 dark:text-white"
-              onClick={() => setSelectedWeapon(null)}
-            >
-              <XMarkIcon className="w-6 h-6" />
-            </button>
+          <button
+            type="button"
+            aria-label="Close details"
+            className="absolute right-3 top-3 z-10 rounded-lg bg-gray-200 p-2 text-gray-900 hover:bg-gray-300 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700"
+            onClick={() => setSelectedWeapon(null)}
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+          <div className="flex items-center justify-end pr-11">
             {isMobile && selectedWeapon && (
               <div className="flex items-center gap-2 mb-2">
                 <button

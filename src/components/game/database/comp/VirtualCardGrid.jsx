@@ -14,7 +14,7 @@ function GridRow({ index, style, data }) {
 
   return (
     <div style={style} className="box-border px-1 pb-3">
-      <div className="grid h-full grid-cols-2 items-stretch gap-3 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid h-full items-stretch gap-3" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
         {rowItems.map((item, offset) => {
           const itemIndex = start + offset;
           return (

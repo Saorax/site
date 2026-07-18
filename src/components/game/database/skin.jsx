@@ -4,6 +4,7 @@ import { XMarkIcon } from '@heroicons/react/20/solid';
 import { useMediaQuery } from 'react-responsive';
 import { AddedBadge, ImageWithLoader, RawDataDetails, getAddedPatch, getPatchFilterCounts, getPatchGroups, patchFilterMatches, PatchFilterSelect } from './comp/LoadingImage';
 import { VirtualCardGrid } from './comp/VirtualCardGrid';
+import { pageSlugForLabel, readArrayParam, readBoolParam, writeArrayParam, writeBoolParam, writeStringParam } from './comp/urlQuery';
 
 function uniqueValues(array, path) {
   if (typeof path === 'string') {
@@ -189,6 +190,8 @@ export function SkinStoreView({ skins, legends, langs }) {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const isInitialMount = useRef(true);
   const filtersChanged = useRef(false);
+  const urlHydrated = useRef(false);
+  const urlSyncing = useRef(false);
   const filterSectionRef = useRef(null);
   const detailPanelRef = useRef(null);
   const [filterHeight, setFilterHeight] = useState(0);
@@ -202,6 +205,30 @@ export function SkinStoreView({ skins, legends, langs }) {
     const t = setTimeout(() => setDebouncedSearch(searchQuery), 250);
     return () => clearTimeout(t);
   }, [searchQuery]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    urlSyncing.current = true;
+    setSearchQuery(params.get('search') || '');
+    setSortType(params.get('sort') || 'ArrayIndexDesc');
+    setFilterHeroIDs(readArrayParam(params, 'hero'));
+    setFilterCohort(params.get('cohort') || '');
+    setFilterPromo(params.get('promo') || '');
+    setFilterRarity(params.get('rarity') || '');
+    setFilterStoreID(params.get('store') || '');
+    setStoreOnly(readBoolParam(params, 'storeOnly'));
+    setFilterStoreLabel(params.get('storeLabel') || '');
+    setFilterPromoType(params.get('promoType') || '');
+    setFilterChestName(params.get('chest') || '');
+    setFilterCostumeIndex(params.get('costumeIndex') || '');
+    setFilterBPSeason(params.get('battlePass') || '');
+    setFilterEntitlement(readBoolParam(params, 'entitlement'));
+    setFilterPatch(params.get('patch') || '');
+    urlHydrated.current = true;
+    window.setTimeout(() => {
+      urlSyncing.current = false;
+    }, 0);
+  }, []);
 
   useEffect(() => {
     if (filterSectionRef.current) {
@@ -486,10 +513,27 @@ export function SkinStoreView({ skins, legends, langs }) {
   }, [filteredSkins, isMobile, selectedSkin]);
 
   useEffect(() => {
+    if (!urlHydrated.current || urlSyncing.current) return;
     const currentParams = new URLSearchParams();
+    currentParams.set('page', pageSlugForLabel('Skins'));
     if (selectedSkin) {
       currentParams.set('skin', String(selectedSkin.costumeData?.CostumeID));
     }
+    writeStringParam(currentParams, 'search', searchQuery.trim());
+    writeStringParam(currentParams, 'sort', sortType, 'ArrayIndexDesc');
+    writeArrayParam(currentParams, 'hero', filterHeroIDs);
+    writeStringParam(currentParams, 'cohort', filterCohort);
+    writeStringParam(currentParams, 'promo', filterPromo);
+    writeStringParam(currentParams, 'rarity', filterRarity);
+    writeStringParam(currentParams, 'store', filterStoreID);
+    writeBoolParam(currentParams, 'storeOnly', storeOnly);
+    writeStringParam(currentParams, 'storeLabel', filterStoreLabel);
+    writeStringParam(currentParams, 'promoType', filterPromoType);
+    writeStringParam(currentParams, 'chest', filterChestName);
+    writeStringParam(currentParams, 'costumeIndex', filterCostumeIndex);
+    writeStringParam(currentParams, 'battlePass', filterBPSeason);
+    writeBoolParam(currentParams, 'entitlement', filterEntitlement);
+    writeStringParam(currentParams, 'patch', filterPatch);
     const newUrl = currentParams.toString() ? `${window.location.pathname}?${currentParams}` : window.location.pathname;
     window.history.replaceState({}, '', newUrl);
 
@@ -509,7 +553,7 @@ export function SkinStoreView({ skins, legends, langs }) {
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [selectedSkin, filteredSkins, isMobile]);
+  }, [selectedSkin, filteredSkins, isMobile, searchQuery, sortType, filterHeroIDs, filterCohort, filterPromo, filterRarity, filterStoreID, storeOnly, filterStoreLabel, filterPromoType, filterChestName, filterCostumeIndex, filterBPSeason, filterEntitlement, filterPatch]);
 
   const resetFilters = useCallback(() => {
     setSortType('ArrayIndexDesc');
@@ -1135,13 +1179,15 @@ export function SkinStoreView({ skins, legends, langs }) {
       </div>
       <div ref={detailPanelRef} className={`fixed inset-0 bg-black/70 z-50 ${selectedSkin ? 'flex items-stretch justify-center p-0 sm:items-center sm:p-4' : 'hidden'}`} onClick={() => setSelectedSkin(null)}> 
         <div className="relative flex h-dvh max-h-dvh w-full max-w-[min(96vw,100rem)] flex-col gap-3 overflow-y-auto app-scrollbar rounded-none border border-gray-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:h-auto sm:max-h-[92vh] sm:rounded-xl sm:p-3 lg:gap-4 lg:p-4" onClick={(event) => event.stopPropagation()}>
-          <div className="flex items-center justify-between">
-            <button
-              className="text-gray-900 dark:text-white"
-              onClick={() => setSelectedSkin(null)}
-            >
-              <XMarkIcon className="w-6 h-6" />
-            </button>
+          <button
+            type="button"
+            aria-label="Close details"
+            className="absolute right-3 top-3 z-10 rounded-lg bg-gray-200 p-2 text-gray-900 hover:bg-gray-300 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700"
+            onClick={() => setSelectedSkin(null)}
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+          <div className="flex items-center justify-end pr-11">
             {isMobile && selectedSkin && (
               <div className="flex items-center gap-2 mb-2">
                 <button

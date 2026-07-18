@@ -4,6 +4,7 @@ import { XMarkIcon } from '@heroicons/react/20/solid';
 import { useMediaQuery } from 'react-responsive';
 import { AddedBadge, ImageWithLoader, RawDataDetails, getAddedPatch, getPatchFilterCounts, getPatchGroups, patchFilterMatches, PatchFilterSelect } from './comp/LoadingImage';
 import { VirtualCardGrid } from './comp/VirtualCardGrid';
+import { pageSlugForLabel, readArrayParam, readBoolParam, writeArrayParam, writeBoolParam, writeStringParam } from './comp/urlQuery';
 
 function uniq(a) { return [...new Set(a)]; }
 function uniqueValues(array, path) {
@@ -181,6 +182,8 @@ export function EmojiStoreView({ emojis, langs }) {
   const isMobile = useMediaQuery({ query: '(max-width: 1023px)' });
   const isInitialMount = useRef(true);
   const filtersChanged = useRef(false);
+  const urlHydrated = useRef(false);
+  const urlSyncing = useRef(false);
   const [listHeight, setListHeight] = useState(400);
   const [filterHeight, setFilterHeight] = useState(0);
 
@@ -188,6 +191,28 @@ export function EmojiStoreView({ emojis, langs }) {
     const t = setTimeout(() => setDebouncedSearch(searchQuery), 250);
     return () => clearTimeout(t);
   }, [searchQuery]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    urlSyncing.current = true;
+    setSearchQuery(params.get('search') || '');
+    setSortType(params.get('sort') || 'ArrayIndexDesc');
+    setFilterCategory(readArrayParam(params, 'category'));
+    setFilterCohort(params.get('cohort') || '');
+    setFilterPromo(params.get('promo') || '');
+    setFilterStoreID(params.get('store') || '');
+    setStoreOnly(readBoolParam(params, 'storeOnly'));
+    setFilterStoreLabel(params.get('storeLabel') || '');
+    setFilterPromoType(params.get('promoType') || '');
+    setFilterBPSeason(params.get('battlePass') || '');
+    setFilterEntitlement(readBoolParam(params, 'entitlement'));
+    setFilterBundle(readBoolParam(params, 'bundle'));
+    setFilterPatch(params.get('patch') || '');
+    urlHydrated.current = true;
+    window.setTimeout(() => {
+      urlSyncing.current = false;
+    }, 0);
+  }, []);
 
   useEffect(() => {
     if (filterSectionRef.current) setFilterHeight(filterSectionRef.current.offsetHeight);
@@ -330,7 +355,7 @@ export function EmojiStoreView({ emojis, langs }) {
     return arr;
   }, [
     data, debouncedSearch, sortType, filterCategory, filterCohort, filterPromo, filterStoreID, storeOnly,
-    filterStoreLabel, filterPromoType, filterBPSeason, filterEntitlement, filterBundle, langs
+    filterStoreLabel, filterPromoType, filterBPSeason, filterEntitlement, filterBundle, filterPatch, langs
   ]);
 
   useEffect(() => {
@@ -350,8 +375,23 @@ export function EmojiStoreView({ emojis, langs }) {
   }, [filtered, isMobile, selectedEmoji]);
 
   useEffect(() => {
+    if (!urlHydrated.current || urlSyncing.current) return;
     const currentParams = new URLSearchParams();
+    currentParams.set('page', pageSlugForLabel('Emojis'));
     if (selectedEmoji) currentParams.set('emoji', String(selectedEmoji.emojiData?.EmojiID));
+    writeStringParam(currentParams, 'search', searchQuery.trim());
+    writeStringParam(currentParams, 'sort', sortType, 'ArrayIndexDesc');
+    writeArrayParam(currentParams, 'category', filterCategory);
+    writeStringParam(currentParams, 'cohort', filterCohort);
+    writeStringParam(currentParams, 'promo', filterPromo);
+    writeStringParam(currentParams, 'store', filterStoreID);
+    writeBoolParam(currentParams, 'storeOnly', storeOnly);
+    writeStringParam(currentParams, 'storeLabel', filterStoreLabel);
+    writeStringParam(currentParams, 'promoType', filterPromoType);
+    writeStringParam(currentParams, 'battlePass', filterBPSeason);
+    writeBoolParam(currentParams, 'entitlement', filterEntitlement);
+    writeBoolParam(currentParams, 'bundle', filterBundle);
+    writeStringParam(currentParams, 'patch', filterPatch);
     const newUrl = currentParams.toString() ? `${window.location.pathname}?${currentParams}` : window.location.pathname;
     window.history.replaceState({}, '', newUrl);
     const handlePop = () => {
@@ -365,7 +405,7 @@ export function EmojiStoreView({ emojis, langs }) {
     };
     window.addEventListener('popstate', handlePop);
     return () => window.removeEventListener('popstate', handlePop);
-  }, [selectedEmoji, filtered, isMobile]);
+  }, [selectedEmoji, filtered, isMobile, searchQuery, sortType, filterCategory, filterCohort, filterPromo, filterStoreID, storeOnly, filterStoreLabel, filterPromoType, filterBPSeason, filterEntitlement, filterBundle, filterPatch]);
 
   const handleFilterChange = useCallback((setter, value) => { setter(value); }, []);
   const resetFilters = useCallback(() => {
@@ -709,10 +749,15 @@ export function EmojiStoreView({ emojis, langs }) {
       </div>
       <div ref={detailPanelRef} className={`fixed inset-0 bg-black/70 z-50 ${selectedEmoji ? 'flex items-stretch justify-center p-0 sm:items-center sm:p-4' : 'hidden'}`} onClick={() => setSelectedEmoji(null)}> 
         <div className="relative flex h-dvh max-h-dvh w-full max-w-[min(96vw,100rem)] flex-col gap-3 overflow-y-auto app-scrollbar rounded-none border border-gray-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:h-auto sm:max-h-[92vh] sm:rounded-xl sm:p-3 lg:gap-4 lg:p-4" onClick={(event) => event.stopPropagation()}>
-          <div className="flex items-center justify-between">
-            <button className="text-gray-900 dark:text-white cursor-pointer" onClick={() => setSelectedEmoji(null)}>
-              <XMarkIcon className="w-6 h-6" />
-            </button>
+          <button
+            type="button"
+            aria-label="Close details"
+            className="absolute right-3 top-3 z-10 rounded-lg bg-gray-200 p-2 text-gray-900 hover:bg-gray-300 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700"
+            onClick={() => setSelectedEmoji(null)}
+          >
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+          <div className="flex items-center justify-end pr-11">
             {isMobile && selectedEmoji && (
               <div className="flex items-center gap-2 mb-2">
                 <button onClick={handleCopyLink} className="cursor-pointer bg-blue-500 dark:bg-blue-600 text-white font-bold py-1 px-3 rounded-lg">Copy Link</button>
