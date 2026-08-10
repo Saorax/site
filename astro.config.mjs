@@ -5,9 +5,6 @@ import node from '@astrojs/node';
 
 // https://astro.build/config
 
-// https://astro.build/config
-import auth from "auth-astro";
-
 import tailwindcss from "@tailwindcss/vite";
 
 // https://astro.build/config

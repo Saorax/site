@@ -23,6 +23,7 @@ const fetchPostData = async (url, body) => {
   if (mx && ((10 - mx) - body.int2) < 0) body.int2 = 10 - mx;
   const res = await fetch(url, {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
   const data = await res.json();

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { host } from '../../stuff';
+import { commonPowerFieldMessage, summarizeCommonPowerFields } from './powerHistorySummary';
 
 const sectionColors = {
   added: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200',
@@ -202,6 +203,14 @@ function valuePreview(value) {
   return String(value);
 }
 
+function isEmptyFieldValue(value) {
+  if (value === undefined || value === null) return true;
+  if (typeof value === 'string') return value.length === 0;
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'object') return Object.keys(value).length === 0;
+  return false;
+}
+
 function commaListDiff(before, after) {
   if (typeof before !== 'string' || typeof after !== 'string') return null;
   if (!before.includes(',') && !after.includes(',')) return null;
@@ -224,6 +233,37 @@ function fieldListDiff(field) {
     };
   }
   return commaListDiff(field.before, field.after);
+}
+
+function FullListDiff({ field, diff }) {
+  const renderValues = (value, highlighted, className) => {
+    const values = Array.isArray(value)
+      ? value.map((item) => String(item))
+      : String(value ?? '').split(',').map((item) => item.trim()).filter(Boolean);
+    const marked = new Set((highlighted || []).map((item) => String(item)));
+    return (
+      <div className="flex flex-wrap gap-x-1 font-mono text-xs">
+        {values.map((item, index) => (
+          <span key={`${item}-${index}`}>
+            {index > 0 ? ', ' : ''}
+            <span className={marked.has(item) ? className : ''}>{item}</span>
+          </span>
+        ))}
+      </div>
+    );
+  };
+  return (
+    <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+      <div className="rounded bg-rose-950/50 p-2">
+        <div className="mb-1 text-xs font-bold text-rose-200">Before</div>
+        {renderValues(field.before, diff.removedValues, 'text-rose-200')}
+      </div>
+      <div className="rounded bg-emerald-950/50 p-2">
+        <div className="mb-1 text-xs font-bold text-emerald-200">After</div>
+        {renderValues(field.after, diff.addedValues, 'text-emerald-200')}
+      </div>
+    </div>
+  );
 }
 
 function resolveLang(value, lang) {
@@ -367,20 +407,6 @@ function buildStoreAssetMap(results) {
     themes: byName(themes, 'PlayerThemeName', 'DisplayNameKey'),
     borders: byName(borders, 'SeasonBorderName', 'DisplayNameKey'),
   };
-}
-
-function FieldValuePills({ values, tone }) {
-  if (!values?.length) return <span className="text-xs text-slate-400">None</span>;
-  const colors = tone === 'added'
-    ? 'border-emerald-400/30 bg-emerald-500/15 text-emerald-100'
-    : 'border-rose-400/30 bg-rose-500/15 text-rose-100';
-  return (
-    <div className="mt-2 flex flex-wrap gap-2">
-      {values.map((value) => (
-        <span key={value} className={`rounded-lg border px-2 py-1 text-xs font-bold ${colors}`}>{value}</span>
-      ))}
-    </div>
-  );
 }
 
 function costumeSkinInt(costume, storeAssetMap = {}) {
@@ -598,29 +624,22 @@ function RecordCard({ type, record, file, lang, heroMap, storeAssetMap }) {
           {isChange ? (
             record.fields?.map((field) => {
               const listDiff = splitCommaFields ? fieldListDiff(field) : null;
+              const propertyAdded = field.propertyAdded || (isEmptyFieldValue(field.before) && !isEmptyFieldValue(field.after));
+              const propertyRemoved = field.propertyRemoved || (!isEmptyFieldValue(field.before) && isEmptyFieldValue(field.after));
               return (
               <div key={field.field} className="rounded-lg border border-white/10 bg-black/20 p-2">
                 <div className="text-xs font-bold uppercase tracking-wide text-slate-300">{displayFieldName(field.field)}</div>
                 {listDiff ? (
-                  <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-                    <div className="rounded bg-rose-950/50 p-2">
-                      <div className="text-xs font-bold text-rose-200">Removed</div>
-                      <FieldValuePills values={listDiff.removedValues} tone="removed" />
-                    </div>
-                    <div className="rounded bg-emerald-950/50 p-2">
-                      <div className="text-xs font-bold text-emerald-200">Added</div>
-                      <FieldValuePills values={listDiff.addedValues} tone="added" />
-                    </div>
-                  </div>
+                  <FullListDiff field={field} diff={listDiff} />
                 ) : (
                   <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
                     <div className="rounded bg-rose-950/50 p-2 text-xs">
                       <div className="font-bold text-rose-200">Before</div>
-                      <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words app-scrollbar">{valuePreview(field.before)}</pre>
+                      <pre className={`mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words app-scrollbar ${propertyRemoved ? 'font-bold text-rose-200' : ''}`}>{valuePreview(field.before)}</pre>
                     </div>
                     <div className="rounded bg-emerald-950/50 p-2 text-xs">
                       <div className="font-bold text-emerald-200">After</div>
-                      <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words app-scrollbar">{valuePreview(field.after)}</pre>
+                      <pre className={`mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words app-scrollbar ${propertyAdded ? 'font-bold text-emerald-200' : ''}`}>{valuePreview(field.after)}</pre>
                     </div>
                   </div>
                 )}
@@ -639,19 +658,89 @@ function RecordCard({ type, record, file, lang, heroMap, storeAssetMap }) {
 }
 
 function PowerFieldDiff({ field }) {
+  const propertyAdded = field.propertyAdded || (isEmptyFieldValue(field.before) && !isEmptyFieldValue(field.after));
+  const propertyRemoved = field.propertyRemoved || (!isEmptyFieldValue(field.before) && isEmptyFieldValue(field.after));
   return (
     <div className="rounded-lg border border-white/10 bg-black/20 p-2">
       <div className="text-xs font-bold uppercase tracking-wide text-slate-300">{displayFieldName(field.field)}</div>
       <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
         <div className="rounded bg-rose-950/50 p-2 text-xs">
           <div className="font-bold text-rose-200">Before</div>
-          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words app-scrollbar">{valuePreview(field.before)}</pre>
+          <pre className={`mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words app-scrollbar ${propertyRemoved ? 'font-bold text-rose-200' : ''}`}>{valuePreview(field.before)}</pre>
         </div>
         <div className="rounded bg-emerald-950/50 p-2 text-xs">
           <div className="font-bold text-emerald-200">After</div>
-          <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words app-scrollbar">{valuePreview(field.after)}</pre>
+          <pre className={`mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words app-scrollbar ${propertyAdded ? 'font-bold text-emerald-200' : ''}`}>{valuePreview(field.after)}</pre>
         </div>
       </div>
+    </div>
+  );
+}
+
+function HighlightedPatchPropertyData({ value, details, side }) {
+  const highlighted = new Set(details
+    .filter((detail) => side === 'before' ? detail.action !== 'added' : detail.action !== 'removed')
+    .map((detail) => String(detail.path || '').split('.').pop())
+    .filter(Boolean));
+  const serialized = value === undefined ? 'undefined' : JSON.stringify(value, null, 2);
+  return (
+    <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs app-scrollbar">
+      {String(serialized).split('\n').map((line, index) => {
+        const changed = [...highlighted].some((key) => line.includes(`${JSON.stringify(key)}:`));
+        const color = changed ? side === 'before' ? 'text-rose-200' : 'text-emerald-200' : 'text-slate-300';
+        return <span key={index} className={`${color} block`}>{line}</span>;
+      })}
+    </pre>
+  );
+}
+
+function PatchCommonPowerFieldData({ field }) {
+  const structuralChange = field.details.some((detail) => detail.action === 'added' || detail.action === 'removed');
+  if (!structuralChange) {
+    return (
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+        {field.details.map((detail) => (
+          <div key={`${detail.action}-${detail.path}`} className="font-mono">
+            <span className="text-slate-200">{[field.field, detail.path].filter(Boolean).join('.')}: </span>
+            <span className="text-rose-200">{detail.before === undefined ? 'undefined' : JSON.stringify(detail.before)}</span>
+            {' -> '}
+            <span className="text-emerald-200">{detail.after === undefined ? 'undefined' : JSON.stringify(detail.after)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className="mt-2 grid gap-2">
+      {field.variants.map((variant, index) => (
+        <div key={index} className="rounded-lg border border-white/10 bg-black/20 p-2">
+          {field.variants.length > 1 && <div className="mb-2 text-xs text-slate-400">{variant.count} powers</div>}
+          <div className="grid gap-2 lg:grid-cols-2">
+            <div className="rounded-lg bg-rose-950/40 p-2">
+              <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-rose-200">Before</div>
+              <HighlightedPatchPropertyData value={variant.before} details={field.details} side="before" />
+            </div>
+            <div className="rounded-lg bg-emerald-950/40 p-2">
+              <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-emerald-200">After</div>
+              <HighlightedPatchPropertyData value={variant.after} details={field.details} side="after" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CommonPowerFieldSummary({ fields }) {
+  if (!fields?.length) return null;
+  return (
+    <div className="grid gap-2">
+      {fields.map((field) => (
+        <div key={field.field} className="rounded-xl border border-blue-400/30 bg-blue-500/10 p-3 text-sm font-bold text-blue-100">
+          <div>{commonPowerFieldMessage(field)}</div>
+          <PatchCommonPowerFieldData field={field} />
+        </div>
+      ))}
     </div>
   );
 }
@@ -954,7 +1043,8 @@ function LegendChangeSection({ groups, lang, heroMap, storeAssetMap }) {
       </button>
       {open && <div className="mt-4 space-y-3">
         {groups.map((group) => {
-          const signatureWeapons = groupSignaturePowerEntries(group.signatureEntries).flatMap((legendGroup) => legendGroup.weapons);
+          const signatureSummary = summarizeCommonPowerFields(group.signatureEntries);
+          const signatureWeapons = groupSignaturePowerEntries(signatureSummary.entries).flatMap((legendGroup) => legendGroup.weapons);
           const total = group.heroRecords.length + group.stanceRecords.length + group.signatureEntries.length;
           const powerSummary = formatPowerClassificationCounts(group.signatureEntries);
           return (
@@ -986,6 +1076,7 @@ function LegendChangeSection({ groups, lang, heroMap, storeAssetMap }) {
                     </div>
                   </section>
                 )}
+                <CommonPowerFieldSummary fields={signatureSummary.commonFields} />
                 {signatureWeapons.length > 0 && (
                   <section>
                     <h4 className="mb-2 text-sm font-bold uppercase tracking-wide text-blue-200">Signatures</h4>
@@ -1092,8 +1183,10 @@ function PowerFileDiff({ file, heroMap }) {
     ...(file.removed || []).map((record) => ({ type: 'removed', record })),
   ].map((entry) => ({ ...entry, parsed: parsePowerRecord(entry.record, heroMap) }))
     .filter((entry) => !!entry.parsed);
-  const baseGroups = groupBasePowerEntries(records.filter((entry) => entry.parsed.kind === 'base'));
-  if (baseGroups.length === 0) return null;
+  const rawBaseEntries = records.filter((entry) => entry.parsed.kind === 'base');
+  const baseSummary = summarizeCommonPowerFields(rawBaseEntries);
+  const baseGroups = groupBasePowerEntries(baseSummary.entries);
+  if (rawBaseEntries.length === 0) return null;
   const baseEntries = baseGroups.flatMap((group) => group.entries);
   return (
     <div className="rounded-2xl border border-slate-700 bg-slate-900/80 shadow-sm">
@@ -1114,12 +1207,13 @@ function PowerFileDiff({ file, heroMap }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <CountPill label="Base Weapons" value={baseGroups.length} tone="blue" />
-          <CountPill label="Powers" value={baseGroups.reduce((total, group) => total + group.entries.length, 0)} tone="amber" />
+          <CountPill label="Powers" value={rawBaseEntries.length} tone="amber" />
           <PowerClassificationPills entries={baseEntries} />
         </div>
       </button>
       {open && (
         <div className="space-y-4 border-t border-slate-700 p-4">
+          <CommonPowerFieldSummary fields={baseSummary.commonFields} />
           {baseGroups.map((weaponGroup) => (
             <CollapsibleDiffBlock
               key={weaponGroup.weapon.weapon}
@@ -1147,9 +1241,13 @@ function FileDiff({ file, mode = 'minimal', lang, heroMap, storeAssetMap }) {
     return <PowerFileDiff file={file} heroMap={heroMap} />;
   }
   const added = mode === 'minimal' ? minimalRecords(file, file.added, 'added') : file.added || [];
-  const changed = mode === 'minimal' ? minimalRecords(file, file.changed, 'changed') : file.changed || [];
+  const rawChanged = mode === 'minimal' ? minimalRecords(file, file.changed, 'changed') : file.changed || [];
+  const changedSummary = filePath(file) === 'Game/powerTypes.csv'
+    ? summarizeCommonPowerFields(rawChanged.map((record) => ({ type: 'changed', record })))
+    : { entries: rawChanged.map((record) => ({ type: 'changed', record })), commonFields: [] };
+  const changed = changedSummary.entries.map((entry) => entry.record);
   const removed = mode === 'minimal' ? minimalRecords(file, file.removed, 'removed') : file.removed || [];
-  const total = added.length + removed.length + changed.length;
+  const total = added.length + removed.length + rawChanged.length;
   return (
     <div className="rounded-2xl border border-slate-700 bg-slate-900/80 shadow-sm">
       <button type="button" onClick={() => setOpen((value) => !value)} className="flex w-full flex-col gap-3 p-4 text-left sm:flex-row sm:items-center sm:justify-between">
@@ -1164,13 +1262,14 @@ function FileDiff({ file, mode = 'minimal', lang, heroMap, storeAssetMap }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <CountPill label="Added" value={added.length} tone="emerald" />
-          <CountPill label="Changed" value={changed.length} tone="amber" />
+          <CountPill label="Changed" value={rawChanged.length} tone="amber" />
           <CountPill label="Removed" value={removed.length} tone="rose" />
           <CountPill label="Total" value={total} tone="blue" />
         </div>
       </button>
       {open && (
         <div className="space-y-4 border-t border-slate-700 p-4">
+          <CommonPowerFieldSummary fields={changedSummary.commonFields} />
           {added.length > 0 && (
             <section>
               <h4 className="mb-2 text-sm font-bold uppercase tracking-wide text-emerald-200">Added</h4>

@@ -116,6 +116,7 @@ function PlayerDiv() {
         `${host}/psql/query`,
         {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: "mostGold",
             query: [0]
@@ -126,6 +127,7 @@ function PlayerDiv() {
         `${host}/psql/query`,
         {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: "mostSilver",
             query: [0]
@@ -136,6 +138,7 @@ function PlayerDiv() {
         `${host}/psql/query`,
         {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: "mostBronze",
             query: [0]
@@ -146,6 +149,7 @@ function PlayerDiv() {
         `${host}/psql/query`,
         {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: "bcx",
             query: null

@@ -34,10 +34,17 @@ const defaultAnim = 'Animation_Unarmed/a__KickAnimation/Ready';
 const fetchPostData = async (url, body, json) => {
   const res = await fetch(url, {
     method: 'POST',
-    body: JSON.stringify(body)
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   });
+  if (!res.ok) throw new Error(`Request failed with ${res.status}`);
   if (json == true) return await res.json();
   return res;
+};
+const fetchJson = async (url, options) => {
+  const response = await fetch(url, options);
+  if (!response.ok) throw new Error(`Request failed with ${response.status}`);
+  return response.json();
 };
 const NAV_PAGES = [
   'Skins',
@@ -95,6 +102,28 @@ const STORE_DATA_SECTIONS = [
 ];
 
 const STORE_DATA_LABELS = Object.fromEntries(STORE_DATA_SECTIONS.map((section) => [section.key, section.label]));
+const STORE_SECTION_BY_PAGE = {
+  'Skins': ['legends', 'skins'],
+  'Weapon Skins': ['legends', 'weapons'],
+  'Colors': ['colors'],
+  'Avatars': ['avatars'],
+  'Taunts': ['taunts'],
+  'Podiums': ['podiums'],
+  'UI Themes': ['ui'],
+  'Borders': ['borders'],
+  'Emojis': ['emojis'],
+  'Companions': ['companions'],
+  'Sidekicks': ['spawnBots'],
+  'KO Effects': ['koeffects'],
+  'Smoke Trails': ['smokeTrails'],
+  'Titles': ['titles'],
+  'Bundles': ['bundles'],
+  'Entitlements/Purchases': ['purchases'],
+  'Promo Rewards': ['promos'],
+  'Chests': ['chests'],
+  'Skirmishes': ['skirmishes'],
+  'Battle Passes': ['battlePasses'],
+};
 
 const pageSlug = (page) => String(page || '')
   .toLowerCase()
@@ -103,6 +132,28 @@ const pageSlug = (page) => String(page || '')
   .replace(/^-+|-+$/g, '');
 
 const PAGE_BY_SLUG = Object.fromEntries(NAV_PAGES.map((page) => [pageSlug(page), page]));
+
+const selectionFromLocation = () => {
+  if (typeof window === 'undefined') {
+    return { category: 'Game Database', subcategory: 'Skins' };
+  }
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('page') === 'raw-metadata') {
+    return { category: 'Raw Metadata', subcategory: null };
+  }
+  const page = PAGE_BY_SLUG[params.get('page') || ''];
+  if (page) return { category: 'Game Database', subcategory: page };
+  if (params.get('skin') || params.get('legend')) return { category: 'Game Database', subcategory: 'Skins' };
+  if (params.get('taunt')) return { category: 'Game Database', subcategory: 'Taunts' };
+  if (params.get('weapon')) return { category: 'Game Database', subcategory: 'Weapon Skins' };
+  if (params.get('spawnbot')) return { category: 'Game Database', subcategory: 'Sidekicks' };
+  if (params.get('color')) return { category: 'Game Database', subcategory: 'Colors' };
+  if (params.get('koEffect') || params.get('koeffect')) return { category: 'Game Database', subcategory: 'KO Effects' };
+  if (params.get('smoketrail') || params.get('smokeTrail')) return { category: 'Game Database', subcategory: 'Smoke Trails' };
+  if (params.get('avatar')) return { category: 'Game Database', subcategory: 'Avatars' };
+  if (params.get('podium')) return { category: 'Game Database', subcategory: 'Podiums' };
+  return { category: 'Game Database', subcategory: 'Skins' };
+};
 
 function Spinner({ stage, completed = [], steps = [] }) {
   return (
@@ -171,73 +222,28 @@ function TitlesView() {
   return <div className="text-gray-900 dark:text-white text-lg p-4 bg-gray-100 dark:bg-slate-900">Titles View Content Empty GO AWAY</div>;
 }
 export default function GameDatabase() {
+  const initialSelection = selectionFromLocation();
   const [storeData, setStoreData] = useState({});
   const [metadataCatalog, setMetadataCatalog] = useState(null);
   const [langs, setLangs] = useState([]);
   const [selectedLang, setSelectedLang] = useState(0);
-  const [selectedCategory, setSelectedCategory] = useState("Game Database");
-  const [selectedSubcategory, setSelectedSubcategory] = useState("Skins");
+  const [selectedCategory, setSelectedCategory] = useState(initialSelection.category);
+  const [selectedSubcategory, setSelectedSubcategory] = useState(initialSelection.subcategory);
   const [loading, setLoading] = useState(true);
+  const [pageLoading, setPageLoading] = useState(false);
   const [loadingStage, setLoadingStage] = useState('Preparing data requests...');
   const [completedLoadingStages, setCompletedLoadingStages] = useState([]);
   const [loadingSteps, setLoadingSteps] = useState(['Languages', 'Metadata catalog', ...STORE_DATA_SECTIONS.map((section) => section.label)]);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   const sidebarScrollRef = useRef(null);
 
   useEffect(() => {
     const applyUrlPage = () => {
-      const params = new URLSearchParams(window.location.search);
-      const rawPageParam = params.get('page') === 'raw-metadata';
-      const pageParam = PAGE_BY_SLUG[params.get('page') || ''];
-      const legendId = params.get('legend');
-      const skinId = params.get('skin');
-      const tauntId = params.get('taunt');
-      const weaponId = params.get('weapon');
-      const spawnbotId = params.get('spawnbot');
-      const colorId = params.get('color');
-      const koEffectId = params.get('koEffect') || params.get('koeffect');
-      const smokeTrailId = params.get('smoketrail') || params.get('smokeTrail');
-      const avatarId = params.get('avatar');
-      const podiumId = params.get('podium');
-
-      if (rawPageParam) {
-        setSelectedCategory('Raw Metadata');
-        setSelectedSubcategory(null);
-      } else if (pageParam) {
-        setSelectedCategory('Game Database');
-        setSelectedSubcategory(pageParam);
-      } else if (skinId || legendId) {
-        setSelectedCategory('Game Database');
-        setSelectedSubcategory('Skins');
-      } else if (tauntId) {
-        setSelectedCategory('Game Database');
-        setSelectedSubcategory('Taunts');
-      } else if (weaponId) {
-        setSelectedCategory('Game Database');
-        setSelectedSubcategory('Weapon Skins');
-      } else if (spawnbotId) {
-        setSelectedCategory('Game Database');
-        setSelectedSubcategory('Sidekicks');
-      } else if (colorId) {
-        setSelectedCategory('Game Database');
-        setSelectedSubcategory('Colors');
-      } else if (koEffectId) {
-        setSelectedCategory('Game Database');
-        setSelectedSubcategory('KO Effects');
-      } else if (smokeTrailId) {
-        setSelectedCategory('Game Database');
-        setSelectedSubcategory('Smoke Trails');
-      } else if (avatarId) {
-        setSelectedCategory('Game Database');
-        setSelectedSubcategory('Avatars');
-      } else if (podiumId) {
-        setSelectedCategory('Game Database');
-        setSelectedSubcategory('Podiums');
-      } else {
-        setSelectedCategory('Game Database');
-        setSelectedSubcategory('Skins');
-      }
+      const selection = selectionFromLocation();
+      setSelectedCategory(selection.category);
+      setSelectedSubcategory(selection.subcategory);
     };
     applyUrlPage();
     window.addEventListener('popstate', applyUrlPage);
@@ -246,90 +252,119 @@ export default function GameDatabase() {
 
   useEffect(() => {
     let alive = true;
-    let polling = true;
-    let statusTimer = null;
 
     async function loadAll() {
       setLoading(true);
+      setLoadError('');
       setCompletedLoadingStages([]);
-      setLoadingSteps(['Languages', 'Metadata catalog', ...STORE_DATA_SECTIONS.map((section) => section.label)]);
-      const syncStoreStatus = async () => {
-        if (!alive) return;
-        try {
-          const status = await fetch(`${host}/game/storeData/status`).then(res => res.json());
-          if (!alive) return;
-          const releaseIndex = status?.releaseIndex;
-          if (releaseIndex?.state && !['idle', 'ready'].includes(releaseIndex.state)) {
-            const total = Number(releaseIndex.total || 0);
-            const current = Number(releaseIndex.current || 0);
-            const progress = total > 0 ? ` (${current}/${total})` : '';
-            const patch = releaseIndex.currentPatch ? ` · ${releaseIndex.currentPatch}` : '';
-            setLoadingStage(`${releaseIndex.stage || 'Indexing item release patches'}${progress}${patch}`);
-          } else if (status?.stage) {
-            setLoadingStage(status.stage);
-          }
-          if (Array.isArray(status?.completedSections)) {
-            setCompletedLoadingStages((current) => {
-              const base = current.filter((step) => step === 'Languages' || step === 'Metadata catalog');
-              const completed = status.completedSections.map((key) => STORE_DATA_LABELS[key] || key);
-              return [...new Set([...base, ...completed])];
-            });
-          }
-        } catch (error) {
-          console.error(error);
-        }
-      };
-      const scheduleStatusPoll = () => {
-        if (!polling || !alive) return;
-        statusTimer = window.setTimeout(async () => {
-          await syncStoreStatus();
-          scheduleStatusPoll();
-        }, 1000);
-      };
+      setLoadingSteps(['Languages', 'Metadata catalog']);
       const fetchStoreSection = async (section) => {
         setLoadingStage(`Requesting ${section.label}`);
-        const payload = await fetch(`${host}/game/storeData/${section.key}`).then(res => res.json());
-        await syncStoreStatus();
+        const payload = await fetchJson(`${host}/game/storeData/${section.key}`);
         return payload;
       };
       try {
-        scheduleStatusPoll();
         setLoadingStage('Loading Languages');
-        const langs = await fetch(`${host}/game/langs`).then(res => res.json());
+        const langs = await fetchJson(`${host}/game/langs`);
         if (!alive) return;
         setCompletedLoadingStages((current) => [...current, 'Languages']);
         setLoadingStage('Loading Metadata catalog');
-        const catalog = await fetch(`${host}/game/metadata/catalog`).then(res => res.json());
+        const catalog = await fetchJson(`${host}/game/metadata/catalog`);
         if (!alive) return;
         setCompletedLoadingStages((current) => [...current, 'Metadata catalog']);
         setMetadataCatalog(catalog);
         setLangs(langs);
+        const initialSections = STORE_SECTION_BY_PAGE[selectedSubcategory] || [];
         const nextStoreData = {};
-        for (const section of STORE_DATA_SECTIONS) {
+        for (const key of initialSections) {
+          const section = STORE_DATA_SECTIONS.find((candidate) => candidate.key === key);
+          if (!section) continue;
           const payload = await fetchStoreSection(section);
           if (!alive) return;
           nextStoreData[section.key] = payload.items || [];
-          setStoreData((current) => ({ ...current, [section.key]: payload.items || [] }));
           setCompletedLoadingStages((current) => [...new Set([...current, section.label])]);
         }
         setStoreData(nextStoreData);
       } catch (err) {
         console.error(err);
+        if (alive) setLoadError(err?.message || 'The game database could not be loaded.');
       } finally {
-        polling = false;
-        if (statusTimer) window.clearTimeout(statusTimer);
         if (alive) setLoading(false);
       }
     }
     loadAll();
     return () => {
       alive = false;
-      polling = false;
-      if (statusTimer) window.clearTimeout(statusTimer);
     };
   }, []);
 
-  if (loading || langs.length === 0 || !storeData?.legends || !metadataCatalog) {
+  useEffect(() => {
+    if (loading || selectedCategory !== 'Game Database') return;
+    const required = STORE_SECTION_BY_PAGE[selectedSubcategory] || [];
+    if (required.length === 0) {
+      setPageLoading(false);
+      setStoreData((current) => current.legends ? { legends: current.legends } : {});
+      return;
+    }
+    const missing = required.filter((key) => !storeData[key]);
+    if (missing.length === 0) {
+      setPageLoading(false);
+      return;
+    }
+
+    let alive = true;
+    const controller = new AbortController();
+    setPageLoading(true);
+    setLoadingSteps(required.map((key) => STORE_DATA_LABELS[key] || key));
+    setCompletedLoadingStages(required.filter((key) => storeData[key]).map((key) => STORE_DATA_LABELS[key] || key));
+
+    Promise.all(missing.map(async (key) => {
+      const label = STORE_DATA_LABELS[key] || key;
+      setLoadingStage(`Loading ${label}`);
+      const response = await fetch(`${host}/game/storeData/${key}`, { signal: controller.signal });
+      if (!response.ok) throw new Error(`${label} failed with ${response.status}`);
+      const payload = await response.json();
+      if (alive) setCompletedLoadingStages((current) => [...new Set([...current, label])]);
+      return [key, payload.items || []];
+    })).then((loaded) => {
+      if (!alive) return;
+      setStoreData((current) => {
+        const next = {};
+        if (required.includes('legends') && current.legends) next.legends = current.legends;
+        for (const [key, items] of loaded) next[key] = items;
+        return next;
+      });
+    }).catch((error) => {
+      if (error?.name !== 'AbortError') {
+        console.error(error);
+        if (alive) setLoadError(error?.message || 'The database section could not be loaded.');
+      }
+    }).finally(() => {
+      if (alive) setPageLoading(false);
+    });
+
+    return () => {
+      alive = false;
+      controller.abort();
+    };
+  }, [loading, selectedCategory, selectedSubcategory]);
+
+  const requiredSections = STORE_SECTION_BY_PAGE[selectedSubcategory] || [];
+  const missingPageData = selectedCategory === 'Game Database' && requiredSections.some((key) => !storeData[key]);
+  if (loadError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-100 p-4 dark:bg-slate-900">
+        <div className="w-full max-w-lg rounded-xl border border-red-300 bg-white p-5 text-center dark:border-red-900 dark:bg-slate-800">
+          <div className="text-lg font-bold text-gray-900 dark:text-white">Game Database Unavailable</div>
+          <div className="mt-2 text-sm text-red-700 dark:text-red-300">{loadError}</div>
+          <button type="button" onClick={() => window.location.reload()} className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-500">
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+  if (loading || pageLoading || missingPageData || langs.length === 0 || !metadataCatalog) {
     return <Spinner stage={loadingStage} completed={completedLoadingStages} steps={loadingSteps} />;
   }
 

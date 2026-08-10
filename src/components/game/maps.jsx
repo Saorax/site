@@ -669,9 +669,8 @@ function collectMapGeometry(scene, level, assetDir, selectedWaveId = null, party
     const top = number(level?.TopKill);
     const bottom = number(level?.BottomKill);
     add({
-      kind: 'rect',
+      kind: 'invertedRect',
       layer: 'killBounds',
-      hitMode: 'stroke',
       type: 'KillBounds',
       x: number(camera.X) - left,
       y: number(camera.Y) - top,
@@ -736,7 +735,7 @@ function HoverTooltip({ hovered, pointer }) {
   );
 }
 
-function MapShape({ shape, active, onEnter, onLeave, onMove, onPlatformPointerDown, onAnimationToggle, selectedAnimation, platformPosition, pointRadius }) {
+function MapShape({ shape, active, onEnter, onLeave, onMove, onPlatformPointerDown, onAnimationToggle, selectedAnimation, platformPosition, pointRadius, viewport }) {
   const common = {
     onPointerEnter: () => onEnter(shape),
     onPointerLeave: onLeave,
@@ -813,6 +812,51 @@ function MapShape({ shape, active, onEnter, onLeave, onMove, onPlatformPointerDo
       <g {...common}>
         <circle cx={shape.x} cy={shape.y} r={active ? pointRadius * 1.4 : pointRadius} fill={stroke} vectorEffect="non-scaling-stroke" pointerEvents="none" />
         <circle cx={shape.x} cy={shape.y} r={pointRadius * 3} fill="transparent" pointerEvents="all" />
+      </g>
+    );
+  }
+  if (shape.kind === 'invertedRect') {
+    const [outerX, outerY, outerWidth, outerHeight] = viewport;
+    const outerRight = outerX + outerWidth;
+    const outerBottom = outerY + outerHeight;
+    const innerRight = shape.x + Math.max(shape.w, 1);
+    const innerBottom = shape.y + Math.max(shape.h, 1);
+    const outsidePath = [
+      `M ${outerX} ${outerY} H ${outerRight} V ${outerBottom} H ${outerX} Z`,
+      `M ${shape.x} ${shape.y} H ${innerRight} V ${innerBottom} H ${shape.x} Z`,
+    ].join(' ');
+    return (
+      <g {...common}>
+        <path
+          d={outsidePath}
+          fill={active ? '#facc1538' : `${shape.color}24`}
+          fillRule="evenodd"
+          clipRule="evenodd"
+          pointerEvents="none"
+        />
+        <rect
+          x={shape.x}
+          y={shape.y}
+          width={Math.max(shape.w, 1)}
+          height={Math.max(shape.h, 1)}
+          fill="none"
+          stroke={stroke}
+          strokeWidth={active ? 5 : 3}
+          strokeDasharray="10 7"
+          vectorEffect="non-scaling-stroke"
+          pointerEvents="none"
+        />
+        <path
+          data-pan-surface="true"
+          d={outsidePath}
+          fill="transparent"
+          fillRule="evenodd"
+          clipRule="evenodd"
+          stroke="transparent"
+          strokeWidth="20"
+          vectorEffect="non-scaling-stroke"
+          pointerEvents="all"
+        />
       </g>
     );
   }
@@ -1000,7 +1044,7 @@ function MapCanvas({ detail, comparisonDetail, selectedWaveId, partySize = 2, wa
           </defs>
           <rect data-pan-surface="true" x={viewBox[0]} y={viewBox[1]} width={viewBox[2]} height={viewBox[3]} fill="url(#map-grid)" />
           {visible.map((shape) => (
-            <MapShape key={shape.id} shape={shape} active={hovered?.id === shape.id} onEnter={setHovered} onLeave={() => setHovered(null)} onMove={moveTooltip} onPlatformPointerDown={startPlatformDrag} onAnimationToggle={(id) => setSelectedAnimation((current) => current === id ? null : id)} selectedAnimation={selectedAnimation} platformPosition={shape.platformId ? platformPositions.get(shape.platformId) : null} pointRadius={pointRadius} />
+            <MapShape key={shape.id} shape={shape} active={hovered?.id === shape.id} onEnter={setHovered} onLeave={() => setHovered(null)} onMove={moveTooltip} onPlatformPointerDown={startPlatformDrag} onAnimationToggle={(id) => setSelectedAnimation((current) => current === id ? null : id)} selectedAnimation={selectedAnimation} platformPosition={shape.platformId ? platformPositions.get(shape.platformId) : null} pointRadius={pointRadius} viewport={viewBox} />
           ))}
         </svg>
         <HoverTooltip hovered={hovered} pointer={pointer} />

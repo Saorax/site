@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { LoadingSpinner } from './LoadingImage';
 
 const viewBoxCache = {};
+const ANIMATION_FPS = 24;
 
 function getOrCreateOffscreenDiv() {
   let div = document.getElementById('svg-offscreen');
@@ -20,7 +21,7 @@ function getOrCreateOffscreenDiv() {
   return div;
 }
 
-export function SvgArrayFlipbook({ src, fps = 24, isLegend, classNames }) {
+export function SvgArrayFlipbook({ src, fps = ANIMATION_FPS, isLegend, classNames }) {
   const [frames, setFrames] = useState([]);
   const [normalizedFrames, setNormalizedFrames] = useState([]);
   const [index, setIndex] = useState(0);
@@ -32,32 +33,45 @@ export function SvgArrayFlipbook({ src, fps = 24, isLegend, classNames }) {
 
   useEffect(() => {
     let cancelled = false;
+    let retryTimer = null;
+    let retryAttempt = 0;
     setError(false);
     setLoading(true);
     setFrames([]);
     setNormalizedFrames([]);
-    fetch(src)
-      .then(res => res.json())
-      .then(data => {
+
+    const loadFrames = async () => {
+      const requestSrc = retryAttempt > 0
+        ? `${src}${src.includes('?') ? '&' : '?'}imageRetry=${retryAttempt}`
+        : src;
+      try {
+        const response = await fetch(requestSrc, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`Animation request failed with ${response.status}`);
+        const data = await response.json();
         if (Array.isArray(data)) {
           const arr = data.map(d => (typeof d === 'string' ? d : d.svg));
           if (!cancelled) {
             setFrames(arr);
           }
         } else {
-          if (!cancelled) {
-            setError(true);
-            setLoading(false);
-          }
+          throw new Error('Animation response did not contain frames');
         }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setError(true);
-          setLoading(false);
-        }
-      });
-    return () => { cancelled = true; };
+      } catch {
+        if (cancelled) return;
+        setError(false);
+        setLoading(true);
+        retryTimer = setTimeout(() => {
+          retryAttempt += 1;
+          loadFrames();
+        }, 2000);
+      }
+    };
+
+    loadFrames();
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [src]);
 
  useEffect(() => {
@@ -129,17 +143,20 @@ export function SvgArrayFlipbook({ src, fps = 24, isLegend, classNames }) {
       return;
     }
     let lastTime = performance.now();
+    const frameMs = 1000 / fps;
     const animate = (now) => {
       if (!isVisible || normalizedFrames.length === 0) return;
-      if (now - lastTime >= 1000 / 24) {
-        setIndex(prev => (prev + 1) % normalizedFrames.length);
-        lastTime = now;
+      const elapsed = now - lastTime;
+      if (elapsed >= frameMs) {
+        const framesToAdvance = Math.max(1, Math.floor(elapsed / frameMs));
+        setIndex(prev => (prev + framesToAdvance) % normalizedFrames.length);
+        lastTime += framesToAdvance * frameMs;
       }
       rafRef.current = requestAnimationFrame(animate);
     };
     rafRef.current = requestAnimationFrame(animate);
     return () => rafRef.current && cancelAnimationFrame(rafRef.current);
-  }, [isVisible, normalizedFrames]);
+  }, [fps, isVisible, normalizedFrames]);
 
   useEffect(() => {
     const observer = new window.IntersectionObserver(
@@ -196,7 +213,7 @@ export function SvgTauntDiv({ data, type, langs }) {
       >
         <SvgArrayFlipbook
           src={`${host}/game/anim/char/3-0/Animation_Emote/a__EmoteAnimation/${data}/${type}`}
-          fps={24}
+          fps={ANIMATION_FPS}
           isLegend={true}
         />
       </div>
@@ -211,7 +228,7 @@ export function SvgWeaponDiv({ data, langs }) {
       >
         <SvgArrayFlipbook
           src={`${host}/game/anim/weapon/${data.WeaponSkinID}/UI_TooltipAnimations/a__TooltipAnimation/${data.BaseWeapon}Pose/all`}
-          fps={24}
+          fps={ANIMATION_FPS}
           classNames={" h-full w-full"}
           isLegend={false}
         />
@@ -270,7 +287,7 @@ export function SvgCharDiv({ data, currentAnimation, langs }) {
       >
         <SvgArrayFlipbook
           src={`${host}/game/anim/char/${data.heroData?.HeroID || data.HeroID}-${data.SkinInt || 0}/Animation_CharacterSelect/a__CharacterSelectAnimation/${currentAnimation.includes('Loop') ? currentAnimation.replace('Loop', 'Selected') : currentAnimation}${data.heroData?.HeroName || data.HeroName}/${currentAnimation.includes('Loop') ? 'loop' : 'all'}`}
-          fps={24}
+          fps={ANIMATION_FPS}
           isLegend={true}
         />
       </div>
@@ -285,7 +302,7 @@ export function SvgCharDiv({ data, currentAnimation, langs }) {
               <span className="pb-2 text-gray-900 dark:text-white">{langs.content[weapon.DisplayNameKey]}</span>
               <SvgArrayFlipbook
                 src={`${host}/game/anim/weapon/${weapon.WeaponSkinID}/UI_TooltipAnimations/a__TooltipAnimation/${weapon.BaseWeapon}Pose/all`}
-                fps={24}
+                fps={ANIMATION_FPS}
                 classNames={"h-full w-full"}
                 isLegend={false}
               />

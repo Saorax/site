@@ -351,11 +351,7 @@ function itemImage(entry) {
     return `${host}/game/anim/weapon/${resolved.weaponData.WeaponSkinID}/UI_TooltipAnimations/a__TooltipAnimation/${weapon}Pose/loop`;
   }
   if (resolved.avatarData?.AvatarID) {
-    return [
-      `${host}/game/animAvatar/${resolved.avatarData.AvatarID}`,
-      resolved.avatarData.IconName && `${host}/game/getGfx/UI_Icons/${resolved.avatarData.IconName}`,
-      resolved.avatarData.AvatarName && `${host}/game/images/images/UI/${resolved.avatarData.AvatarName}.png`,
-    ].filter(Boolean);
+    return `${host}/game/animAvatar/${resolved.avatarData.AvatarID}`;
   }
   if (resolved.emojiData?.EmojiID) return `${host}/game/animEmoji/${resolved.emojiData.EmojiID}`;
   if (resolved.podiumData?.PodiumID) return `${host}/game/animPodium/${resolved.podiumData.PodiumID}/loop/Ready`;
@@ -403,10 +399,11 @@ const ItemThumb = memo(function ItemThumb({ entry, langs, small = false, classNa
 
   const src = itemImage(entry);
   const sizeClass = className || (small ? (isBorder ? 'h-40 w-28 sm:h-48 sm:w-32' : 'h-14 w-14 sm:h-16 sm:w-16') : (isBorder ? 'min-h-64 w-full max-w-2xl sm:min-h-80' : 'h-24 w-24 sm:h-28 sm:w-28'));
+  const retryImage = type === 'avatar' || Boolean(entry?.resolved?.avatarData?.AvatarID);
   return (
     <div className={`${sizeClass} rounded-xl bg-slate-900/80 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0`}>
       {src ? (
-        <ImageWithLoader src={src} alt={itemLabel(entry, langs)} className="h-full w-full" small={small} />
+        <ImageWithLoader src={src} alt={itemLabel(entry, langs)} className="h-full w-full" small={small} retryOnError={retryImage} />
       ) : (
         <span className="text-xs text-slate-400 px-2 text-center">{typeLabel(itemType(entry))}</span>
       )}
@@ -1676,7 +1673,13 @@ const configs = {
     card: (item, langs) => (
       <div className="flex gap-3">
         <div className="h-24 w-24 rounded-xl bg-slate-900/80 flex items-center justify-center shrink-0 overflow-hidden">
-          <img src={`${host}/game/animChest/${item.chestData?.ChanceBoxID}/StoreIdle/loop`} alt={label(item.chestData?.DisplayNameKey, langs)} className="max-h-full max-w-full object-contain" loading="lazy" />
+          <ImageWithLoader
+            src={`${host}/game/animChest/${item.chestData?.ChanceBoxID}/StoreIdle/loop`}
+            alt={label(item.chestData?.DisplayNameKey, langs)}
+            className="h-full w-full"
+            imgClassName="max-h-full max-w-full object-contain"
+            small
+          />
         </div>
         <div className="min-w-0 flex-1">
           <div className="font-semibold text-gray-900 dark:text-white">{label(item.chestData?.DisplayNameKey || item.chestData?.ChanceBoxName, langs)}</div>

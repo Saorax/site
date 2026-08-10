@@ -6,6 +6,10 @@ function sourcesList(src) {
   return Array.isArray(src) ? src.filter(Boolean) : [src].filter(Boolean);
 }
 
+function isGeneratedImageSource(src) {
+  return typeof src === 'string' && /\/game\/anim(?:[a-z-]*\/|\/)/i.test(src);
+}
+
 export function LoadingSpinner({ small = false }) {
   return (
     <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80">
@@ -14,19 +18,31 @@ export function LoadingSpinner({ small = false }) {
   );
 }
 
-export function ImageWithLoader({ src, alt = '', className = '', imgClassName = 'max-h-full max-w-full object-contain', small = false, onError, eager = false, ...props }) {
+export function ImageWithLoader({ src, alt = '', className = '', imgClassName = 'max-h-full max-w-full object-contain', small = false, onLoad, onError, eager = false, retryOnError = false, retryDelay = 2000, ...props }) {
   const sources = sourcesList(src);
+  const shouldRetry = retryOnError || sources.some(isGeneratedImageSource);
   const wrapperRef = useRef(null);
+  const retryTimerRef = useRef(null);
   const [sourceIndex, setSourceIndex] = useState(0);
+  const [retryAttempt, setRetryAttempt] = useState(0);
   const activeSrc = sources[sourceIndex];
+  const requestSrc = retryAttempt > 0 && activeSrc
+    ? `${activeSrc}${activeSrc.includes('?') ? '&' : '?'}imageRetry=${retryAttempt}`
+    : activeSrc;
   const [loaded, setLoaded] = useState(() => !!activeSrc && loadedImageSources.has(activeSrc));
   const [inView, setInView] = useState(eager);
 
   useEffect(() => {
     const nextSrc = sources[0];
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     setSourceIndex(0);
+    setRetryAttempt(0);
     setLoaded(!!nextSrc && loadedImageSources.has(nextSrc));
   }, [sources.join('|')]);
+
+  useEffect(() => () => {
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (eager) {
@@ -51,14 +67,16 @@ export function ImageWithLoader({ src, alt = '', className = '', imgClassName = 
       {activeSrc && inView && !loaded && <LoadingSpinner small={small} />}
       {activeSrc && inView ? (
         <img
-          key={activeSrc}
-          src={activeSrc}
+          key={requestSrc}
+          src={requestSrc}
           alt={alt}
           className={`${imgClassName} transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0'}`}
           loading="lazy"
-          onLoad={() => {
+          {...props}
+          onLoad={(event) => {
             loadedImageSources.add(activeSrc);
             setLoaded(true);
+            onLoad?.(event);
           }}
           onError={(event) => {
             if (sourceIndex < sources.length - 1) {
@@ -66,11 +84,18 @@ export function ImageWithLoader({ src, alt = '', className = '', imgClassName = 
               setLoaded(false);
               return;
             }
+            if (shouldRetry) {
+              if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+              setLoaded(false);
+              retryTimerRef.current = setTimeout(() => {
+                setRetryAttempt((current) => current + 1);
+              }, retryDelay);
+              return;
+            }
             setLoaded(true);
             onError?.(event);
             if (!onError) event.currentTarget.style.display = 'none';
           }}
-          {...props}
         />
       ) : null}
     </div>
