@@ -576,6 +576,104 @@ function AddedPreviewStrip({ file, records, heroMap, storeAssetMap, lang }) {
   );
 }
 
+function databaseRecordUrl(file, record, storeAssetMap = {}) {
+  const path = filePath(file).toLowerCase();
+  const data = record?.data || record?.after || {};
+  const database = (page, key, value) => value
+    ? `/game/database?page=${encodeURIComponent(page)}&${encodeURIComponent(key)}=${encodeURIComponent(value)}`
+    : '';
+  if (path.endsWith('/herotypes.xml')) {
+    const name = cleanPowerValue(data.BioName || data.HeroName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    return name ? `/game/legends/${name}` : '';
+  }
+  if (path.endsWith('/costumetypes.csv')) return database('skins', 'skin', data.CostumeID);
+  if (path.endsWith('/weaponskintypes.csv')) return database('weapon-skins', 'weapon', data.WeaponSkinID);
+  if (path.endsWith('/colorschemetypes.xml')) return database('colors', 'color', data.ColorSchemeID);
+  if (path.endsWith('/avatartypes.csv')) return database('avatars', 'avatar', data.AvatarID);
+  if (path.endsWith('/taunttypes.xml')) return database('taunts', 'taunt', data.TauntID);
+  if (path.endsWith('/podiumtypes.xml')) return database('podiums', 'podium', data.PodiumID);
+  if (path.endsWith('/playerthemetypes.xml')) return database('ui-themes', 'theme', data.PlayerThemeID);
+  if (path.endsWith('/seasonbordertypes.xml')) return database('borders', 'border', data.SeasonBorderID);
+  if (path.endsWith('/emojitypes.xml')) return database('emojis', 'emoji', data.EmojiID);
+  if (path.endsWith('/companiontypes.xml')) return database('companions', 'companion', data.CompanionID);
+  if (path.endsWith('/spawnbottypes.xml')) return database('sidekicks', 'sidekick', data.SpawnBotID);
+  if (path.endsWith('/traileffecttypes.xml')) return database('ko-effects', 'koeffect', data.TrailEffectID);
+  if (path.endsWith('/emittergrouptypes.xml')) return database('smoke-trails', 'smoketrail', data.EmitterGroupID);
+  if (path.endsWith('/monikertypes.xml')) return database('titles', 'title', data.MonikerID);
+  if (path.endsWith('/chanceboxtypes.xml')) return database('chests', 'chests', data.ChanceBoxID);
+  if (path.endsWith('/skirmishtypes.xml')) return database('skirmishes', 'skirmishes', data.SkirmishID);
+  if (path.endsWith('/missiontypes.xml')) return database('missions', 'missions', data.MissionID);
+  if (path.endsWith('/achievementtypes.xml')) return database('achievements', 'achievements', data.AchievementID);
+  if (path.endsWith('/tournamenteventtypes.xml')) return database('tournament-events', 'tournamentevents', data.TournamentEventID || data.Title);
+  if (path.endsWith('/splasharttypes.xml')) return database('splash-arts', 'splasharts', data.SplashArtID);
+  if (path.endsWith('/musictypes.xml')) return database('music', 'music', data.MusicID);
+  if (path.endsWith('/helpfulhintstypes.xml')) return database('helpful-hints', 'helpfulhints', data.HelpfulHintID || data.HelpfulhintsName);
+  if (path.endsWith('/guildmissiontypes.xml')) return database('guild-missions', 'guildmissions', data.GuildMissionID);
+  if (path.endsWith('/clientthemetypes.xml')) return database('client-themes', 'clientthemes', data.ClientThemeID);
+  if (path.endsWith('/entitlementtypes.xml')) return database('entitlements-purchases', 'entitlements', data.EntitlementID);
+  if (path.endsWith('/battlepasstypes.xml')) return database('battle-passes', 'pass', data.BattlePassID);
+  if (path.endsWith('/storetypes.csv')) {
+    const item = cleanPowerValue(data.Item);
+    const type = cleanPowerValue(data.Type).toLowerCase();
+    const lookups = {
+      costume: ['skins', 'skin', storeAssetMap.costumes?.[item]?.CostumeID],
+      weaponskin: ['weapon-skins', 'weapon', storeAssetMap.weaponSkins?.[item]?.WeaponSkinID],
+      avatar: ['avatars', 'avatar', storeAssetMap.avatars?.[item]?.AvatarID],
+      taunt: ['taunts', 'taunt', storeAssetMap.taunts?.[item]?.TauntID],
+      podium: ['podiums', 'podium', storeAssetMap.podiums?.[item]?.PodiumID],
+      colorscheme: ['colors', 'color', storeAssetMap.colors?.[item]?.ColorSchemeID],
+      emoji: ['emojis', 'emoji', storeAssetMap.emojis?.[item]?.EmojiID],
+      companion: ['companions', 'companion', storeAssetMap.companions?.[item]?.CompanionID],
+      spawnbot: ['sidekicks', 'sidekick', storeAssetMap.sidekicks?.[item]?.SpawnBotID],
+      traileffect: ['ko-effects', 'koeffect', storeAssetMap.koEffects?.[item]?.TrailEffectID],
+      emittergroup: ['smoke-trails', 'smoketrail', storeAssetMap.smokeTrails?.[item]?.EmitterGroupID],
+      moniker: ['titles', 'title', storeAssetMap.monikers?.[item]?.MonikerID],
+      playertheme: ['ui-themes', 'theme', storeAssetMap.themes?.[item]?.PlayerThemeID],
+      seasonborder: ['borders', 'border', storeAssetMap.borders?.[item]?.SeasonBorderID],
+    };
+    const target = lookups[type];
+    if (target) return database(target[0], target[1], target[2]);
+    if (type === 'bundle') return database('bundles', 'bundles', data.StoreID);
+    return '';
+  }
+  return '';
+}
+
+function ObjectChangeList({ changes }) {
+  return (
+    <div className="mt-2 grid gap-2">
+      {(changes || []).map((change, index) => (
+        <div key={`${change.path}-${index}`} className="rounded bg-slate-950/45 p-2 text-xs">
+          <div className="font-mono font-bold text-slate-200">{change.path}</div>
+          <div className="mt-1 grid gap-2 md:grid-cols-2">
+            <pre className={`overflow-auto whitespace-pre-wrap break-words rounded bg-rose-950/50 p-2 app-scrollbar ${change.propertyRemoved ? 'font-bold text-rose-200' : ''}`}>{valuePreview(change.before)}</pre>
+            <pre className={`overflow-auto whitespace-pre-wrap break-words rounded bg-emerald-950/50 p-2 app-scrollbar ${change.propertyAdded ? 'font-bold text-emerald-200' : ''}`}>{valuePreview(change.after)}</pre>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PropertyChangeVariants({ field }) {
+  return (
+    <div className="mt-2 grid gap-2">
+      {(field.propertyChangeVariants || []).map((variant, index) => (
+        <div key={index} className="rounded bg-slate-950/45 p-2 text-xs">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <span className="font-bold text-slate-300">{variant.count} record{variant.count === 1 ? '' : 's'}</span>
+            {!!variant.records?.length && <span className="break-words text-right text-slate-500">{variant.records.join(', ')}</span>}
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            <pre className={`overflow-auto whitespace-pre-wrap break-words rounded bg-rose-950/50 p-2 app-scrollbar ${field.propertyRemoved ? 'font-bold text-rose-200' : ''}`}>{valuePreview(variant.before)}</pre>
+            <pre className={`overflow-auto whitespace-pre-wrap break-words rounded bg-emerald-950/50 p-2 app-scrollbar ${field.propertyAdded ? 'font-bold text-emerald-200' : ''}`}>{valuePreview(variant.after)}</pre>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function CountPill({ label, value, tone = 'slate' }) {
   const colors = {
     emerald: 'bg-emerald-500/15 text-emerald-200 border-emerald-400/30',
@@ -592,16 +690,17 @@ function CountPill({ label, value, tone = 'slate' }) {
   );
 }
 
-function RecordCard({ type, record, file, lang, heroMap, storeAssetMap }) {
+function RecordCard({ type, record, file, lang, heroMap, storeAssetMap, titleOverride = '', hideImage = false }) {
   const [open, setOpen] = useState(false);
   const isChange = type === 'changed';
-  const image = recordImage(file, record, heroMap, storeAssetMap);
-  const title = recordTitle(record, lang);
+  const image = hideImage ? '' : recordImage(file, record, heroMap, storeAssetMap);
+  const title = titleOverride || recordTitle(record, lang);
+  const databaseUrl = type === 'added' ? databaseRecordUrl(file, record, storeAssetMap) : '';
   const splitCommaFields = filePath(file) !== 'Game/powerTypes.csv';
   return (
     <div className={`rounded-xl border p-3 ${sectionColors[type] || sectionColors.changed}`}>
-      <button type="button" onClick={() => setOpen((value) => !value)} className="flex w-full items-start justify-between gap-3 text-left">
-        <div className="flex min-w-0 items-start gap-3">
+      <div className="flex w-full items-start justify-between gap-3 text-left">
+        <button type="button" onClick={() => setOpen((value) => !value)} className="flex min-w-0 flex-1 items-start gap-3 text-left">
           {image && (
             <img
               src={image}
@@ -613,12 +712,21 @@ function RecordCard({ type, record, file, lang, heroMap, storeAssetMap }) {
           )}
           <div className="min-w-0">
           <div className="break-words text-sm font-bold text-white">{title}</div>
-          {record.id && <div className="mt-0.5 text-xs opacity-75">ID {record.id}</div>}
+          {record.id && !record.compactPropertyChange && <div className="mt-0.5 text-xs opacity-75">ID {record.id}</div>}
+          {record.compactPropertyChange && record.affectedCount > 0 && (
+            <div className="mt-1 text-xs text-slate-300">
+              {record.affectedCount} affected record{record.affectedCount === 1 ? '' : 's'}
+              {!!record.sample?.length && <span className="text-slate-500">: {record.sample.join(', ')}</span>}
+            </div>
+          )}
           {isChange && <div className="mt-1 text-xs opacity-75">{record.fields?.length || 0} field change{record.fields?.length === 1 ? '' : 's'}</div>}
           </div>
+        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {databaseUrl && <a href={databaseUrl} target="_blank" rel="noreferrer" className="rounded-lg bg-blue-500/20 px-2 py-1 text-xs font-bold text-blue-100 hover:bg-blue-500/30">Database</a>}
+          <button type="button" onClick={() => setOpen((value) => !value)} className="rounded-lg bg-black/20 px-2 py-1 text-xs">{open ? 'Hide' : 'View'}</button>
         </div>
-        <span className="shrink-0 rounded-lg bg-black/20 px-2 py-1 text-xs">{open ? 'Hide' : 'View'}</span>
-      </button>
+      </div>
       {open && (
         <div className="mt-3 space-y-2">
           {isChange ? (
@@ -628,9 +736,13 @@ function RecordCard({ type, record, file, lang, heroMap, storeAssetMap }) {
               const propertyRemoved = field.propertyRemoved || (!isEmptyFieldValue(field.before) && isEmptyFieldValue(field.after));
               return (
               <div key={field.field} className="rounded-lg border border-white/10 bg-black/20 p-2">
-                <div className="text-xs font-bold uppercase tracking-wide text-slate-300">{displayFieldName(field.field)}</div>
+                <div className="text-xs font-bold tracking-wide text-slate-300">{record.compactPropertyChange ? field.field : displayFieldName(field.field)}</div>
                 {listDiff ? (
                   <FullListDiff field={field} diff={listDiff} />
+                ) : field.propertyChangeVariants?.length ? (
+                  <PropertyChangeVariants field={field} />
+                ) : field.objectChanges?.length ? (
+                  <ObjectChangeList changes={field.objectChanges} />
                 ) : (
                   <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
                     <div className="rounded bg-rose-950/50 p-2 text-xs">
@@ -1015,10 +1127,136 @@ function legendChangeGroups(files, heroMap = {}) {
     .sort((a, b) => (a.hero?.name || '').localeCompare(b.hero?.name || ''));
 }
 
+function stablePatchValue(value) {
+  if (value === undefined) return 'undefined';
+  if (Array.isArray(value)) return `[${value.map(stablePatchValue).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stablePatchValue(value[key])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function sharedLegendRecordGroups(groups) {
+  const buckets = new Map();
+  for (const group of groups) {
+    for (const recordType of ['heroRecords', 'stanceRecords']) {
+      for (const entry of group[recordType] || []) {
+        if (entry.type !== 'changed' || !entry.record?.fields?.length) continue;
+        const fields = [...entry.record.fields].sort((a, b) => String(a.field).localeCompare(String(b.field)));
+        const key = `${recordType}|${filePath(entry.file)}|${stablePatchValue(fields)}`;
+        if (!buckets.has(key)) buckets.set(key, { recordType, entries: [], heroes: [] });
+        const bucket = buckets.get(key);
+        bucket.entries.push(entry);
+        bucket.heroes.push(group.hero);
+      }
+    }
+  }
+
+  const shared = [...buckets.values()].filter((bucket) => {
+    const legends = new Set(bucket.heroes.map((hero) => hero?.code || hero?.name).filter(Boolean));
+    return legends.size > 1;
+  });
+  const consumed = new Set(shared.flatMap((bucket) => bucket.entries));
+  return {
+    shared,
+    groups: groups.map((group) => ({
+      ...group,
+      heroRecords: group.heroRecords.filter((entry) => !consumed.has(entry)),
+      stanceRecords: group.stanceRecords.filter((entry) => !consumed.has(entry)),
+    })),
+  };
+}
+
+function SharedLegendChanges({ changes, lang, heroMap, storeAssetMap }) {
+  if (!changes.length) return null;
+  return (
+    <section>
+      <h4 className="mb-2 text-sm font-bold uppercase tracking-wide text-blue-200">Shared Legend Data</h4>
+      <div className="space-y-2">
+        {changes.map((change, index) => {
+          const entry = change.entries[0];
+          const heroes = [...new Map(change.heroes.map((hero) => [hero?.code || hero?.name, hero])).values()].filter(Boolean);
+          return (
+            <CollapsibleDiffBlock
+              key={`${change.recordType}-${filePath(entry.file)}-${index}`}
+              title={`${heroes.length} Legends`}
+              subtitle={heroes.map((hero) => hero.name).join(', ')}
+              className="bg-slate-950/60"
+            >
+              <div className="mb-3 flex flex-wrap gap-2">
+                {heroes.map((hero) => hero.image && <img key={hero.code || hero.name} src={hero.image} alt="" className="h-10 w-10 rounded-lg bg-slate-950 object-contain" />)}
+              </div>
+              <RecordCard
+                type={entry.type}
+                record={entry.record}
+                file={entry.file}
+                lang={lang}
+                heroMap={heroMap}
+                storeAssetMap={storeAssetMap}
+                titleOverride={change.recordType === 'stanceRecords' ? 'Shared Stance Change' : 'Shared Legend Property Change'}
+                hideImage
+              />
+            </CollapsibleDiffBlock>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function identicalChangedRecordGroups(records) {
+  const groups = new Map();
+  for (const record of records) {
+    const fields = [...(record.fields || [])].sort((a, b) => String(a.field).localeCompare(String(b.field)));
+    const key = fields.length ? stablePatchValue(fields) : `record:${record.id || record.name}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(record);
+  }
+  return [...groups.values()];
+}
+
+function ChangedRecordGroup({ records, file, lang, heroMap, storeAssetMap }) {
+  if (records.length === 1) {
+    return <RecordCard type="changed" record={records[0]} file={file} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />;
+  }
+  const names = records.map((record) => recordTitle(record, lang)).filter(Boolean);
+  return (
+    <CollapsibleDiffBlock
+      title={`${records.length} Matching Changes`}
+      subtitle={names.slice(0, 12).join(', ')}
+      className="bg-slate-950/60"
+    >
+      {names.length > 12 && <div className="mb-2 text-xs text-slate-400">{names.length - 12} more affected records</div>}
+      <RecordCard
+        type="changed"
+        record={records[0]}
+        file={file}
+        lang={lang}
+        heroMap={heroMap}
+        storeAssetMap={storeAssetMap}
+        titleOverride="Shared Property Change"
+        hideImage
+      />
+    </CollapsibleDiffBlock>
+  );
+}
+
 function LegendChangeSection({ groups, lang, heroMap, storeAssetMap }) {
   const [open, setOpen] = useState(true);
   if (!groups.length) return null;
   const signatureEntries = groups.flatMap((group) => group.signatureEntries || []);
+  const sharedRecords = sharedLegendRecordGroups(groups);
+  const sharedSignatures = summarizeCommonPowerFields(signatureEntries);
+  const remainingSignatures = new Map();
+  for (const entry of sharedSignatures.entries) {
+    const key = entry.parsed?.hero?.code || entry.parsed?.hero?.name || 'Unknown Legend';
+    if (!remainingSignatures.has(key)) remainingSignatures.set(key, []);
+    remainingSignatures.get(key).push(entry);
+  }
+  const visibleGroups = sharedRecords.groups.map((group) => ({
+    ...group,
+    signatureEntries: remainingSignatures.get(group.hero?.code || group.hero?.name || 'Unknown Legend') || [],
+  })).filter((group) => group.heroRecords.length || group.stanceRecords.length || group.signatureEntries.length);
   return (
     <section className="rounded-2xl border border-slate-700 bg-slate-900/80 p-4 shadow-sm">
       <button type="button" onClick={() => setOpen((value) => !value)} className="flex w-full flex-wrap items-center justify-between gap-3 text-left">
@@ -1042,7 +1280,9 @@ function LegendChangeSection({ groups, lang, heroMap, storeAssetMap }) {
         </div>
       </button>
       {open && <div className="mt-4 space-y-3">
-        {groups.map((group) => {
+        <SharedLegendChanges changes={sharedRecords.shared} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />
+        <CommonPowerFieldSummary fields={sharedSignatures.commonFields} />
+        {visibleGroups.map((group) => {
           const signatureSummary = summarizeCommonPowerFields(group.signatureEntries);
           const signatureWeapons = groupSignaturePowerEntries(signatureSummary.entries).flatMap((legendGroup) => legendGroup.weapons);
           const total = group.heroRecords.length + group.stanceRecords.length + group.signatureEntries.length;
@@ -1246,6 +1486,7 @@ function FileDiff({ file, mode = 'minimal', lang, heroMap, storeAssetMap }) {
     ? summarizeCommonPowerFields(rawChanged.map((record) => ({ type: 'changed', record })))
     : { entries: rawChanged.map((record) => ({ type: 'changed', record })), commonFields: [] };
   const changed = changedSummary.entries.map((entry) => entry.record);
+  const changedGroups = identicalChangedRecordGroups(changed);
   const removed = mode === 'minimal' ? minimalRecords(file, file.removed, 'removed') : file.removed || [];
   const total = added.length + removed.length + rawChanged.length;
   return (
@@ -1282,7 +1523,7 @@ function FileDiff({ file, mode = 'minimal', lang, heroMap, storeAssetMap }) {
             <section>
               <h4 className="mb-2 text-sm font-bold uppercase tracking-wide text-amber-200">Changed</h4>
               <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
-                {changed.map((record, index) => <RecordCard key={`${record.id}-${index}`} type="changed" record={record} file={file} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />)}
+                {changedGroups.map((records, index) => <ChangedRecordGroup key={`${records[0]?.id || index}-${index}`} records={records} file={file} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />)}
               </div>
             </section>
           )}
@@ -1509,7 +1750,7 @@ export default function History() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-800 bg-slate-950/95 p-3 backdrop-blur lg:hidden">
+      <div className="sticky top-16 z-30 flex items-center justify-between border-b border-slate-800 bg-slate-950/95 p-3 backdrop-blur lg:hidden">
         <div>
           <div className="text-lg font-bold">Patch History</div>
           <div className="text-xs text-slate-400">{selectedPatchInfo ? `Patch ${selectedPatchInfo.patch}` : 'Select a patch'}</div>
@@ -1518,14 +1759,14 @@ export default function History() {
       </div>
 
       {isSidebarOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden">
+        <div className="fixed inset-x-0 bottom-0 top-16 z-40 lg:hidden">
           <button type="button" className="absolute inset-0 bg-black/60" onClick={() => setIsSidebarOpen(false)} aria-label="Close patches" />
           <div className="relative h-full w-[min(92vw,24rem)]">{sidebar}</div>
         </div>
       )}
 
       <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[20rem_minmax(0,1fr)]">
-        <div className="sticky top-0 hidden h-screen overflow-hidden border-r border-slate-800 lg:block">{sidebar}</div>
+        <div className="sticky top-16 hidden h-[calc(100dvh-4rem)] overflow-hidden border-r border-slate-800 lg:block">{sidebar}</div>
         <main className="min-w-0 p-3 sm:p-4 lg:p-5">
           {error && <div className="mb-4 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-rose-200">{error}</div>}
           {loading && <div className="rounded-xl border border-slate-700 bg-slate-900 p-4 text-slate-300">Loading patch data...</div>}

@@ -105,7 +105,7 @@ const STORE_DATA_LABELS = Object.fromEntries(STORE_DATA_SECTIONS.map((section) =
 const STORE_SECTION_BY_PAGE = {
   'Skins': ['legends', 'skins'],
   'Weapon Skins': ['legends', 'weapons'],
-  'Colors': ['colors'],
+  'Colors': ['colors', 'skins'],
   'Avatars': ['avatars'],
   'Taunts': ['taunts'],
   'Podiums': ['podiums'],
@@ -123,6 +123,7 @@ const STORE_SECTION_BY_PAGE = {
   'Chests': ['chests'],
   'Skirmishes': ['skirmishes'],
   'Battle Passes': ['battlePasses'],
+  'Missions': ['skins', 'podiums', 'promos'],
 };
 
 const pageSlug = (page) => String(page || '')
@@ -384,7 +385,7 @@ export default function GameDatabase() {
   };
 
   const SidebarContent = () => (
-    <div className="flex h-full flex-col gap-4">
+    <div className="flex flex-col gap-4">
       <div>
         <div className="text-2xl font-bold text-gray-900 dark:text-white">Game Database</div>
       </div>
@@ -397,7 +398,7 @@ export default function GameDatabase() {
           <option key={idx} value={idx}>{lang.name}</option>
         ))}
       </select>
-      <div ref={sidebarScrollRef} className="flex-1 overflow-y-auto app-scrollbar overscroll-contain pr-1 space-y-1">
+      <div ref={sidebarScrollRef} className="space-y-1 pr-1">
         {NAV_PAGES.map((page) => {
           const active = selectedCategory === 'Game Database' && selectedSubcategory === page;
           return (
@@ -436,7 +437,7 @@ export default function GameDatabase() {
         case 'Sidekicks':
           return <SpawnBotMetadataStoreView spawnbots={storeData.spawnBots} langs={langs[selectedLang]} />;
         case 'Colors':
-          return <ColorSchemeStoreView colors={storeData.colors} langs={langs[selectedLang]} />;
+          return <ColorSchemeStoreView colors={storeData.colors} skins={storeData.skins} langs={langs[selectedLang]} />;
         case 'KO Effects':
           return <KOEffectMetadataStoreView koEffects={storeData.koeffects} langs={langs[selectedLang]} />;
         case 'Smoke Trails':
@@ -468,7 +469,7 @@ export default function GameDatabase() {
         case 'Battle Passes':
           return <BattlePassStoreView battlePasses={storeData.battlePasses} langs={langs[selectedLang]} />;
         case 'Missions':
-          return <MetadataTypeView typeKey="missions" langs={langs[selectedLang]} />;
+          return <MetadataTypeView typeKey="missions" storeData={storeData} langs={langs[selectedLang]} />;
         case 'Achievements':
           return <MetadataTypeView typeKey="achievements" langs={langs[selectedLang]} />;
         case 'Tournament Events':
@@ -497,7 +498,7 @@ export default function GameDatabase() {
   };
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-slate-900 text-gray-900 dark:text-white" style={{ fontFamily: langs[selectedLang]?.font || 'BHLatinBold' }}>
-      <div className="lg:hidden sticky top-0 z-40 flex items-center justify-between bg-white/95 dark:bg-slate-800/95 px-4 py-3 shadow-sm backdrop-blur">
+      <div className="lg:hidden sticky top-16 z-30 flex items-center justify-between bg-white/95 dark:bg-slate-800/95 px-4 py-3 shadow-sm backdrop-blur">
         <div>
           <div className="text-lg font-bold text-gray-900 dark:text-white">Game Database</div>
           <div className="text-xs text-gray-500 dark:text-gray-400">{selectedCategory}{selectedSubcategory ? ` / ${selectedSubcategory}` : ''}</div>
@@ -511,7 +512,7 @@ export default function GameDatabase() {
       </div>
 
       {isMenuOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-x-0 bottom-0 top-16 z-50 lg:hidden">
           <button className="absolute inset-0 bg-black/50" onClick={() => setIsMenuOpen(false)} aria-label="Close navigation" />
           <aside className="relative h-full w-[min(92vw,24rem)] max-w-sm overflow-y-auto app-scrollbar bg-white dark:bg-slate-800 p-3 sm:p-4 shadow-xl">
             <button
@@ -526,7 +527,7 @@ export default function GameDatabase() {
       )}
 
       <div className="lg:grid lg:grid-cols-[18rem_minmax(0,1fr)] bg-gray-100 dark:bg-slate-900">
-        <aside className="hidden lg:sticky lg:top-0 lg:z-20 lg:flex lg:h-dvh lg:w-72 lg:shrink-0 lg:flex-col bg-white dark:bg-slate-800 p-4 shadow-sm overflow-hidden">
+        <aside className="hidden lg:sticky lg:top-16 lg:z-20 lg:flex lg:w-72 lg:shrink-0 lg:self-start lg:flex-col bg-white dark:bg-slate-800 p-4 shadow-sm">
           <SidebarContent />
         </aside>
         <main className="min-w-0 bg-gray-100 dark:bg-slate-900">

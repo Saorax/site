@@ -5,6 +5,7 @@ import { useMediaQuery } from 'react-responsive';
 import { AddedBadge, ImageWithLoader, RawDataDetails, getAddedPatch, getPatchFilterCounts, getPatchGroups, patchFilterMatches, PatchFilterSelect } from './comp/LoadingImage';
 import { VirtualCardGrid } from './comp/VirtualCardGrid';
 import { pageSlugForLabel, readArrayParam, readBoolParam, writeArrayParam, writeBoolParam, writeStringParam } from './comp/urlQuery';
+import { FieldGrid, StoreDataSection } from './metadata';
 
 function uniq(a) { return [...new Set(a)]; }
 function uniqueValues(array, path) {
@@ -448,14 +449,14 @@ export function EmojiStoreView({ emojis, langs }) {
         className={viewMode === 'grid' ? 'h-full w-full p-1' : 'p-0 px-2 min-h-[160px]'}
         onClick={() => { setSelectedEmoji(emoji); filtersChanged.current = false; }}
       >
-        <div className={`relative h-full self-start text-left bg-white dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-xl cursor-pointer p-3 pt-10 transition border border-gray-200 dark:border-slate-700 min-h-52 shadow-sm hover:-translate-y-0.5 ${isSelected ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} flex flex-col`}>
+        <div className={`relative h-full self-start text-left bg-white dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-xl cursor-pointer p-2 pt-9 transition border border-gray-200 dark:border-slate-700 min-h-52 shadow-sm hover:-translate-y-0.5 ${isSelected ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} flex flex-col`}>
           {viewMode === 'grid' && (
-            <div className="mb-2 flex max-w-full justify-center px-1 text-sm font-bold leading-tight text-gray-900 dark:text-white sm:px-2 sm:text-base">
+            <div className="mb-1 flex max-w-full justify-center px-1 text-sm font-bold leading-tight text-gray-900 dark:text-white sm:text-base">
               <span className="break-words">{langs.content?.[getDisplayNameKey(emoji)] || emoji.emojiData?.EmojiName}</span>
             </div>
           )}
           <ImageWithLoader src={`${host}/game/animEmoji/${emoji.emojiData?.EmojiID}`} alt="" className="h-24 w-24 self-center rounded-lg bg-slate-900/80 sm:h-32 sm:w-32" />
-          <div className="flex-1 flex w-full flex-col items-center text-center mt-2 min-w-0">
+          <div className="mt-1 flex w-full min-w-0 flex-1 flex-col items-center text-center">
             <div className="flex flex-col gap-1">
               <div className={`mt-1 justify-start text-gray-900 dark:text-white font-bold ${viewMode === 'grid' ? 'hidden' : 'flex text-lg'}`}>
                 <span >{langs.content?.[getDisplayNameKey(emoji)] || emoji.emojiData?.EmojiName}</span>
@@ -529,7 +530,7 @@ export function EmojiStoreView({ emojis, langs }) {
                       )}
                       {Object.entries(sd.Costs.special).map(([currencyType, cost], sIdx) => cost > 0 && (
                         <div key={`special-${sIdx}`}>
-                          <img src={`${host}/game/getGfx/UI_Icons/a_Currency_${currencyType}`} className="inline h-4 mr-1" onError={handleImgError} />
+                          <img src={`${host}/game/getGfx/UI_Currencies/a_Currency_${currencyType}`} className="inline h-4 mr-1" onError={handleImgError} />
                           <span>{cost}</span>
                           <span className="text-xs text-gray-500 dark:text-gray-400"> (Bundle)</span>
                         </div>
@@ -557,7 +558,7 @@ export function EmojiStoreView({ emojis, langs }) {
                       )}
                       {Object.entries(sd.Costs.special).map(([currencyType, cost], sIdx) => cost > 0 && (
                         <div key={`special-${sIdx}`}>
-                          <img src={`${host}/game/getGfx/UI_Icons/a_Currency_${currencyType}`} className="inline h-4 mr-1" onError={handleImgError} />
+                          <img src={`${host}/game/getGfx/UI_Currencies/a_Currency_${currencyType}`} className="inline h-4 mr-1" onError={handleImgError} />
                           <span>{cost}</span>
                         </div>
                       ))}
@@ -742,6 +743,7 @@ export function EmojiStoreView({ emojis, langs }) {
           items={filtered}
           rowHeight={305}
           rowHeightMobile={260}
+          maxColumns={5}
           className="h-[calc(100dvh-9rem)] min-h-[22rem] app-scrollbar"
           getKey={(emoji, index) => emoji?.emojiData?.EmojiID || index}
           renderItem={(emoji, index) => <Row key={emoji?.emojiData?.EmojiID || index} index={index} data={filtered} />}
@@ -820,7 +822,10 @@ export function EmojiStoreView({ emojis, langs }) {
               </div>
               <div className="contents">
                 <div className="xl:col-start-2 xl:row-start-2 w-full flex flex-col gap-2">
-                  <div className="relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
+                  <StoreDataSection rows={selectedEmoji.store} langs={langs} />
+                  <FieldGrid data={selectedEmoji.emojiData} langs={langs} title="Emoji Data" />
+                  <FieldGrid data={selectedEmoji.entitlement} langs={langs} title="Entitlement Data" />
+                  {false && <div className="relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
                     <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Emoji Data</span>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                       <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
@@ -844,8 +849,8 @@ export function EmojiStoreView({ emojis, langs }) {
                         </div>
                       )}
                     </div>
-                  </div>
-                  {getProcessedStoreData(selectedEmoji).map((sd, idx) => (
+                  </div>}
+                  {false && getProcessedStoreData(selectedEmoji).map((sd, idx) => (
                     <div key={`store-${idx}`} className="relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
                       <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Store Data{sd.Type === 'Bundle' ? ' (Bundle)' : ''}</span>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
@@ -977,7 +982,7 @@ export function EmojiStoreView({ emojis, langs }) {
                       </div>
                     </div>
                   ))}
-                  {selectedEmoji.entitlement && (
+                  {false && selectedEmoji.entitlement && (
                     <div className='relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm'>
                       <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Entitlement Data</span>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">

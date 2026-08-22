@@ -1018,6 +1018,29 @@ function HighlightedListValue({ value, highlighted, color }) {
 function ChangeFieldBody({ field, compact = false }) {
   const addedValues = asArray(field?.addedValues);
   const removedValues = asArray(field?.removedValues);
+  if (field?.objectChanges?.length) {
+    return (
+      <div className="mt-2 grid gap-2">
+        {field.objectChanges.map((change, index) => (
+          <div key={`${change.path}-${index}`} className="rounded-lg bg-slate-950/5 p-2 font-mono text-xs dark:bg-slate-950/50">
+            <div className="mb-1 font-black">{change.path}</div>
+            {change.addedValues?.length || change.removedValues?.length ? (
+              <div className="grid gap-2 md:grid-cols-2">
+                <HighlightedListValue value={change.before} highlighted={change.removedValues} color="text-red-600 dark:text-red-300" />
+                <HighlightedListValue value={change.after} highlighted={change.addedValues} color="text-emerald-600 dark:text-emerald-300" />
+              </div>
+            ) : change.propertyAdded ? (
+              <pre className="whitespace-pre-wrap break-words font-black text-emerald-600 dark:text-emerald-300">{renderChangeValue(change.after)}</pre>
+            ) : change.propertyRemoved ? (
+              <pre className="whitespace-pre-wrap break-words font-black text-red-600 dark:text-red-300">{renderChangeValue(change.before)}</pre>
+            ) : (
+              <div>{renderChangeValue(change.before)} {'->'} {renderChangeValue(change.after)}</div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
   if (addedValues.length || removedValues.length) {
     return (
       <div className="mt-2 grid gap-2 md:grid-cols-2">
@@ -1551,13 +1574,16 @@ function SkinHistoryCard({ group, legend }) {
 function VisualHistorySection({ title, children, count }) {
   if (!count) return null;
   return (
-    <div className="rounded-xl border border-slate-300 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950/70">
-      <div className="mb-3 flex items-center justify-between gap-2">
+    <details open className="group rounded-xl border border-slate-300 bg-slate-50 dark:border-slate-700 dark:bg-slate-950/70">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 p-3 marker:hidden">
         <h3 className="text-lg font-black text-slate-950 dark:text-white">{title}</h3>
-        <span className="rounded-lg bg-slate-200 px-2 py-1 text-xs font-black text-slate-700 dark:bg-slate-800 dark:text-slate-200">{count}</span>
-      </div>
-      {children}
-    </div>
+        <span className="flex items-center gap-2">
+          <span className="rounded-lg bg-slate-200 px-2 py-1 text-xs font-black text-slate-700 dark:bg-slate-800 dark:text-slate-200">{count}</span>
+          <span className="text-sm font-black text-slate-500 transition group-open:rotate-180 dark:text-slate-400">v</span>
+        </span>
+      </summary>
+      <div className="border-t border-slate-200 p-3 dark:border-slate-800">{children}</div>
+    </details>
   );
 }
 
@@ -1683,12 +1709,15 @@ function ChangeList({ title, items, tone, file }) {
   const sourceRows = asArray(items);
   if (!sourceRows.length) return null;
   const isPowerFile = historyPath(file) === 'game/powertypes';
+  const isHurtboxFile = historyPath(file) === 'game/hurtboxtypes';
   const summarized = isPowerFile
     ? summarizeCommonPowerFields(sourceRows.map((record) => ({ type: tone, record })))
     : { entries: sourceRows.map((record) => ({ type: tone, record })), commonFields: [] };
   const rows = summarized.entries.map((entry) => entry.record);
   const recordGridClass = rows.length === 1
     ? 'grid gap-2'
+    : isHurtboxFile
+      ? 'grid gap-2 lg:grid-cols-3'
     : isPowerFile
       ? 'grid gap-3 2xl:grid-cols-2'
       : tone === 'changed'
@@ -1701,8 +1730,15 @@ function ChangeList({ title, items, tone, file }) {
   }[tone] || 'border-slate-300 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-950/70 dark:text-slate-200';
 
   return (
-    <div>
-      <div className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</div>
+    <details open className="group rounded-lg border border-slate-200 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-950/40">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 marker:hidden">
+        <span className="text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</span>
+        <span className="flex items-center gap-2 text-xs font-black text-slate-500 dark:text-slate-400">
+          {sourceRows.length}
+          <span className="transition group-open:rotate-180">v</span>
+        </span>
+      </summary>
+      <div className="border-t border-slate-200 p-3 dark:border-slate-800">
       {!!summarized.commonFields.length && (
         <div className="mb-3 grid gap-2">
           {summarized.commonFields.map((field) => (
@@ -1718,7 +1754,7 @@ function ChangeList({ title, items, tone, file }) {
           <div key={`${item?.id || item?.name || index}`} className={`rounded-lg border p-3 ${toneClass}`}>
             <div className="font-black">{item?.name || item?.id || `${title} ${index + 1}`}</div>
             {item?.fields ? (
-              <div className={asArray(item.fields).length === 1 ? 'mt-2 grid gap-2' : isPowerFile ? 'mt-2 grid gap-2 lg:grid-cols-2' : 'mt-2 grid gap-2 md:grid-cols-2 2xl:grid-cols-3'}>
+              <div className={asArray(item.fields).length === 1 ? 'mt-2 grid gap-2' : isPowerFile ? 'mt-2 grid gap-2 lg:grid-cols-2' : isHurtboxFile ? 'mt-2 grid gap-2 lg:grid-cols-3' : 'mt-2 grid gap-2 md:grid-cols-2 2xl:grid-cols-3'}>
                 {asArray(item.fields).map((field, fieldIndex) => (
                   <div key={`${field?.field || fieldIndex}`} className="rounded-lg bg-white/60 p-2 text-sm dark:bg-slate-950/50">
                     {isSimpleScalarChange(field) ? (
@@ -1740,30 +1776,32 @@ function ChangeList({ title, items, tone, file }) {
           </div>
         ))}
       </div>}
-    </div>
+      </div>
+    </details>
   );
 }
 
 function HistoryFile({ file }) {
   return (
-    <div className="rounded-xl border border-slate-300 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <details open className="group rounded-xl border border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 p-3 marker:hidden">
         <div>
           <div className="text-[10px] font-black uppercase tracking-wide text-blue-600 dark:text-blue-300">{file?.section}/{file?.file}</div>
           <div className="text-lg font-black text-slate-950 dark:text-white">{file?.label || file?.file}</div>
         </div>
-        <div className="flex flex-wrap gap-1.5 text-[11px] font-black">
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-black">
           {!!file?.summary?.added && <span className="rounded-lg bg-emerald-500/10 px-2 py-1 text-emerald-700 dark:text-emerald-200">+{file.summary.added}</span>}
           {!!file?.summary?.changed && <span className="rounded-lg bg-blue-500/10 px-2 py-1 text-blue-700 dark:text-blue-200">~{file.summary.changed}</span>}
           {!!file?.summary?.removed && <span className="rounded-lg bg-red-500/10 px-2 py-1 text-red-700 dark:text-red-200">-{file.summary.removed}</span>}
+          <span className="ml-1 text-sm text-slate-500 transition group-open:rotate-180 dark:text-slate-400">v</span>
         </div>
-      </div>
-      <div className="grid gap-3">
+      </summary>
+      <div className="grid gap-3 border-t border-slate-200 p-3 dark:border-slate-800">
         <ChangeList title="Added" items={file?.added} tone="added" file={file} />
         <ChangeList title="Changed" items={file?.changed} tone="changed" file={file} />
         <ChangeList title="Removed" items={file?.removed} tone="removed" file={file} />
       </div>
-    </div>
+    </details>
   );
 }
 

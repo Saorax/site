@@ -5,6 +5,7 @@ import { useMediaQuery } from 'react-responsive';
 import { AddedBadge, ImageWithLoader, RawDataDetails, getAddedPatch, getPatchFilterCounts, getPatchGroups, patchFilterMatches, PatchFilterSelect } from './comp/LoadingImage';
 import { VirtualCardGrid } from './comp/VirtualCardGrid';
 import { pageSlugForLabel, readBoolParam, writeBoolParam, writeStringParam } from './comp/urlQuery';
+import { FieldGrid, StoreDataSection } from './metadata';
 
 function uniq(a) { return [...new Set(a)]; }
 function uniqueValues(array, path) {
@@ -138,11 +139,22 @@ function useOptionCounts(items, filters, helpers) {
     return counts;
   }, [items, filters, helpers]);
 }
-export function ColorSchemeStoreView({ colors, langs }) {
+export function ColorSchemeStoreView({ colors, skins = [], langs }) {
   const data = useMemo(
     () => (Array.isArray(colors) ? colors : []).map(c => ({ ...c, store: normalizeStore(c) })),
     [colors]
   );
+  const previewSkins = useMemo(
+    () => (Array.isArray(skins) ? skins : []).filter((skin) => skin?.HeroID != null && skin?.SkinInt != null && (skin?.animTypes?.selectedOther || skin?.animTypes?.selected)),
+    [skins]
+  );
+  const previewSkinByColor = useMemo(() => {
+    if (!previewSkins.length) return new Map();
+    return new Map(data.map((color) => [
+      String(color.colorData?.ColorSchemeID),
+      previewSkins[Math.floor(Math.random() * previewSkins.length)],
+    ]));
+  }, [data, previewSkins]);
   const [selectedColor, setSelectedColor] = useState(null);
   const [sortType, setSortType] = useState('OrderIDDesc');
   const [searchQuery, setSearchQuery] = useState('');
@@ -389,6 +401,11 @@ export function ColorSchemeStoreView({ colors, langs }) {
   const handleImgError = e => { e.currentTarget.style.display = 'none'; };
   const Row = ({ index, data }) => {
     const item = data[index];
+    const previewSkin = previewSkinByColor.get(String(item.colorData?.ColorSchemeID)) || null;
+    const previewAnim = previewSkin?.animTypes?.selectedOther || previewSkin?.animTypes?.selected;
+    const previewSrc = previewSkin && previewAnim
+      ? `${host}/game/anim/char/${previewSkin.HeroID}-${previewSkin.SkinInt}/Animation_CharacterSelect/a__CharacterSelectAnimation/${previewAnim}/loop/${item.colorData?.ColorSchemeID || 0}`
+      : null;
     const storeData = getProcessedStoreData(item);
     const isSelected = selectedColor?.colorData?.ColorSchemeID === item.colorData?.ColorSchemeID;
     const bgHex = (item.colorData?.IndicatorColor || '0x000000').slice(2);
@@ -409,28 +426,32 @@ export function ColorSchemeStoreView({ colors, langs }) {
         onClick={() => { setSelectedColor(item); filtersChanged.current = false; }}
       >
         <div
-          className={`relative h-full self-start text-left rounded-xl cursor-pointer p-3 pt-10 transition border border-gray-200 dark:border-slate-700 min-h-52 shadow-sm hover:-translate-y-0.5 hover:brightness-110 dark:hover:brightness-125 ${isSelected ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} flex flex-col`}
+          className={`relative h-full self-start text-left rounded-xl cursor-pointer p-3 transition border border-gray-200 dark:border-slate-700 min-h-52 shadow-sm hover:-translate-y-0.5 hover:brightness-110 dark:hover:brightness-125 ${isSelected ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} flex flex-col`}
           style={{ backgroundColor: bgColor, color: textColor }}
         >
-          {viewMode === 'grid' && (
-            <div className="mb-2 flex max-w-full justify-center px-1 text-sm font-bold leading-tight sm:px-2 sm:text-base">
-              <span className="break-words">{langs.content?.[getDisplayNameKey(item)] || item.colorData?.ColorSchemeName}</span>
+          <div className="mb-2 flex min-w-0 items-start gap-2">
+            <div className="flex min-h-11 min-w-0 flex-1 items-center justify-start gap-2 rounded-lg bg-slate-900/80 px-2 py-1.5 text-left text-sm font-bold leading-tight text-white sm:text-base">
+              <ImageWithLoader
+                src={`${host}/game/getGfx/UI_Icons/${item.colorData?.IconName}`}
+                alt=""
+                className="h-9 w-9 shrink-0 bg-transparent sm:h-11 sm:w-11"
+                imgClassName="h-full w-full object-contain"
+                small
+              />
+              <span className="min-w-0 break-words text-left">{langs.content?.[getDisplayNameKey(item)] || item.colorData?.ColorSchemeName}</span>
             </div>
+            <AddedBadge item={item} className="shrink-0" style={badgeStyle} showDate={!isMobile} />
+          </div>
+          {previewSrc && (
+            <ImageWithLoader
+              src={previewSrc}
+              alt=""
+              className="h-40 w-full self-center rounded-lg bg-slate-900/80 sm:h-48"
+              imgClassName="h-full w-full object-contain"
+            />
           )}
-          <ImageWithLoader
-            src={`${host}/game/getGfx/UI_Icons/${item.colorData?.IconName}`}
-            alt=""
-            className="h-28 w-28 self-center rounded-lg bg-slate-900/80 sm:h-40 sm:w-40"
-            imgClassName="h-full w-full object-contain"
-          />
           <div className="flex-1 flex w-full flex-col items-center text-center mt-2 min-w-0">
             <div className="flex flex-col gap-1">
-              <div className={`mt-1 justify-start font-bold ${viewMode === 'grid' ? 'hidden' : 'flex text-lg'}`}>
-                <span >
-                  {langs.content?.[getDisplayNameKey(item)] || item.colorData?.ColorSchemeName}
-                </span>
-              </div>
-              <AddedBadge item={item} className="absolute left-1/2 top-2 z-10 -translate-x-1/2 pointer-events-none" style={badgeStyle} />
               {viewMode !== 'grid' && (
                 <div className="hidden max-w-full flex-wrap justify-center gap-1 pb-1 sm:flex">
                   {!item.store?.length && !item.bp && !item.promo && !item.entitlement && (
@@ -489,7 +510,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                   )}
                   {Object.entries(sd.Costs.special).map(([currencyType, cost], sIdx) => cost > 0 && (
                     <div key={`special-${sIdx}`}>
-                      <img src={`${host}/game/getGfx/UI_Icons/a_Currency_${currencyType}`} className="inline h-4 mr-1" onError={handleImgError} loading="lazy" />
+                      <img src={`${host}/game/getGfx/UI_Currencies/a_Currency_${currencyType}`} className="inline h-4 mr-1" onError={handleImgError} loading="lazy" />
                       <span>{cost}</span>
                     </div>
                   ))}
@@ -606,10 +627,13 @@ export function ColorSchemeStoreView({ colors, langs }) {
           </>)}
           <div className="flex gap-4 flex-col">
             <div className="lg:flex lg:flex-col gap-4">
-              <div className="order-first flex justify-between items-center w-full sm:w-auto py-2 gap-4">
+              <div className="order-first flex flex-wrap justify-between items-center w-full py-2 gap-4">
               <div className="text-sm font-bold text-blue-600 dark:text-blue-400 sm:text-lg">
                   Showing {filtered.length} Color{filtered.length !== 1 ? 's' : ''}
                 </div>
+                <a href="/game/colors" className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white transition hover:bg-blue-500">
+                  Open Color Scheme Creator
+                </a>
               </div>
               <div className="relative">
                 <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M10 18a8 8 0 110-16 8 8 0 010 16z"></path></svg>
@@ -787,7 +811,24 @@ export function ColorSchemeStoreView({ colors, langs }) {
                       </div>
                     </div>
                   )}
-                  <div className="relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
+                  <StoreDataSection rows={selectedColor.store} langs={langs} />
+                  <FieldGrid
+                    data={selectedColor.colorData}
+                    langs={langs}
+                    title="Color Scheme Data"
+                    exclude={[
+                      'ColorSchemeName',
+                      'DisplayNameKey',
+                      'IconName',
+                      'IconFileName',
+                      'IndicatorColor',
+                      'ExcludeOpponentTeamColor',
+                      'FallbackOpponentTeamColor',
+                      ...Object.keys(selectedColor.colorData || {}).filter((key) => key.endsWith('_Swap')),
+                    ]}
+                  />
+                  <FieldGrid data={selectedColor.entitlement} langs={langs} title="Entitlement Data" />
+                  {false && <div className="relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
                     <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Color Scheme Data</span>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                       <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
@@ -821,8 +862,8 @@ export function ColorSchemeStoreView({ colors, langs }) {
                         <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{getOrderID(selectedColor)}</span>
                       </div>
                     </div>
-                  </div>
-                  {getProcessedStoreData(selectedColor).map((sd, idx) => (
+                  </div>}
+                  {false && getProcessedStoreData(selectedColor).map((sd, idx) => (
                     <div key={`store-${idx}`} className="relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
                       <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Store Data{sd.Type === 'Bundle' ? ' (Bundle)' : ''}</span>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
@@ -919,7 +960,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                                 )}
                                 {Object.entries(sd.Costs.special).map(([currencyType, cost]) => cost > 0 && (
                                   <div key={`sp-bundle-${currencyType}`} className="flex items-center gap-1">
-                                    <img src={`${host}/game/getGfx/UI_Icons/a_Currency_${currencyType}`} className="h-5 inline" onError={handleImgError} loading="lazy" />
+                                    <img src={`${host}/game/getGfx/UI_Currencies/a_Currency_${currencyType}`} className="h-5 inline" onError={handleImgError} loading="lazy" />
                                     <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{cost}</span>
                                   </div>
                                 ))}
@@ -979,7 +1020,7 @@ export function ColorSchemeStoreView({ colors, langs }) {
                               <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
                                 <span className="text-[11px] uppercase tracking-wide text-slate-400">{sd.SpecialCurrencyType} Cost</span>
                                 <div>
-                                  <img src={`${host}/game/getGfx/UI_Icons/a_Currency_${sd.SpecialCurrencyType}`} className="h-5 pr-1 inline" onError={handleImgError} loading="lazy" />
+                                  <img src={`${host}/game/getGfx/UI_Currencies/a_Currency_${sd.SpecialCurrencyType}`} className="h-5 pr-1 inline" onError={handleImgError} loading="lazy" />
                                   <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.SpecialCurrencyCost}</span>
                                 </div>
                               </div>

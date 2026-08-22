@@ -158,19 +158,32 @@ function Field({ label, value, mono = false }) {
   );
 }
 
-function animationTree(catalog, query) {
+function animationTree(catalog, query, hitboxesOnly) {
   const wanted = query.trim().toLowerCase();
   const tree = {};
   for (const entry of catalog.animations) {
+    if (hitboxesOnly && !entry.hasHitbox) continue;
     const folderMatches = entry.folder.toLowerCase().includes(wanted);
     const rigMatches = entry.rig.toLowerCase().includes(wanted);
     const animationMatches = entry.animation.toLowerCase().includes(wanted);
-    if (wanted && !folderMatches && !rigMatches && !animationMatches) continue;
+    const ownerMatches = String(entry.ownerName || '').toLowerCase().includes(wanted);
+    if (wanted && !folderMatches && !rigMatches && !animationMatches && !ownerMatches) continue;
     tree[entry.folder] ??= {};
     tree[entry.folder][entry.rig] ??= [];
     tree[entry.folder][entry.rig].push(entry);
   }
   return tree;
+}
+
+function matchingAnimations(catalog, query, hitboxesOnly) {
+  const wanted = query.trim().toLowerCase();
+  return (catalog?.animations || []).filter((entry) => {
+    if (hitboxesOnly && !entry.hasHitbox) return false;
+    if (!wanted) return true;
+    return [entry.folder, entry.rig, entry.animation, entry.ownerName]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(wanted));
+  });
 }
 
 function AnimationNode({ entry, selected, onSelect }) {
@@ -194,6 +207,15 @@ function AnimationNode({ entry, selected, onSelect }) {
             : "text-slate-300 hover:bg-slate-800/70 hover:text-white",
         )}
       >
+        {entry.ownerIcon && (
+          <img
+            src={`${host}${entry.ownerIcon}`}
+            alt=""
+            title={entry.ownerName || undefined}
+            className="mr-1.5 h-5 w-5 shrink-0 object-contain"
+            loading="lazy"
+          />
+        )}
         <span className="truncate">{entry.animation}</span>
       </button>
     </li>
@@ -276,9 +298,9 @@ function FolderNode({ folder, rigs, selected, onSelect, forceOpen }) {
   );
 }
 
-function AnimationBrowser({ catalog, selected, onSelect, onRandom, query, setQuery }) {
+function AnimationBrowser({ catalog, selected, onSelect, onRandom, query, setQuery, hitboxesOnly, setHitboxesOnly }) {
   const deferredQuery = useDebounced(query);
-  const tree = useMemo(() => animationTree(catalog, deferredQuery), [catalog, deferredQuery]);
+  const tree = useMemo(() => animationTree(catalog, deferredQuery, hitboxesOnly), [catalog, deferredQuery, hitboxesOnly]);
   const folders = Object.keys(tree).sort();
   const resultCount = useMemo(
     () => folders.reduce(
@@ -303,6 +325,10 @@ function AnimationBrowser({ catalog, selected, onSelect, onRandom, query, setQue
           placeholder="Search filename, index, animation..."
           className="w-full rounded-md border border-slate-700 bg-slate-950/80 px-2 py-1 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
         />
+        <label className="mt-2 flex cursor-pointer items-center justify-between gap-3 rounded-md border border-slate-700 bg-slate-950/70 px-2.5 py-2 text-xs font-black text-slate-200">
+          <span>Has hitbox data</span>
+          <input type="checkbox" checked={hitboxesOnly} onChange={(event) => setHitboxesOnly(event.target.checked)} className="h-4 w-4 rounded border-slate-600 bg-slate-950" />
+        </label>
         <button
           type="button"
           onClick={onRandom}
@@ -1058,6 +1084,7 @@ export default function AnimationViewer() {
   const [renderLoading, setRenderLoading] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState(initialParams.get("q") || "");
+  const [hitboxesOnly, setHitboxesOnly] = useState(initialParams.get("hitboxes") === "1");
   const [frame, setFrame] = useState(Number(initialParams.get("frame") || 0));
   const [playing, setPlaying] = useState(false);
   const [playMode, setPlayMode] = useState("all");
@@ -1111,6 +1138,10 @@ export default function AnimationViewer() {
   playbackConfig.current = currentPlaybackConfigKey;
   const stageRef = useRef(null);
   const debouncedGfxQuery = useDebounced(gfxQuery);
+  const matchingCatalogAnimations = useMemo(
+    () => matchingAnimations(catalog, query, hitboxesOnly),
+    [catalog, query, hitboxesOnly],
+  );
 
   useEffect(() => {
     let active = true;
@@ -1390,6 +1421,7 @@ export default function AnimationViewer() {
     params.set("animation", selected.path);
     params.set("frame", String(frame));
     if (query) params.set("q", query); else params.delete("q");
+    if (hitboxesOnly) params.set("hitboxes", "1"); else params.delete("hitboxes");
     params.delete("category");
     params.delete("file");
     const selectedSources = Object.values(sourceSelections).filter(Boolean);
@@ -1399,7 +1431,7 @@ export default function AnimationViewer() {
     if (colorScheme) params.set("color", String(colorScheme)); else params.delete("color");
     params.delete("source");
     window.history.replaceState({}, "", `${window.location.pathname}?${params}`);
-  }, [selected, frame, query, JSON.stringify(sourceSelections), powerName, followUpPath, colorScheme]);
+  }, [selected, frame, query, hitboxesOnly, JSON.stringify(sourceSelections), powerName, followUpPath, colorScheme]);
 
   const loadPlayback = async (autoPlay = true) => {
     if (!selected) return;
@@ -1649,7 +1681,7 @@ export default function AnimationViewer() {
       <header className="z-40 flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b border-slate-800 bg-slate-900 px-2 py-2 sm:px-4">
         <IconButton label="Open animation library" onClick={() => setLeftOpen(true)} className="xl:hidden"><Menu className="h-4 w-4" /></IconButton>
         <div className="mr-auto min-w-0">
-          <div className="truncate text-sm font-black text-white sm:text-lg">{selected ? titleCase(selected.animation) : "Animation Viewer"}</div>
+          <div className="truncate text-sm font-black text-white sm:text-lg">{selected ? selected.animation : "Animation Viewer"}</div>
           <div className="hidden truncate text-[10px] text-slate-500 sm:block">{selected?.path || `${catalog.stats.animations.toLocaleString()} animations across ${catalog.stats.folders} files`}</div>
         </div>
         {selected && (
@@ -1677,15 +1709,20 @@ export default function AnimationViewer() {
       )}
 
       <div className="grid flex-1 items-start xl:grid-cols-[320px_minmax(0,1fr)_390px]">
-        <aside className={classes("fixed inset-y-0 left-0 z-50 min-h-0 w-[min(90vw,340px)] overflow-hidden border-r border-slate-800 bg-slate-900 transition-transform xl:sticky xl:top-0 xl:z-auto xl:h-[calc(100dvh-4rem)] xl:w-auto xl:translate-x-0", leftOpen ? "translate-x-0" : "-translate-x-full")}>
+        <aside className={classes("fixed bottom-0 left-0 top-16 z-50 min-h-0 w-[min(90vw,340px)] overflow-hidden border-r border-slate-800 bg-slate-900 transition-transform xl:sticky xl:top-16 xl:z-auto xl:h-[calc(100dvh-4rem)] xl:w-auto xl:translate-x-0", leftOpen ? "translate-x-0" : "-translate-x-full")}>
           <div className="flex h-12 items-center justify-between border-b border-slate-800 px-3 xl:hidden"><span className="text-sm font-black">Animation Library</span><IconButton label="Close library" onClick={() => setLeftOpen(false)}><X className="h-4 w-4" /></IconButton></div>
           <AnimationBrowser
             catalog={catalog}
             selected={selected}
             onSelect={selectAnimation}
-            onRandom={() => selectAnimation(catalog.animations[Math.floor(Math.random() * catalog.animations.length)])}
+            onRandom={() => {
+              if (!matchingCatalogAnimations.length) return;
+              selectAnimation(matchingCatalogAnimations[Math.floor(Math.random() * matchingCatalogAnimations.length)]);
+            }}
             query={query}
             setQuery={setQuery}
+            hitboxesOnly={hitboxesOnly}
+            setHitboxesOnly={setHitboxesOnly}
           />
         </aside>
 
@@ -1760,13 +1797,13 @@ export default function AnimationViewer() {
           )}
         </main>
 
-        <aside className={classes("fixed inset-y-0 right-0 z-50 min-h-0 w-[min(94vw,410px)] overflow-hidden border-l border-slate-800 bg-slate-900 transition-transform xl:sticky xl:top-0 xl:z-auto xl:h-[calc(100dvh-4rem)] xl:w-auto xl:translate-x-0", rightOpen ? "translate-x-0" : "translate-x-full")}>
+        <aside className={classes("fixed bottom-0 right-0 top-16 z-50 min-h-0 w-[min(94vw,410px)] overflow-hidden border-l border-slate-800 bg-slate-900 transition-transform xl:sticky xl:top-16 xl:z-auto xl:h-[calc(100dvh-4rem)] xl:w-auto xl:translate-x-0", rightOpen ? "translate-x-0" : "translate-x-full")}>
           <div className="flex h-12 items-center justify-between border-b border-slate-800 px-3 xl:hidden"><span className="text-sm font-black">Inspector</span><IconButton label="Close inspector" onClick={() => setRightOpen(false)}><X className="h-4 w-4" /></IconButton></div>
           <Inspector {...inspectorProps} />
         </aside>
       </div>
 
-      {(leftOpen || rightOpen) && <button type="button" aria-label="Close panel" onClick={() => { setLeftOpen(false); setRightOpen(false); }} className="fixed inset-0 z-40 bg-black/65 xl:hidden" />}
+      {(leftOpen || rightOpen) && <button type="button" aria-label="Close panel" onClick={() => { setLeftOpen(false); setRightOpen(false); }} className="fixed inset-x-0 bottom-0 top-16 z-40 bg-black/65 xl:hidden" />}
     </div>
   );
 }

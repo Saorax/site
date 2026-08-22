@@ -3307,7 +3307,7 @@ export default function AnimDatabase() {
                         onClick={makeXml}
                         className="px-3 py-2 rounded-md border text-xs border-slate-600 text-slate-200 hover:border-sky-400"
                       >
-                        Make XML
+                        Save XML
                       </button>
                       <button
                         type="button"
@@ -3922,7 +3922,7 @@ export default function AnimDatabase() {
                       onClick={makeXml}
                       className="px-2 py-1 rounded-md border text-xs border-slate-600 text-slate-200 hover:border-sky-400"
                     >
-                      Make XML
+                      Save XML
                     </button>
                     <button
                       type="button"

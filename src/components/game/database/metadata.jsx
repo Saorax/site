@@ -123,6 +123,7 @@ function storeCostBadges(storeData) {
   add('mc', itemCostValue(storeData, 'IdolCost'), itemCostValue(storeData, 'IdolSaleCost'));
   add('gold', itemCostValue(storeData, 'GoldCost'), itemCostValue(storeData, 'GoldSaleCost'));
   add('glory', itemCostValue(storeData, 'RankedPointsCost'));
+  add('GuildGems', itemCostValue(storeData, 'GuildGemsCost'));
   if (clean(storeData?.SpecialCurrencyType)) add(storeData.SpecialCurrencyType, itemCostValue(storeData, 'SpecialCurrencyCost'));
   return rows;
 }
@@ -191,10 +192,19 @@ function bundleTotalCost(bundle) {
     .filter((cost) => cost.value > 0 || cost.saleValue > 0);
 }
 
+function bundleIdolSalePrice(bundle) {
+  const directSale = num(bundle?.bundleData?.IdolSaleCost);
+  if (directSale > 0) return directSale;
+  const directCost = num(bundle?.bundleData?.IdolCost);
+  if (directCost > 0) return directCost;
+  const cost = bundleTotalCost(bundle).find((entry) => entry.type === 'mc');
+  return cost?.saleValue || cost?.value || 0;
+}
+
 function CurrencyBadge({ cost, small = false }) {
   const src = ['mc', 'gold', 'glory'].includes(cost.type)
     ? `${host}/game/getGfx/storeIcon/${cost.type}`
-    : [`${host}/game/getGfx/storeIcon/${cost.type}`, `${host}/game/getGfx/UI_Icons/a_Currency_${cost.type}`, `${host}/game/getGfx/storeIcon/mc`];
+    : [`${host}/game/getGfx/UI_Currencies/a_Currency_${cost.type}`, `${host}/game/getGfx/storeIcon/${cost.type}`];
   return (
     <span className={`inline-flex items-center gap-1 rounded-lg bg-gray-200 dark:bg-slate-700 text-gray-900 dark:text-white font-bold ${small ? 'text-xs px-2 py-0.5' : 'text-sm px-3 py-1'}`}>
       <ImageWithLoader src={src} className={`${small ? 'h-4 w-4' : 'h-5 w-5'} bg-transparent`} imgClassName="max-h-full max-w-full object-contain" small />
@@ -210,10 +220,11 @@ function CurrencyBadge({ cost, small = false }) {
   );
 }
 
-function CostBadges({ costs, small = false }) {
+function CostBadges({ costs, small = false, align = 'start' }) {
   const visible = asArray(costs).filter((cost) => cost && (cost.value > 0 || cost.saleValue > 0));
   if (!visible.length) return null;
-  return <div className="flex max-w-full flex-wrap justify-center gap-1 pb-1">{visible.map((cost, index) => <CurrencyBadge key={`${cost.type}-${index}`} cost={cost} small={small} />)}</div>;
+  const alignment = align === 'center' ? 'justify-center' : align === 'end' ? 'justify-end' : 'justify-start';
+  return <div className={`flex max-w-full flex-wrap ${alignment} gap-1 pb-1`}>{visible.map((cost, index) => <CurrencyBadge key={`${cost.type}-${index}`} cost={cost} small={small} />)}</div>;
 }
 
 function discountPercent(cost) {
@@ -230,7 +241,7 @@ function DiscountLabels({ costs }) {
     .filter(Boolean);
   if (!labels.length) return null;
   return (
-    <div className="mt-2 flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2">
       {labels.map((cost, index) => (
         <span key={`${cost.type}-${index}`} className="rounded-lg bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 px-2 py-1 text-xs font-bold">
           {cost.percent}% off {cost.type === 'mc' ? 'Mammoth Coins' : cost.type}
@@ -426,7 +437,7 @@ function ItemStrip({ items, langs, small = false, limit = 24 }) {
   );
 }
 
-function FieldGrid({ data, langs, title = 'Raw Fields', exclude = [] }) {
+export function FieldGrid({ data, langs, title = 'Raw Fields', exclude = [] }) {
   const rows = Object.entries(data || {})
     .filter(([key, value]) => !exclude.includes(key) && clean(value))
     .filter(([, value]) => !(Array.isArray(value) && value.length === 0));
@@ -445,7 +456,7 @@ function FieldCards({ rows }) {
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       {visible.map(([key, value]) => (
         <div key={key} className="rounded-lg bg-slate-950/70 border border-slate-700 p-3">
-          <div className="text-[11px] uppercase tracking-wide text-slate-400">{key}</div>
+          <div className="text-[11px] uppercase tracking-wide text-slate-400">{key === 'SuccessCount' ? 'Goal' : key}</div>
           <div className="mt-1 text-sm text-white break-words whitespace-pre-wrap">
             {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
           </div>
@@ -455,7 +466,7 @@ function FieldCards({ rows }) {
   );
 }
 
-function StoreDataSection({ rows, langs, title = 'Store Data' }) {
+export function StoreDataSection({ rows, langs, title = 'Store Data' }) {
   const visible = asArray(rows).filter(Boolean);
   if (!visible.length) return null;
   return (
@@ -790,7 +801,7 @@ function SmokeTrailAnimationSection({ item, langs }) {
   );
 }
 
-function FilterShell({ title, count, total, search, setSearch, sort, setSort, filters, setFilters, filterDefs, filterOptions, filterCounts }) {
+function FilterShell({ title, count, total, search, setSearch, sort, setSort, sortOptions, filters, setFilters, filterDefs, filterOptions, filterCounts }) {
   const iconFilters = filterDefs.filter((filter) => filter.type === 'iconMulti');
   const dropdownFilters = filterDefs.filter((filter) => filter.type !== 'toggle' && filter.type !== 'iconMulti');
   const toggleFilters = filterDefs.filter((filter) => filter.type === 'toggle');
@@ -893,11 +904,7 @@ function FilterShell({ title, count, total, search, setSearch, sort, setSort, fi
         </div>
         <div className="relative">
           <select value={sort} onChange={(event) => setSort(event.target.value)} className="bg-white dark:bg-slate-700 text-gray-900 dark:text-white text-xs font-semibold rounded-lg px-3 py-2 border border-gray-300 dark:border-slate-600 w-full sm:min-w-[200px] sm:text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none cursor-pointer">
-            <option value="indexDesc">Default Sorting (Desc)</option>
-            <option value="indexAsc">Default Sorting (Asc)</option>
-            <option value="name">Alphabetical (A-Z)</option>
-            <option value="idDesc">ID (Desc)</option>
-            <option value="idAsc">ID (Asc)</option>
+            {sortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
           <svg className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
         </div>
@@ -909,9 +916,26 @@ function FilterShell({ title, count, total, search, setSearch, sort, setSort, fi
 function DatabaseView({ title, description, items, langs, config }) {
   const data = useMemo(() => asArray(items), [items]);
   const queryKey = config.queryKey || queryKeyForTitle(title);
-  const gridClassName = config.gridClassName || (config.maxColumns === 3 ? 'grid grid-cols-2 items-start gap-3 lg:grid-cols-3' : 'grid grid-cols-2 items-start gap-3 lg:grid-cols-3 xl:grid-cols-4');
+  const maxColumns = config.maxColumns || 4;
+  const mobileColumns = config.mobileColumns || 2;
+  const responsiveColumns = [
+    mobileColumns >= 2 ? 'grid-cols-2' : 'grid-cols-1',
+    maxColumns >= 2 ? 'sm:grid-cols-2' : '',
+    maxColumns >= 3 ? 'lg:grid-cols-3' : '',
+    maxColumns >= 4 ? 'xl:grid-cols-4' : '',
+    maxColumns >= 5 ? '2xl:grid-cols-5' : '',
+  ].filter(Boolean).join(' ');
+  const gridClassName = config.gridClassName || `grid ${responsiveColumns} items-stretch gap-3`;
   const cardClassName = config.cardClassName || 'p-2 pt-8 min-h-44 sm:p-3 sm:pt-10 sm:min-h-52';
+  const cardButtonClassName = config.cardButtonClassName || '';
   const badgeClassName = config.badgeClassName || 'absolute left-1/2 top-2 z-10 -translate-x-1/2 pointer-events-none';
+  const sortOptions = config.sortOptions || [
+    { value: 'indexDesc', label: 'Default Sorting (Desc)' },
+    { value: 'indexAsc', label: 'Default Sorting (Asc)' },
+    { value: 'name', label: 'Alphabetical (A-Z)' },
+    { value: 'idDesc', label: 'ID (Desc)' },
+    { value: 'idAsc', label: 'ID (Asc)' },
+  ];
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState(config.defaultSort || 'indexDesc');
@@ -1004,6 +1028,7 @@ function DatabaseView({ title, description, items, langs, config }) {
         return matchesFilters(item, query);
       })
       .sort((a, b) => {
+        if (config.sorters?.[sort]) return config.sorters[sort](a, b, langs);
         if (sort === 'name') return config.name(a, langs).localeCompare(config.name(b, langs));
         if (sort === 'idAsc') return Number(config.id(a) || 0) - Number(config.id(b) || 0);
         if (sort === 'idDesc') return Number(config.id(b) || 0) - Number(config.id(a) || 0);
@@ -1084,6 +1109,7 @@ function DatabaseView({ title, description, items, langs, config }) {
             setSearch={setSearch}
             sort={sort}
             setSort={setSort}
+            sortOptions={sortOptions}
             filters={filters}
             setFilters={setFilters}
             filterDefs={filterDefs}
@@ -1094,8 +1120,8 @@ function DatabaseView({ title, description, items, langs, config }) {
             <div className="h-[calc(100dvh-9rem)] min-h-[22rem] overflow-y-auto app-scrollbar pr-1">
               <div className={gridClassName}>
                 {filtered.map((item, index) => (
-                  <button key={`${config.id(item)}-${index}`} onClick={() => setSelected(item)} className={`${selected === item ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} relative self-start text-left text-sm sm:text-base bg-white dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-xl ${cardClassName} transition border border-gray-200 dark:border-slate-700 shadow-sm hover:-translate-y-0.5`}>
-                    {config.card(item, langs, viewMode)}
+                  <button key={`${config.id(item)}-${index}`} onClick={() => setSelected(item)} className={`${selected === item ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} relative h-full self-stretch text-left text-sm sm:text-base bg-white dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-xl ${cardClassName} ${cardButtonClassName} transition border border-gray-200 dark:border-slate-700 shadow-sm hover:-translate-y-0.5`}>
+                    {config.card(item, langs, viewMode, config.context)}
                     <AddedBadge item={item} className={badgeClassName} />
                   </button>
                 ))}
@@ -1106,12 +1132,13 @@ function DatabaseView({ title, description, items, langs, config }) {
               items={filtered}
               rowHeight={config.rowHeight || 330}
               rowHeightMobile={config.rowHeightMobile || Math.min(config.rowHeight || 330, 290)}
-              maxColumns={config.maxColumns || 4}
+              maxColumns={maxColumns}
+              mobileColumns={mobileColumns}
               className="h-[calc(100dvh-9rem)] min-h-[22rem] app-scrollbar"
               getKey={(item, index) => `${config.id(item)}-${index}`}
               renderItem={(item, index) => (
                 <button key={`${config.id(item)}-${index}`} onClick={() => setSelected(item)} className={`${selected === item ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} relative h-full w-full text-left text-sm sm:text-base bg-white dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-xl ${cardClassName} transition border border-gray-200 dark:border-slate-700 shadow-sm hover:-translate-y-0.5`}>
-                  {config.card(item, langs, viewMode)}
+                  {config.card(item, langs, viewMode, config.context)}
                   <AddedBadge item={item} className={badgeClassName} />
                 </button>
               )}
@@ -1130,7 +1157,7 @@ function DatabaseView({ title, description, items, langs, config }) {
                 <XMarkIcon className="h-5 w-5" />
               </button>
               <div className="flex flex-col gap-4 pr-11">
-                {config.detail(selected, langs)}
+                {config.detail(selected, langs, config.context)}
               </div>
               <RawDataSection data={selected} />
             </div>
@@ -1184,15 +1211,85 @@ function metadataCheckList(item) {
 
 function metadataRewards(item) {
   return Object.entries(item || {})
-    .filter(([key, value]) => /^Reward/i.test(key) && clean(value) && Number(value) !== 0)
+    .filter(([key, value]) => /^Reward/i.test(key) && !['RewardMission', 'RewardAcquirable', 'RewardPromoType'].includes(key) && clean(value) && Number(value) !== 0)
     .map(([key, value]) => ({ key, value: String(value) }));
 }
 
+function resolveDatabaseItem(storeData, type, itemName) {
+  const normalized = String(type || '').toLowerCase();
+  const collections = [
+    { types: ['costume', 'skin'], rows: storeData?.skins, dataKey: 'costumeData', nameKey: 'CostumeName' },
+    { types: ['weaponskin'], rows: storeData?.weapons, dataKey: 'weaponData', nameKey: 'WeaponSkinName' },
+    { types: ['avatar'], rows: storeData?.avatars, dataKey: 'avatarData', nameKey: 'AvatarName' },
+    { types: ['taunt'], rows: storeData?.taunts, dataKey: null, nameKey: 'TauntName' },
+    { types: ['podium'], rows: storeData?.podiums, dataKey: 'podiumData', nameKey: 'PodiumName' },
+    { types: ['colorscheme', 'universalcolor'], rows: storeData?.colors, dataKey: 'colorData', nameKey: 'ColorSchemeName' },
+    { types: ['playertheme'], rows: storeData?.ui, dataKey: 'themeData', nameKey: 'PlayerThemeName' },
+    { types: ['emoji'], rows: storeData?.emojis, dataKey: 'emojiData', nameKey: 'EmojiName' },
+    { types: ['companion'], rows: storeData?.companions, dataKey: 'companionData', nameKey: 'CompanionName' },
+    { types: ['spawnbot', 'sidekick'], rows: storeData?.spawnBots, dataKey: 'spawnBotData', nameKey: 'SpawnBotName' },
+    { types: ['koeffect'], rows: storeData?.koeffects, dataKey: 'koEffectData', nameKey: 'TrailEffectName' },
+    { types: ['emittergroup', 'smoketrail'], rows: storeData?.smokeTrails, dataKey: 'emitterTrailData', nameKey: 'EmitterGroupName' },
+    { types: ['moniker'], rows: storeData?.titles, dataKey: 'monikerData', nameKey: 'MonikerName' },
+    { types: ['border', 'seasonborder'], rows: storeData?.borders, dataKey: 'themeData', nameKey: 'SeasonBorderName' },
+  ];
+  const collection = collections.find((entry) => entry.types.includes(normalized));
+  if (!collection) return null;
+  return asArray(collection.rows).find((row) => {
+    const source = collection.dataKey ? row?.[collection.dataKey] : row;
+    return String(source?.[collection.nameKey] || '') === String(itemName || '');
+  }) || null;
+}
+
+function missionRewardEntries(item, storeData) {
+  const entries = [];
+  if (clean(item?.RewardAcquirable)) {
+    const [type, ...nameParts] = String(item.RewardAcquirable).split(':');
+    const itemName = nameParts.join(':');
+    if (clean(type) && clean(itemName)) entries.push({ type, item: itemName, resolved: resolveDatabaseItem(storeData, type, itemName) });
+  }
+  if (clean(item?.RewardPromoType)) {
+    const promo = asArray(storeData?.promos).find((row) => row?.promoData?.StoreName === item.RewardPromoType || row?.promoData?.PromoType === item.RewardPromoType);
+    if (promo) entries.push(...asArray(promo.items));
+  }
+  return entries.filter(Boolean);
+}
+
+function MissionRewardItems({ item, storeData, langs, compact = false }) {
+  const entries = missionRewardEntries(item, storeData);
+  if (!entries.length) return null;
+  return (
+    <div className={`flex flex-wrap gap-2 ${compact ? '' : 'rounded-lg border border-slate-700 bg-slate-950/60 p-3'}`}>
+      {entries.map((entry, index) => (
+        <div key={itemKey(entry, index)} className="min-w-0">
+          <ItemThumb entry={entry} langs={langs} small={compact} className={compact ? 'h-24 w-24 sm:h-28 sm:w-28' : ''} />
+          {!compact && <div className="mt-1 max-w-32 text-center text-xs font-bold text-white">{itemLabel(entry, langs)}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function prettyEvent(value) {
-  return String(value || '')
-    .split('.')
-    .map((part) => part.replace(/([a-z])([A-Z])/g, '$1 $2'))
-    .join(' / ');
+  const parts = String(value || '').split('.').filter(Boolean);
+  const words = (part) => String(part || '')
+    .replace(/^Throw/, 'Thrown ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/^nSig$/i, 'Neutral Signature')
+    .replace(/^sSig$/i, 'Side Signature')
+    .replace(/^dSig$/i, 'Down Signature');
+  const [scope, action, target, qualifier] = parts;
+  if (scope === 'item' && action === 'kill') return `${words(target)} KOs`;
+  if (scope === 'item' && action === 'hit') return `${words(target)} Hits`;
+  if (scope === 'playlistPlay') return `Play ${words(action)}`;
+  if (scope === 'playlistPlace') return `${qualifier ? `Place ${qualifier} in` : 'Place in'} ${words(action)}`;
+  if (scope === 'dmg') return `${words(action)} Damage${target ? ` (${words(target)})` : ''}`;
+  if (scope === 'kill') return `${[action, target, qualifier].filter(Boolean).map(words).join(' ')} KOs`;
+  if (scope === 'hit') return `${[action, target, qualifier].filter(Boolean).map(words).join(' ')} Hits`;
+  if (scope === 'runePlace') return `${words(action)} stance placement${target ? `: ${target}` : ''}`;
+  if (scope === 'heroWeightedPlay') return `Play ${words(action)}`;
+  if (scope === 'weightedPlay') return 'Play matches with eligible Legends';
+  return parts.map(words).join(' / ');
 }
 
 function metadataImage(pathOrFile, folders = ['UI']) {
@@ -1565,8 +1662,22 @@ function bundleTags(bundle) {
 function bundleConfig(sourceLabel = 'Bundles') {
   return {
     virtual: false,
+    maxColumns: 2,
+    mobileColumns: 1,
+    gridClassName: 'grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2',
     id: (item) => item.bundleData?.StoreID,
-    defaultSort: 'idDesc',
+    defaultSort: 'idolSaleDesc',
+    sortOptions: [
+      { value: 'idolSaleDesc', label: 'Mammoth Coin Sale Price (Desc)' },
+      { value: 'idolSaleAsc', label: 'Mammoth Coin Sale Price (Asc)' },
+      { value: 'name', label: 'Alphabetical (A-Z)' },
+      { value: 'idDesc', label: 'Store ID (Desc)' },
+      { value: 'idAsc', label: 'Store ID (Asc)' },
+    ],
+    sorters: {
+      idolSaleDesc: (a, b) => bundleIdolSalePrice(b) - bundleIdolSalePrice(a),
+      idolSaleAsc: (a, b) => bundleIdolSalePrice(a) - bundleIdolSalePrice(b),
+    },
     name: (item, langs) => displayName(item.bundleData?.DisplayNameKey, item.bundleData?.StoreName, langs),
     search: (item, langs) => [item.bundleData?.StoreName, item.bundleData?.DisplayNameKey, item.bundleData?.DescriptionKey, label(item.bundleData?.DisplayNameKey, langs), label(item.bundleData?.DescriptionKey, langs), bundleItems(item).map((entry) => itemLabel(entry, langs)).join(' ')],
     filters: [
@@ -1576,18 +1687,18 @@ function bundleConfig(sourceLabel = 'Bundles') {
       { key: 'type', label: 'Contains Type', value: (item) => bundleItems(item).map(itemType) },
     ],
     card: (item, langs, viewMode) => (
-      <div className="flex w-full flex-col items-center justify-start text-center">
+      <div className="flex h-full w-full flex-col items-center justify-start text-center">
         <div className="font-semibold text-gray-900 dark:text-white">{displayName(item.bundleData?.DisplayNameKey, item.bundleData?.StoreName, langs)}</div>
         <OptionalImageBlock
           src={bundleImageSrc(item)}
-          className="mt-3 flex justify-center rounded-xl bg-slate-900/80 p-2"
+          className="mt-3 flex w-full justify-center rounded-xl bg-slate-900/80 p-2"
           imageClassName="h-28 w-full"
           small
         />
         <div className="mt-3 flex max-w-full flex-wrap justify-center gap-2 pb-1">
           {bundleItems(item).map((entry, index) => <ItemThumb key={itemKey(entry, index)} entry={entry} langs={langs} small />)}
         </div>
-        <div className="mt-3"><CostBadges costs={bundleTotalCost(item)} small /></div>
+        <div className="mt-3"><CostBadges costs={bundleTotalCost(item)} small align="center" /></div>
       </div>
     ),
     detail: (item, langs) => (
@@ -1627,15 +1738,17 @@ function BundlePricing({ bundle, langs }) {
   return (
     <Section title="Items">
       <div className="space-y-4">
-        <div>
-          <div className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">Bundle Cost</div>
-          <CostBadges costs={costs} />
-          <DiscountLabels costs={costs} />
+        <div className="flex flex-col items-start gap-2">
+          <div className="text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">Bundle Cost</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <CostBadges costs={costs} />
+            <DiscountLabels costs={costs} />
+          </div>
         </div>
         {items.length > 0 && (
           <div>
             <div className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">Per Item</div>
-            <div className="grid grid-cols-1 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {items.map((item, index) => {
                 const entry = bundleItems(bundle).find((candidate) => candidate.item === (item.Item || item.StoreName)) || { type: item.Type, item: item.Item || item.StoreName };
                 return (
@@ -1645,7 +1758,7 @@ function BundlePricing({ bundle, langs }) {
                       <div className="text-sm font-bold text-gray-900 dark:text-white">{itemLabel(entry, langs)}</div>
                       <div className="text-xs text-gray-500 dark:text-gray-400">{item.StoreName || item.Item}</div>
                     </div>
-                    <div className="flex flex-col items-end gap-1">
+                    <div className="flex flex-col items-start gap-1 sm:items-end">
                       <CostBadges costs={bundleItemDiscountedCost(item, bundle.bundleData)} small />
                       <DiscountLabels costs={bundleItemDiscountedCost(item, bundle.bundleData)} />
                     </div>
@@ -1671,7 +1784,7 @@ const configs = {
       { key: 'status', label: 'Availability', value: (item) => item.chestData?.EndTime ? 'Limited/Ended' : 'Current' },
     ],
     card: (item, langs) => (
-      <div className="flex gap-3">
+      <div className="flex h-full items-start gap-3 text-left">
         <div className="h-24 w-24 rounded-xl bg-slate-900/80 flex items-center justify-center shrink-0 overflow-hidden">
           <ImageWithLoader
             src={`${host}/game/animChest/${item.chestData?.ChanceBoxID}/StoreIdle/loop`}
@@ -1681,11 +1794,12 @@ const configs = {
             small
           />
         </div>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 text-center">
           <div className="font-semibold text-gray-900 dark:text-white">{label(item.chestData?.DisplayNameKey || item.chestData?.ChanceBoxName, langs)}</div>
           <div className="mt-2 flex gap-1 overflow-hidden">
             {asArray(item.exclusiveItems).slice(0, 4).map((entry, index) => <ItemThumb key={entry.item || index} entry={{ ...entry, type: 'Costume' }} langs={langs} small />)}
           </div>
+          <div className="mt-2"><CostBadges costs={storeCostBadges(item.chestData)} small /></div>
         </div>
       </div>
     ),
@@ -1723,12 +1837,19 @@ const configs = {
       { key: 'geo', label: 'Geo Locked', type: 'toggle', value: (item) => clean(item.promoData?.GeoLockedCountries) },
     ],
     card: (item, langs, viewMode) => (
-      <div className="flex w-full flex-col items-center justify-start text-center">
+      <div className="flex h-full w-full flex-col items-center justify-start text-center">
         <div className="min-w-0">
           <div className="font-semibold text-gray-900 dark:text-white">{displayName(item.promoData?.DisplayNameKey, item.promoData?.StoreName, langs)}</div>
         </div>
-        <div className="mt-3 flex max-h-44 max-w-full flex-wrap justify-center gap-2 overflow-y-auto app-scrollbar pb-1">
-          {asArray(item.items).map((entry, index) => <ItemThumb key={itemKey(entry, index)} entry={entry} langs={langs} small />)}
+        <div className="mt-3 grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
+          {asArray(item.items).map((entry, index) => (
+            <div
+              key={itemKey(entry, index)}
+              className={`${itemType(entry) === 'PlayerTheme' ? 'sm:col-span-2' : ''} ${asArray(item.items).length <= 2 ? 'min-h-32' : ''}`}
+            >
+              <ItemThumb entry={entry} langs={langs} small={asArray(item.items).length > 2} />
+            </div>
+          ))}
         </div>
       </div>
     ),
@@ -1744,6 +1865,9 @@ const configs = {
   },
   purchases: {
     virtual: false,
+    maxColumns: 2,
+    mobileColumns: 1,
+    gridClassName: 'grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2',
     id: (item) => item.entitlementData?.EntitlementID,
     defaultSort: 'indexDesc',
     name: (item, langs) => label(item.entitlementData?.DisplayNameKey || item.entitlementData?.EntitlementName, langs),
@@ -1754,7 +1878,7 @@ const configs = {
       { key: 'priced', label: 'Has Pricing', type: 'toggle', value: (item) => asArray(item.steamPurchases).some((purchase) => moneyFields.some((field) => clean(purchase[field]))) },
     ],
     card: (item, langs, viewMode) => (
-      <div className="flex w-full flex-col items-center justify-start text-center">
+      <div className="flex h-full w-full flex-col items-center justify-start text-center">
         <div className="min-w-0">
           <div className="font-semibold text-gray-900 dark:text-white">{label(item.entitlementData?.DisplayNameKey || item.entitlementData?.EntitlementName, langs)}</div>
         </div>
@@ -1800,7 +1924,7 @@ const configs = {
         <div className="min-w-0">
           <div className="font-semibold text-gray-900 dark:text-white">{label(item.themeData?.DisplayNameKey || item.themeData?.SeasonBorderName, langs)}</div>
         </div>
-        <div className="flex w-full justify-center">
+        <div className="flex w-full justify-start">
           <ItemThumb entry={{ type: 'Border', resolved: item }} langs={langs} small />
         </div>
       </div>
@@ -1818,10 +1942,14 @@ const configs = {
               <Section title="Image Data">
                 <ImageWithLoader src={`${host}/game/animBorder/${item.themeData?.SeasonBorderID}`} className="min-h-96 w-full rounded-lg bg-slate-900/80" imgClassName="max-h-[80vh] max-w-full object-contain" />
               </Section>
-              <StoreDataSection rows={item.store} langs={langs} />
             </>
           )}
-          right={<FieldGrid data={item.themeData} langs={langs} title="Border Data" />}
+          right={(
+            <>
+              <StoreDataSection rows={item.store} langs={langs} />
+              <FieldGrid data={item.themeData} langs={langs} title="Border Data" />
+            </>
+          )}
         />
       </>
     ),
@@ -1843,21 +1971,29 @@ function resolvedStoreConfig({
   cardImageClassName = '',
   detailImageClassName = '',
   compactCard = false,
+  virtual,
+  gridClassName,
   cardClassName,
+  cardButtonClassName,
   badgeClassName,
   defaultSort,
   rowHeight,
   maxColumns,
+  mobileColumns,
   extraFilters = [],
   animationSection,
 }) {
   const typeFilterLabel = `${title} Type`;
   return {
     queryKey,
+    virtual,
+    gridClassName,
     cardClassName,
+    cardButtonClassName,
     badgeClassName,
     rowHeight,
     maxColumns,
+    mobileColumns,
     id: (item) => item?.[dataKey]?.[idKey] || item?.ArrayIndex,
     defaultSort: defaultSort || 'indexDesc',
     name: (item, langs) => label(item?.[dataKey]?.[displayKey] || item?.[dataKey]?.[nameKey], langs),
@@ -1893,7 +2029,7 @@ function resolvedStoreConfig({
             <ItemThumb entry={{ type, resolved: item, item: item?.[dataKey]?.[nameKey] }} langs={langs} small={!cardImageClassName} className={cardImageClassName} />
           </div>
         )}
-        <CostBadges costs={storeRows(item).flatMap(storeCostBadges)} small />
+        <CostBadges costs={storeRows(item).flatMap(storeCostBadges)} small align="center" />
       </div>
     ),
     detail: (item, langs) => {
@@ -2430,7 +2566,7 @@ function emojiConfig(emojis = []) {
 }
 
 const resolvedConfigs = {
-  avatars: resolvedStoreConfig({ title: 'Avatars', queryKey: 'avatar', type: 'Avatar', dataKey: 'avatarData', idKey: 'AvatarID', nameKey: 'AvatarName', dataTitle: 'Avatar Data', imageTitle: 'Avatar Image', cardImageClassName: 'h-32 w-32', defaultSort: 'indexDesc', rowHeight: 290 }),
+  avatars: resolvedStoreConfig({ title: 'Avatars', queryKey: 'avatar', type: 'Avatar', dataKey: 'avatarData', idKey: 'AvatarID', nameKey: 'AvatarName', dataTitle: 'Avatar Data', imageTitle: 'Avatar Image', cardImageClassName: 'h-32 w-32', defaultSort: 'indexDesc', rowHeight: 290, maxColumns: 5 }),
   taunts: {
     rowHeight: 305,
     queryKey: 'taunt',
@@ -2465,9 +2601,9 @@ const resolvedConfigs = {
           <div className="font-semibold text-gray-900 dark:text-white">{label(item?.DisplayNameKey || item?.TauntName, langs)}</div>
         </div>
         <div className="flex w-full justify-center">
-          <ItemThumb entry={{ type: 'Taunt', resolved: item, item: item?.TauntName }} langs={langs} />
+          <ItemThumb entry={{ type: 'Taunt', resolved: item, item: item?.TauntName }} langs={langs} className="h-40 w-40" />
         </div>
-        <CostBadges costs={storeRows(item).flatMap(storeCostBadges)} small />
+        <CostBadges costs={storeRows(item).flatMap(storeCostBadges)} small align="center" />
       </div>
     ),
     detail: (item, langs) => (
@@ -2491,7 +2627,7 @@ const resolvedConfigs = {
     ),
   },
   podiums: resolvedStoreConfig({ title: 'Podiums', queryKey: 'podium', type: 'Podium', dataKey: 'podiumData', idKey: 'PodiumID', nameKey: 'PodiumName', dataTitle: 'Podium Data', imageTitle: 'Animation Data', cardImageClassName: 'h-44 w-44', rowHeight: 345, animationSection: (item, langs) => <PodiumAnimationSection item={item} langs={langs} /> }),
-  ui: resolvedStoreConfig({ title: 'UI Themes', queryKey: 'theme', type: 'PlayerTheme', dataKey: 'themeData', idKey: 'PlayerThemeID', nameKey: 'PlayerThemeName', dataTitle: 'UI Theme Data', imageTitle: 'Image Data', rowHeight: 260 }),
+  ui: resolvedStoreConfig({ title: 'UI Themes', queryKey: 'theme', type: 'PlayerTheme', dataKey: 'themeData', idKey: 'PlayerThemeID', nameKey: 'PlayerThemeName', dataTitle: 'UI Theme Data', imageTitle: 'Image Data', rowHeight: 320 }),
   companions: {
     ...resolvedStoreConfig({
     title: 'Companions',
@@ -2557,7 +2693,7 @@ const resolvedConfigs = {
     nameKey: 'TrailEffectName',
     dataTitle: 'KO Effect Data',
     imageTitle: 'Animation Data',
-    cardImageClassName: 'h-32 w-32',
+    cardImageClassName: 'h-40 w-40',
     rowHeight: 290,
     animationSection: (item, langs) => <SimpleAnimationSection src={`${host}/game/animTrail/${item?.koEffectData?.TrailEffectID}`} alt={label(item?.koEffectData?.DisplayNameKey || item?.koEffectData?.TrailEffectName, langs)} />,
   }),
@@ -2570,11 +2706,27 @@ const resolvedConfigs = {
     nameKey: 'EmitterGroupName',
     dataTitle: 'Smoke Trail Data',
     imageTitle: 'Animation Data',
-    cardImageClassName: 'h-32 w-32',
+    cardImageClassName: 'h-40 w-40',
     rowHeight: 290,
     animationSection: (item, langs) => <SmokeTrailAnimationSection item={item} langs={langs} />,
   }),
-  titles: resolvedStoreConfig({ title: 'Titles', queryKey: 'title', type: 'Moniker', dataKey: 'monikerData', idKey: 'MonikerID', nameKey: 'MonikerName', displayKey: 'DisplayNameKey', descriptionKey: 'DescriptionKey', dataTitle: 'Title Data', cardClassName: 'p-2 pt-8 min-h-0', badgeClassName: 'absolute left-1/2 top-1.5 z-10 -translate-x-1/2 pointer-events-none', rowHeight: 135 }),
+  titles: resolvedStoreConfig({
+    title: 'Titles',
+    queryKey: 'title',
+    type: 'Moniker',
+    dataKey: 'monikerData',
+    idKey: 'MonikerID',
+    nameKey: 'MonikerName',
+    displayKey: 'DisplayNameKey',
+    descriptionKey: 'DescriptionKey',
+    dataTitle: 'Title Data',
+    virtual: false,
+    gridClassName: 'flex flex-wrap items-stretch gap-3',
+    cardClassName: 'min-w-[10rem] flex-[1_1_auto] p-2 pt-8 min-h-0',
+    cardButtonClassName: 'w-auto max-w-full',
+    badgeClassName: 'absolute left-1/2 top-1.5 z-10 -translate-x-1/2 pointer-events-none',
+    rowHeight: 135,
+  }),
 };
 
 function entitlementItems(item) {
@@ -2815,9 +2967,9 @@ const metadataTypeConfigs = {
   missions: {
     title: 'Missions',
     file: 'MissionTypes.xml',
-    maxColumns: 2,
-    rowHeight: 210,
-    rowHeightMobile: 190,
+    maxColumns: 3,
+    rowHeight: 250,
+    rowHeightMobile: 230,
     cardClassName: 'p-3 pt-9 min-h-40 sm:p-4 sm:pt-10',
     badgeClassName: 'absolute left-2 top-2 z-10 pointer-events-none',
     id: (item) => item.MissionID,
@@ -2830,20 +2982,23 @@ const metadataTypeConfigs = {
       { key: 'autoStart', label: 'Auto Start', type: 'toggle', value: (item) => String(item.AutoStart).toLowerCase() === 'true' },
       { key: 'newPlayers', label: 'Hidden From New Players', type: 'toggle', value: (item) => String(item.NotForNewPlayers).toLowerCase() === 'true' },
     ],
-    card: (item, langs) => (
-      <div className="relative flex h-full flex-col justify-start text-left">
-        <MetadataRewardCorner item={item} />
-        <div className="pr-28 text-xs font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">{item.Category || 'Mission'}</div>
-        <div className="mt-1 font-semibold leading-tight text-gray-900 dark:text-white">{label(item.DescriptionKey || item.MissionName, langs)}</div>
-        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">{item.MissionName}</div>
-        <div className="mt-3"><MetadataQuickStats rows={[{ label: 'Goal', value: item.SuccessCount }]} /></div>
+    card: (item, langs, viewMode, storeData) => (
+      <div className="relative flex h-full items-start gap-3 text-left">
+        <MissionRewardItems item={item} storeData={storeData} langs={langs} compact />
+        <div className="min-w-0 flex-1 self-stretch text-center">
+          <MetadataRewardCorner item={item} />
+          <div className="pr-28 text-xs font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">{item.Category || 'Mission'}</div>
+          <div className="mt-1 font-semibold leading-tight text-gray-900 dark:text-white">{label(item.DescriptionKey || item.MissionName, langs)}</div>
+          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">{item.MissionName}</div>
+          <div className="mt-3"><MetadataQuickStats rows={[{ label: 'Goal', value: item.SuccessCount }]} /></div>
+        </div>
       </div>
     ),
-    detail: (item, langs) => (
+    detail: (item, langs, storeData) => (
       <>
         <Header title={label(item.DescriptionKey || item.MissionName, langs)} subtitle={item.MissionName} description={label(item.ToolTipKey, langs)} badges={[item.Category, item.Sets]} />
         <DetailColumns
-          left={<><Section title="Rewards"><MetadataRewardSummary item={item} /></Section><MetadataQuickStats rows={[{ label: 'Success Count', value: item.SuccessCount }, { label: 'Ranked Points', value: item.RewardRankedPoints }]} /><MetadataEventList events={metadataEvents(item)} /><MetadataRewardList rewards={metadataRewards(item)} /></>}
+          left={<>{missionRewardEntries(item, storeData).length > 0 && <Section title="Reward"><MissionRewardItems item={item} storeData={storeData} langs={langs} /></Section>}{missionRewardBadges(item).length > 0 && <Section title="Currency Rewards"><MetadataRewardSummary item={item} /></Section>}<MetadataQuickStats rows={[{ label: 'Goal', value: item.SuccessCount }, { label: 'Ranked Points', value: item.RewardRankedPoints }]} /><MetadataEventList events={metadataEvents(item)} /></>}
           right={<><MetadataEventList title="Checklist Text" events={metadataCheckList(item)} /><FieldGrid data={item} langs={langs} title="Mission Data" exclude={['DescriptionKey', 'ToolTipKey', ...metadataEvents(item).map((event) => event.key), ...metadataCheckList(item).map((event) => event.key)]} /></>}
         />
       </>
@@ -2865,7 +3020,7 @@ const metadataTypeConfigs = {
       { key: 'bool', label: 'Boolean Completion', type: 'toggle', value: (item) => String(item.CompleteAsBool).toLowerCase() === 'true' },
     ],
     card: (item) => (
-      <div className="flex h-full flex-col justify-start text-left">
+      <div className="flex h-full flex-col items-center justify-start text-center">
         <div className="text-xs font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">Steam</div>
         <div className="mt-1 font-semibold text-gray-900 dark:text-white">{item.AchievementName}</div>
         <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 break-words">{item.SteamLinkageName}</div>
@@ -2876,7 +3031,7 @@ const metadataTypeConfigs = {
       <>
         <Header title={item.AchievementName} subtitle={item.SteamLinkageName} badges={['Steam achievement']} />
         <DetailColumns
-          left={<><Section title="Steam"><SteamAchievementLink item={item} /></Section><MetadataQuickStats rows={[{ label: 'Success Count', value: item.SuccessCount }, { label: 'Events', value: metadataEvents(item).length }]} /><MetadataEventList events={metadataEvents(item)} /></>}
+          left={<><Section title="Steam"><SteamAchievementLink item={item} /></Section><MetadataQuickStats rows={[{ label: 'Goal', value: item.SuccessCount }, { label: 'Events', value: metadataEvents(item).length }]} /><MetadataEventList events={metadataEvents(item)} /></>}
           right={<FieldGrid data={item} langs={langs} title="Achievement Data" exclude={metadataEvents(item).map((event) => event.key)} />}
         />
       </>
@@ -2937,7 +3092,7 @@ const metadataTypeConfigs = {
       { key: 'hideButton', label: 'Hides Button', type: 'toggle', value: (item) => String(item.ShouldHideButton).toLowerCase() === 'true' },
     ],
     card: (item, langs) => (
-      <div className="flex h-full flex-col justify-start text-center">
+      <div className="flex h-full flex-col justify-start text-left">
         {item.__assets?.animation?.exists && (
           <div className="mb-3 flex h-36 items-center justify-center rounded-xl bg-slate-950/80 p-2">
             <ImageWithLoader
@@ -2950,9 +3105,7 @@ const metadataTypeConfigs = {
         )}
         <div className="text-xs font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">{item.__assets?.animation?.exists ? 'Animation Found' : 'Animation Missing'}</div>
         <div className="mt-1 font-semibold text-gray-900 dark:text-white">{label(item.UITextHeaderKey || item.SplashArtName, langs)}</div>
-        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">{item.SplashArtName}</div>
-        <div className="mt-2 text-[11px] text-slate-400 break-words">{item.AnimRig}</div>
-        <TagChips tags={[item.AnimCustomArt, item.ShouldHideButton === 'True' ? 'Hidden Button' : null]} />
+        <div className="mt-2 break-words text-xs text-gray-500 dark:text-gray-400">{item.UITextHeaderKey}</div>
       </div>
     ),
     detail: (item, langs) => (
@@ -2976,7 +3129,7 @@ const metadataTypeConfigs = {
       { key: 'hasEvents', label: 'Has Events', type: 'toggle', value: (item) => clean(item.StartEvent) || clean(item.StopEvent) },
     ],
     card: (item) => (
-      <div className="flex h-full flex-col justify-start text-center">
+      <div className="flex h-full flex-col justify-start text-left">
         <div className="text-xs font-bold uppercase tracking-wide text-blue-600 dark:text-blue-400">Music</div>
         <div className="mt-1 font-semibold text-gray-900 dark:text-white">{item.DisplayName || item.MusicName}</div>
         <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 break-words">{item.SoundBank}</div>
@@ -3087,7 +3240,7 @@ const metadataTypeConfigs = {
       { key: 'hasStore', label: 'Featured Store', type: 'toggle', value: (item) => clean(item.FeaturedStoreTypes) },
     ],
     card: (item) => (
-      <div className="flex h-full flex-col justify-start text-center">
+      <div className="flex h-full flex-col items-start justify-start text-left">
         <OptionalImageBlock
           src={[
             item.__assets?.logoAnimation?.exists && metadataRigSrc('clienttheme', item.AnimRig, 'Ready', item.AnimCustomArt),
@@ -3120,7 +3273,7 @@ function shouldHideTemplateRecord(row) {
   return name.includes('template');
 }
 
-export function MetadataTypeView({ typeKey, langs }) {
+export function MetadataTypeView({ typeKey, langs, storeData }) {
   const config = metadataTypeConfigs[typeKey];
   const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -3150,7 +3303,8 @@ export function MetadataTypeView({ typeKey, langs }) {
     .filter((item) => !shouldHideTemplateRecord(item));
   const items = config.transformItems ? config.transformItems(rawItems, langs) : rawItems;
 
-  return <DatabaseView title={config.title} items={items} langs={langs} config={config} />;
+  const contextualConfig = { ...config, context: storeData };
+  return <DatabaseView title={config.title} items={items} langs={langs} config={contextualConfig} />;
 }
 
 export function SkirmishStoreView({ skirmishes, langs }) {
@@ -3158,8 +3312,9 @@ export function SkirmishStoreView({ skirmishes, langs }) {
     id: (item) => item.skirmishData?.SkirmishID,
     defaultSort: 'indexDesc',
     maxColumns: 3,
-    rowHeight: 380,
-    rowHeightMobile: 330,
+    mobileColumns: 1,
+    rowHeight: 330,
+    rowHeightMobile: 315,
     name: (item) => item.skirmishData?.SkirmishName,
     search: (item, langs) => [item.skirmishData?.SkirmishName, label(item.skirmishData?.SkirmishDesc, langs), asArray(item.factions).map((f) => label(f.DisplayNameKey || f.FactionName, langs)).join(' ')],
     filters: [
@@ -3414,18 +3569,13 @@ function BattlePassDeluxeSection({ purchases, langs }) {
           const items = entitlementItems(purchase);
           return (
             <div key={entitlement.EntitlementName || index} className="rounded-xl border border-gray-200 bg-gray-100 p-3 dark:border-slate-700 dark:bg-slate-900">
-              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <div className="text-base font-black leading-tight text-gray-900 dark:text-white">{label(entitlement.DisplayNameKey || entitlement.EntitlementName, langs)}</div>
-                  {entitlement.EntitlementName && <div className="text-xs text-gray-500 dark:text-gray-400">{entitlement.EntitlementName}</div>}
-                </div>
-                <div className="flex flex-wrap gap-1 sm:justify-end">
-                  {clean(entitlement.DeluxeBattlePassTiers) && <SummaryPill label="Tier Skips" value={entitlement.DeluxeBattlePassTiers} />}
-                  {clean(entitlement.IncludesRewardsFrom) && <SummaryPill label="Includes" value={entitlement.IncludesRewardsFrom} />}
-                </div>
-              </div>
               {items.length > 0 && <ItemStrip items={items} langs={langs} small limit={99} />}
-              <FieldCards rows={Object.entries(entitlement).filter(([key, value]) => !['DisplayNameKey', 'EntitlementName'].includes(key) && clean(value))} />
+              <a
+                href={`?page=entitlements-purchases&entitlements=${encodeURIComponent(entitlement.EntitlementID || entitlement.EntitlementName || '')}`}
+                className="mt-3 inline-flex rounded-lg bg-blue-600 px-3 py-2 text-sm font-black text-white transition hover:bg-blue-500"
+              >
+                View Entitlement
+              </a>
             </div>
           );
         })}

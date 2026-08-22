@@ -5,6 +5,7 @@ import { useMediaQuery } from 'react-responsive';
 import { AddedBadge, ImageWithLoader, RawDataDetails, getAddedPatch, getPatchFilterCounts, getPatchGroups, patchFilterMatches, PatchFilterSelect } from './comp/LoadingImage';
 import { VirtualCardGrid } from './comp/VirtualCardGrid';
 import { pageSlugForLabel, readArrayParam, readBoolParam, writeArrayParam, writeBoolParam, writeStringParam } from './comp/urlQuery';
+import { FieldGrid, StoreDataSection } from './metadata';
 
 function uniqueValues(array, path) {
   if (typeof path === 'string') {
@@ -790,7 +791,7 @@ export function SkinStoreView({ skins, legends, langs }) {
               {Array.isArray(skin.store) && skin.store.map((sd, idx) =>
                 sd.SpecialCurrencyType && (
                   <div key={`special-${idx}`}>
-                    <img src={`${host}/game/getGfx/UI_Icons/a_Currency_${sd.SpecialCurrencyType}`} className="inline h-4 mr-1" onError={handleImgError} />
+                    <img src={`${host}/game/getGfx/UI_Currencies/a_Currency_${sd.SpecialCurrencyType}`} className="inline h-4 mr-1" onError={handleImgError} />
                     <span>{sd.SpecialCurrencyCost}</span>
                   </div>
                 )
@@ -1252,6 +1253,11 @@ export function SkinStoreView({ skins, legends, langs }) {
                 )}
                 <div className="flex flex-col gap-4">
                   <div className="flex max-w-full flex-wrap gap-2 pb-1">
+                    {String(selectedSkin.costumeData?.MissionTags || '').split(',').map((tag) => tag.trim()).filter(Boolean).map((tag) => (
+                      <span key={tag} className="rounded-lg bg-slate-200 px-3 py-1 text-sm font-bold text-slate-900 dark:bg-slate-700 dark:text-white">
+                        {langs.content?.[`LegendTag_${tag}`] || formatLabel(tag)}
+                      </span>
+                    ))}
                     {selectedSkin.promo && (
                       <span className="text-sm px-3 py-1 rounded-lg bg-purple-500 dark:bg-purple-700 text-gray-900 dark:text-white">
                         Promo Type: {selectedSkin.promo.Type}
@@ -1299,7 +1305,10 @@ export function SkinStoreView({ skins, legends, langs }) {
               <div className="contents">
                 <div className="xl:col-start-2 xl:row-start-2 w-full flex flex-col gap-4 ">
                   <div className="flex flex-col gap-2">
-                    <div className='relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm'>
+                    {Array.isArray(selectedSkin.store) && selectedSkin.store.length > 0 && <StoreDataSection rows={selectedSkin.store} langs={langs} />}
+                    <FieldGrid data={selectedSkin.costumeData} langs={langs} title="Costume Data" exclude={['CostumeIndex', 'MissionTags', 'WeaponSkins']} />
+                    <FieldGrid data={selectedSkin.entitlement} langs={langs} title="Entitlement Data" />
+                    {false && (<div className='relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm'>
                       <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Costume Data</span>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                         <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
@@ -1310,24 +1319,10 @@ export function SkinStoreView({ skins, legends, langs }) {
                           <span className="text-[11px] uppercase tracking-wide text-slate-400">Costume ID</span>
                           <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedSkin.costumeData.CostumeID}</span>
                         </div>
-                        <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
-                          <span className="text-[11px] uppercase tracking-wide text-slate-400">Costume Index</span>
-                          <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedSkin.costumeData.CostumeIndex}</span>
-                        </div>
                         {selectedSkin.costumeData.UpgradesTo && (
                           <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Upgrades To</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedSkin.costumeData.UpgradesTo}</span>
-                          </div>
-                        )}
-                        {selectedSkin.costumeData.MissionTags && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3 col-span-2">
-                            <span className="text-[11px] uppercase tracking-wide text-slate-400">Mission Tags</span>
-                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">
-                              {selectedSkin.costumeData.MissionTags.map((tag, i) => (
-                                <span key={i} className="mr-2">{langs.content[`LegendTag_${tag}`]}</span>
-                              ))}
-                            </span>
                           </div>
                         )}
                         {selectedSkin.costumeData.HomeField && (
@@ -1339,9 +1334,8 @@ export function SkinStoreView({ skins, legends, langs }) {
                           </div>
                         )}
                       </div>
-                    </div>
-                    {Array.isArray(selectedSkin.store) && selectedSkin.store.length > 0 && genStoreData(selectedSkin.store)}
-                    {selectedSkin.entitlement && (
+                    </div>)}
+                    {false && selectedSkin.entitlement && (
                       <div className='relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm'>
                         <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Entitlement Data</span>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">

@@ -5,6 +5,7 @@ import { useMediaQuery } from 'react-responsive';
 import { AddedBadge, ImageWithLoader, RawDataDetails, getAddedPatch, getPatchFilterCounts, getPatchGroups, patchFilterMatches, PatchFilterSelect } from './comp/LoadingImage';
 import { VirtualCardGrid } from './comp/VirtualCardGrid';
 import { pageSlugForLabel, readArrayParam, readBoolParam, writeArrayParam, writeBoolParam, writeStringParam } from './comp/urlQuery';
+import { FieldGrid, StoreDataSection } from './metadata';
 
 function uniqueValues(array, path) {
   if (typeof path === 'string') {
@@ -1070,6 +1071,7 @@ export function WeaponStoreView({ weapons, langs, legends }) {
           items={filteredWeapons}
           rowHeight={380}
           rowHeightMobile={320}
+          maxColumns={5}
           className="h-[calc(100dvh-9rem)] min-h-[22rem] app-scrollbar"
           getKey={(weapon, index) => weapon?.weaponData?.WeaponSkinID || index}
           renderItem={(weapon, index) => <Row key={weapon?.weaponData?.WeaponSkinID || index} index={index} data={filteredWeapons} />}
@@ -1169,7 +1171,10 @@ export function WeaponStoreView({ weapons, langs, legends }) {
               </div>
               <div className="contents">
                 <div className="xl:col-start-2 xl:row-start-2 w-full flex flex-col gap-4 relative">
-                  <div className="rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
+                  <StoreDataSection rows={[...(Array.isArray(selectedWeapon.store) ? selectedWeapon.store : []), ...(Array.isArray(selectedWeapon.skin?.store) ? selectedWeapon.skin.store : [])]} langs={langs} />
+                  <FieldGrid data={selectedWeapon.weaponData} langs={langs} title="Weapon Data" />
+                  <FieldGrid data={selectedWeapon.entitlement} langs={langs} title="Entitlement Data" />
+                  {false && (<div className="rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
                     <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Weapon Data</span>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                       <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
@@ -1185,8 +1190,8 @@ export function WeaponStoreView({ weapons, langs, legends }) {
                         <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{formatLabel(selectedWeapon.weaponData.BaseWeapon)}</span>
                       </div>
                     </div>
-                  </div>
-                  {([...(Array.isArray(selectedWeapon.store) ? selectedWeapon.store : []), ...(Array.isArray(selectedWeapon.skin?.store) ? selectedWeapon.skin.store : [])].length > 0) && (
+                  </div>)}
+                  {false && ([...(Array.isArray(selectedWeapon.store) ? selectedWeapon.store : []), ...(Array.isArray(selectedWeapon.skin?.store) ? selectedWeapon.skin.store : [])].length > 0) && (
                     <div className='flex flex-col gap-4'>
                       {[...(Array.isArray(selectedWeapon.store) ? selectedWeapon.store : []), ...(Array.isArray(selectedWeapon.skin?.store) ? selectedWeapon.skin.store : [])].map((sd, idx) => (
                         <div key={idx} className="rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
@@ -1330,7 +1335,7 @@ export function WeaponStoreView({ weapons, langs, legends }) {
                       ))}
                     </div>
                   )}
-                  {selectedWeapon.entitlement && (
+                  {false && selectedWeapon.entitlement && (
                     <div className="rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
                       <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Entitlement Data</span>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">

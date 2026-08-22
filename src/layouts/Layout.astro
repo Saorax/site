@@ -7,6 +7,23 @@ export interface Props {
 const { title } = Astro.props as Props;
 
 import StartGGAuth from "../components/auth/butt.jsx";
+
+const gameLinks = [
+  { label: "Game Database", href: "/game/database" },
+  { label: "Legends", href: "/game/legends" },
+  { label: "Animation Viewer", href: "/game/anim" },
+  { label: "Map Viewer", href: "/game/maps" },
+  { label: "Patch History", href: "/game/patch" },
+  { label: "Color Scheme Creator", href: "/game/colors" },
+];
+const competitiveLinks = [
+  { label: "Power Rankings", href: "/pr" },
+  { label: "Esports Database", href: "/esports" },
+  { label: "Match Viewer", href: "/match" },
+];
+const siteLinks = [{ label: "Changelog", href: "/changelog" }];
+const gameActive = Astro.url.pathname.startsWith("/game");
+const competitiveActive = title === "Power Rankings" || title === "eSports Database";
 ---
 
 <!doctype html>
@@ -32,16 +49,15 @@ import StartGGAuth from "../components/auth/butt.jsx";
       }
     </style>
   </head>
-  <nav
-    class="bg-white shadow-sm dark:bg-gray-900"
-  >
-    <div class="mx-auto px-2 sm:px-6 lg:px-8">
-      <div class="relative flex items-center justify-between h-16">
-        <div class="absolute inset-y-0 left-0 flex items-center sm:hidden">
+  <body class="min-h-screen bg-gray-100 text-slate-950 dark:bg-slate-950 dark:text-white">
+  <nav class="sticky top-0 z-40 select-none border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
+    <div class="mx-auto max-w-[120rem] px-2 sm:px-4 lg:px-6">
+      <div class="relative flex h-16 items-center justify-between gap-3">
+        <div class="flex items-center sm:hidden">
           <button
             id="hamburger-button"
             type="button"
-            class="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white"
+            class="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-slate-100 p-2 text-slate-600 hover:border-blue-400 hover:text-blue-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
             aria-controls="mobile-menu"
             aria-expanded="false"
           >
@@ -76,97 +92,91 @@ import StartGGAuth from "../components/auth/butt.jsx";
             </svg>
           </button>
         </div>
-        <div
-          class="flex-1 flex items-center justify-center sm:items-stretch sm:justify-start"
-        >
-          <div class="flex-shrink-0">
-            <img class="h-8 w-auto" src="/asuri.png" alt="Logo" />
-          </div>
-          <div class="hidden sm:block sm:ml-6">
-            <div class="flex space-x-4">
-              <a
-                href="/"
-                class={title == "Home"
-                  ? "bg-gray-900 text-white px-3 py-2 rounded-md text-sm font-medium"
-                  : "text-gray-900 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}
-                >Home</a
-              >
-              <a
-                href="/pr"
-                class={title == "Power Rankings"
-                  ? "bg-gray-900 text-white px-3 py-2 rounded-md text-sm font-medium"
-                  : "text-gray-900 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}
-                >Power Rankings</a
-              >
-              <a
-                href="/esports"
-                class={title == "eSports Database"
-                  ? "bg-gray-900 text-white px-3 py-2 rounded-md text-sm font-medium"
-                  : "text-gray-900 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}
-                >eSports Database</a
-              >
-              <a
-                href="/game"
-                class={title == "Game Database"
-                  ? "bg-gray-900 text-white px-3 py-2 rounded-md text-sm font-medium"
-                  : "text-gray-900 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}
-                >Game Database</a
-              >
-            </div>
+        <div class="flex min-w-0 flex-1 items-center justify-center sm:justify-start">
+          <a href="/" class="flex items-center gap-2 rounded-xl px-2 py-1 text-slate-950 transition hover:bg-slate-100 dark:text-white dark:hover:bg-slate-900">
+            <img class="h-9 w-9 object-contain" src="/asuri.png" alt="Saorax" />
+            <span class="hidden text-base font-black sm:block">Saorax</span>
+          </a>
+          <div class="ml-3 hidden items-center gap-1 sm:flex">
+            <a href="/" class:list={["rounded-xl px-3 py-2 text-sm font-black transition", title === "Home" ? "bg-blue-500 text-white" : "text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900"]}>Home</a>
+            <details class="group relative">
+              <summary class:list={["flex cursor-pointer list-none items-center gap-1 rounded-xl px-3 py-2 text-sm font-black transition marker:hidden", gameActive ? "bg-blue-500 text-white" : "text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900"]}>Game</summary>
+              <div class="absolute left-0 top-full mt-2 grid w-64 gap-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+                {gameLinks.map((link) => <a href={link.href} class="rounded-xl px-3 py-2 text-sm font-bold text-slate-700 hover:bg-blue-500 hover:text-white dark:text-slate-200">{link.label}</a>)}
+              </div>
+            </details>
+            <details class="group relative">
+              <summary class:list={["flex cursor-pointer list-none items-center gap-1 rounded-xl px-3 py-2 text-sm font-black transition marker:hidden", competitiveActive ? "bg-blue-500 text-white" : "text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900"]}>Competitive</summary>
+              <div class="absolute left-0 top-full mt-2 grid w-56 gap-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+                {competitiveLinks.map((link) => <a href={link.href} class="rounded-xl px-3 py-2 text-sm font-bold text-slate-700 hover:bg-blue-500 hover:text-white dark:text-slate-200">{link.label}</a>)}
+              </div>
+            </details>
+            <details class="group relative">
+              <summary class="flex cursor-pointer list-none items-center gap-1 rounded-xl px-3 py-2 text-sm font-black text-slate-700 transition marker:hidden hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900">More</summary>
+              <div class="absolute left-0 top-full mt-2 grid w-48 gap-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+                {siteLinks.map((link) => <a href={link.href} class="rounded-xl px-3 py-2 text-sm font-bold text-slate-700 hover:bg-blue-500 hover:text-white dark:text-slate-200">{link.label}</a>)}
+              </div>
+            </details>
           </div>
         </div>
         <StartGGAuth client:load />
       </div>
     </div>
   </nav>
-  <div class="sm:hidden hidden bg-white dark:bg-gray-900" id="mobile-menu">
-    <div class="px-2 pt-2 pb-3 space-y-1">
-      <a
-        href="/"
-        class={title == "Home"
-          ? "bg-gray-900 text-white block px-3 py-2 rounded-md text-base font-medium"
-          : "text-gray-900 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}
-        >Home</a
-      >
-      <a
-        href="/pr"
-        class={title == "Power Rankings"
-          ? "bg-gray-900 text-white block px-3 py-2 rounded-md text-base font-medium"
-          : "text-gray-900 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}
-        >Power Rankings</a
-      >
-      <a
-        href="/esports"
-        class={title == "eSports Database"
-          ? "bg-gray-900 text-white block px-3 py-2 rounded-md text-base font-medium"
-          : "text-gray-900 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}
-        >eSports Database</a
-      >
-      <a
-        href="/game"
-        class={title == "Game Database"
-          ? "bg-gray-900 text-white block px-3 py-2 rounded-md text-base font-medium"
-          : "text-gray-900 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium dark:text-white dark:hover:bg-gray-600 dark:hover:text-gray-200"}
-        >Game Database</a
-      >
+  <div class="hidden select-none border-b border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-950 sm:hidden" id="mobile-menu">
+    <div class="grid gap-2 p-3">
+      <a href="/" class="rounded-xl bg-slate-100 px-3 py-2 text-sm font-black text-slate-800 dark:bg-slate-900 dark:text-white">Home</a>
+      <details class="rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
+        <summary class="cursor-pointer list-none px-3 py-2 text-sm font-black marker:hidden">Game</summary>
+        <div class="grid gap-1 border-t border-slate-200 p-2 dark:border-slate-800">{gameLinks.map((link) => <a href={link.href} class="rounded-lg px-3 py-2 text-sm font-bold hover:bg-blue-500 hover:text-white">{link.label}</a>)}</div>
+      </details>
+      <details class="rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
+        <summary class="cursor-pointer list-none px-3 py-2 text-sm font-black marker:hidden">Competitive</summary>
+        <div class="grid gap-1 border-t border-slate-200 p-2 dark:border-slate-800">{competitiveLinks.map((link) => <a href={link.href} class="rounded-lg px-3 py-2 text-sm font-bold hover:bg-blue-500 hover:text-white">{link.label}</a>)}</div>
+      </details>
+      {siteLinks.map((link) => <a href={link.href} class="rounded-xl bg-slate-100 px-3 py-2 text-sm font-black text-slate-800 dark:bg-slate-900 dark:text-white">{link.label}</a>)}
     </div>
   </div>
-
-  <body class="bg-gray-100 dark:bg-slate-950 dark:text-white text-slate-950 h-screen">
-    <div class="bg-gray-100 dark:bg-slate-950 h-screen dark:text-white text-slate-950">
+    <main class="min-h-[calc(100dvh-4rem)] bg-gray-100 text-slate-950 dark:bg-slate-950 dark:text-white">
       <slot />
-    </div>
+    </main>
     <script>
-      document
-        .getElementById("hamburger-button")
-        .addEventListener("click", function () {
+      const hamburger = document.getElementById("hamburger-button");
+      const mobileMenu = document.getElementById("mobile-menu");
+      const dropdowns = Array.from(document.querySelectorAll<HTMLDetailsElement>("nav details, #mobile-menu details"));
+
+      hamburger?.addEventListener("click", function () {
           var menu = document.getElementById("mobile-menu");
+          if (!menu) return;
           if (menu.classList.contains("hidden")) {
             menu.classList.remove("hidden");
+            this.setAttribute("aria-expanded", "true");
           } else {
             menu.classList.add("hidden");
+            this.setAttribute("aria-expanded", "false");
           }
         });
+
+      dropdowns.forEach((dropdown) => {
+        dropdown.addEventListener("toggle", () => {
+          if (!dropdown.open) return;
+          dropdowns.forEach((other) => {
+            if (other !== dropdown) other.removeAttribute("open");
+          });
+        });
+      });
+
+      document.addEventListener("pointerdown", (event) => {
+        const target = event.target;
+        if (!(target instanceof Node)) return;
+        dropdowns.forEach((dropdown) => {
+          if (!dropdown.contains(target)) dropdown.removeAttribute("open");
+        });
+        if (mobileMenu && hamburger && !mobileMenu.classList.contains("hidden") && !mobileMenu.contains(target) && !hamburger.contains(target)) {
+          mobileMenu.classList.add("hidden");
+          hamburger.setAttribute("aria-expanded", "false");
+        }
+      });
     </script>
   </body>
 </html>

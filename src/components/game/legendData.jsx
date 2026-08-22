@@ -165,25 +165,23 @@ function LegendCard({ legend }) {
         >
             <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-blue-500/20 to-transparent dark:from-blue-400/10" />
 
-            <div className="relative flex items-start justify-between gap-2 p-3 pb-1">
-                <div className="min-w-0">
+            <div className="relative p-3 pb-1">
+                <div className="min-w-0 pr-12">
                     <div className="truncate text-[11px] font-black uppercase tracking-wide text-blue-600 dark:text-blue-300">
                         {aka || legend?.codeName || 'Legend'}
                     </div>
-                    <h2 className="mt-0.5 break-words text-xl font-black leading-none tracking-tight sm:text-2xl">
+                    <h2 className="mt-0.5 whitespace-nowrap text-lg font-black leading-none tracking-tight sm:text-2xl">
                         {legend?.bio?.name?.normal}
                     </h2>
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-1">
-                    <span className="rounded-lg border border-slate-300 bg-slate-100 px-2 py-1 text-right text-[10px] font-black leading-tight text-slate-700 dark:border-slate-600 dark:bg-slate-900/80 dark:text-slate-100">
+                    <div className="mt-1 text-[10px] font-black text-slate-500 dark:text-slate-400">
                         {releaseDate(legend.release)}
-                    </span>
-                    {beta && (
-                        <span className="rounded-lg border border-amber-400/50 bg-amber-500/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-700 dark:text-amber-200">
-                            Beta
-                        </span>
-                    )}
+                    </div>
                 </div>
+                {beta && (
+                    <span className="absolute right-3 top-3 rounded-lg border border-amber-400/50 bg-amber-500/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-700 dark:text-amber-200">
+                        Beta
+                    </span>
+                )}
             </div>
 
             <div className="relative flex flex-1 flex-col items-center justify-start px-3">
@@ -327,7 +325,7 @@ function LegendData() {
                             <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">Brawlhalla Legends</h1>
                         </div>
                         <div className="grid grid-cols-3 gap-2 sm:min-w-96">
-                            <SummaryTile label="Live" value={liveCount} />
+                            <SummaryTile label="Legends" value={liveCount} />
                             <SummaryTile label="Beta" value={betaCount} />
                             <SummaryTile label="Showing" value={filteredLegends.length} />
                         </div>
@@ -335,13 +333,17 @@ function LegendData() {
 
                     {newestLegend && (
                         <div className="border-t border-slate-200 bg-gradient-to-r from-blue-500/10 via-transparent to-transparent px-4 py-3 dark:border-slate-800">
-                            <div className="flex flex-wrap items-center gap-3 text-sm font-bold text-slate-600 dark:text-slate-300">
+                            <a href={legendUrl(newestLegend)} className="group flex flex-wrap items-center gap-3 text-sm font-bold text-slate-600 transition hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-300">
                                 <span className="text-xs font-black uppercase tracking-wide text-blue-600 dark:text-blue-300">Newest</span>
                                 {newestLegend.image && <img src={apiAsset(newestLegend.image)} className="h-10 w-10 rounded-lg object-contain" alt={newestLegend.bio?.name?.normal} />}
-                                <span className="text-slate-950 dark:text-white">{newestLegend.bio?.name?.normal}</span>
+                                <span className="text-slate-950 group-hover:text-blue-600 dark:text-white dark:group-hover:text-blue-300">{newestLegend.bio?.name?.normal}</span>
+                                <span className="flex items-center gap-2">
+                                    {weaponNames(newestLegend).map((weapon) => (
+                                        <img key={weapon} src={weaponIcon(weapon)} alt={weapon} title={weapon} className="h-9 w-9 object-contain" />
+                                    ))}
+                                </span>
                                 <span>{releaseDate(newestLegend.release)}</span>
-                                <span>{weaponNames(newestLegend).join(' / ')}</span>
-                            </div>
+                            </a>
                         </div>
                     )}
                 </section>

@@ -492,8 +492,8 @@ const PowerRankings = () => {
           <span className="ml-1">Filters</span>
         </button>
       </div>
-      <div className="bg-gray-100 flex h-screen dark:bg-slate-950">
-        <aside ref={sidebarRef} id="logo-sidebar" className="fixed inset-0 z-40 md:w-1/4 w-80 h-screen transition-transform -translate-x-full md:translate-x-0 bg-white dark:bg-gray-900 md:static overflow-y-auto shadow-lg scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thumb-rounded-full scrollbar-track-rounded-full">
+      <div className="flex min-h-[calc(100dvh-4rem)] bg-gray-100 dark:bg-slate-950">
+        <aside ref={sidebarRef} id="logo-sidebar" className="fixed bottom-0 left-0 top-16 z-30 w-80 transition-transform -translate-x-full md:static md:z-auto md:h-[calc(100dvh-4rem)] md:w-1/4 md:translate-x-0 bg-white dark:bg-gray-900 overflow-y-auto shadow-lg scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 scrollbar-thumb-rounded-full scrollbar-track-rounded-full">
           <div className="h-full p-2">
             <Sidebar
               selectedGamemode={selectedGamemode}
