@@ -145,7 +145,13 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
     [colors]
   );
   const previewSkins = useMemo(
-    () => (Array.isArray(skins) ? skins : []).filter((skin) => skin?.HeroID != null && skin?.SkinInt != null && (skin?.animTypes?.selectedOther || skin?.animTypes?.selected)),
+    () => (Array.isArray(skins) ? skins : []).filter((skin) =>
+      skin?.costumeData?.OwnerHero !== 'DEFAULT_CHARACTER'
+      && skin?.HeroName !== 'DEFAULT_CHARACTER'
+      && skin?.HeroID != null
+      && skin?.SkinInt != null
+      && (skin?.animTypes?.selectedOther || skin?.animTypes?.selected)
+    ),
     [skins]
   );
   const previewSkinByColor = useMemo(() => {

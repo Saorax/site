@@ -1237,6 +1237,7 @@ function resolveDatabaseItem(storeData, type, itemName) {
   if (!collection) return null;
   return asArray(collection.rows).find((row) => {
     const source = collection.dataKey ? row?.[collection.dataKey] : row;
+    if (collection.dataKey === 'costumeData' && source?.OwnerHero === 'DEFAULT_CHARACTER') return false;
     return String(source?.[collection.nameKey] || '') === String(itemName || '');
   }) || null;
 }
