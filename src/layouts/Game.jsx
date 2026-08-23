@@ -331,7 +331,9 @@ export default function GameDatabase() {
       if (!alive) return;
       setStoreData((current) => {
         const next = {};
-        if (required.includes('legends') && current.legends) next.legends = current.legends;
+        for (const key of required) {
+          if (current[key]) next[key] = current[key];
+        }
         for (const [key, items] of loaded) next[key] = items;
         return next;
       });
