@@ -1,0 +1,10 @@
+---
+import Layout from '../../../../layouts/Layout.astro';
+import PlayerPage from '../../../../components/esports/PlayerPage.jsx';
+
+const playerId = Number.parseInt(Astro.params.playerId ?? '', 10);
+if (!Number.isSafeInteger(playerId) || playerId <= 0) return Astro.redirect('/esports/player', 302);
+---
+<Layout title="Player · Brawlhalla Esports">
+  <PlayerPage client:load playerId={playerId} />
+</Layout>

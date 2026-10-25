@@ -1,0 +1,10 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import { SetPage } from '../../../components/esports/MatchPages.jsx';
+
+const setId = Number.parseInt(Astro.params.setId ?? '', 10);
+if (!Number.isSafeInteger(setId) || setId <= 0) return Astro.redirect('/esports/tournaments', 302);
+---
+<Layout title="Match · Brawlhalla Esports">
+  <SetPage client:load setId={setId} />
+</Layout>

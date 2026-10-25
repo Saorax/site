@@ -64,3 +64,5 @@ package-lock.json
 src/stuff.ts
 src/stuff.ts
 src/stuff.ts
+.astro/types.d.ts
+.astro/dev.json

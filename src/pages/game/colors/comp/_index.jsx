@@ -643,7 +643,7 @@ function LegendsGrid({
   searchQuery,
 }) {
   if (!legends || !langs) {
-    return <div className="px-3 py-2 text-xs text-slate-500">Loading legends…</div>;
+    return <div className="px-3 py-2 text-xs text-slate-500">Loading legends...</div>;
   }
   if (!legends.length) {
     return <div className="px-3 py-2 text-xs text-slate-500">No legends available</div>;
@@ -4059,7 +4059,7 @@ export default function AnimDatabase() {
 
               <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(360px,440px)] gap-3 overflow-y-auto px-3 py-3">
                 <div className="flex min-w-0 flex-col justify-start">
-                  {animLoading && <div className="text-xs text-slate-500">Loading animation…</div>}
+                  {animLoading && <div className="text-xs text-slate-500">Loading animation...</div>}
                   {!animLoading && animError && <div className="text-xs text-red-400">{animError}</div>}
                   {!animLoading && !animError && totalFrames === 0 && <div className="text-xs text-slate-500">No frames for this animation.</div>}
 

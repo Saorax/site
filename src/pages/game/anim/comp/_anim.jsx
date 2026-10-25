@@ -79,7 +79,7 @@ function AnimationTree({ tree, selected, onSelect }) {
   if (!filenames.length) {
     return (
       <div className="px-3 py-2 text-xs text-slate-500">
-        Loading animations…
+        Loading animations...
       </div>
     );
   }
@@ -328,7 +328,7 @@ export default function AnimDatabase() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search filename, index, animation…"
+              placeholder="Search filename, index, animation..."
               className="w-full rounded-md border border-slate-700 bg-slate-950/80 px-2 py-1 text-xs placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
             />
           </div>
@@ -390,7 +390,7 @@ export default function AnimDatabase() {
             <div className="text-xs text-slate-500">Select an animation</div>
           )}
           {selected && fileLoading && (
-            <div className="text-xs text-slate-500">Loading animation…</div>
+            <div className="text-xs text-slate-500">Loading animation...</div>
           )}
           {selected && !fileLoading && (
             <div className="text-xs text-slate-500">
@@ -408,7 +408,7 @@ export default function AnimDatabase() {
               <div className="text-slate-500">Select an animation</div>
             )}
             {selected && fileLoading && (
-              <div className="text-slate-500">Loading data…</div>
+              <div className="text-slate-500">Loading data...</div>
             )}
             {selected && !fileLoading && !fileData && (
               <div className="text-slate-500">No data loaded</div>

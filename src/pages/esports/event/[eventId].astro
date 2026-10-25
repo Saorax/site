@@ -1,0 +1,10 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import { EventPage } from '../../../components/esports/TournamentPages.jsx';
+
+const eventId = Number.parseInt(Astro.params.eventId ?? '', 10);
+if (!Number.isSafeInteger(eventId) || eventId <= 0) return Astro.redirect('/esports/tournaments', 302);
+---
+<Layout title="Event · Brawlhalla Esports">
+  <EventPage client:load eventId={eventId} />
+</Layout>

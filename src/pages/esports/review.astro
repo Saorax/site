@@ -1,0 +1,12 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import EsportsReview from '../../components/esports/review.jsx';
+
+if (!import.meta.env.DEV) {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
+}
+---
+
+<Layout title="Brawlhalla Esports Classification Review">
+  <EsportsReview client:load />
+</Layout>
