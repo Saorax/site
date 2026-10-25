@@ -489,10 +489,18 @@ function EliminationSection({ section, entrants, hovered, onHover, showTitle, on
   );
 }
 
+function slotResult(slot, decided, won) {
+  if (!slot) return "";
+  if (slot.score != null) return slot.score < 0 ? "DQ" : slot.score;
+  return decided ? (won ? "W" : "L") : "";
+}
+
 function BracketCard({ set, entrants, hovered, onHover }) {
   const rows = [set.slots[0] ?? null, set.slots[1] ?? null];
+  const decided = Boolean(set.winnerEntrantId);
+  const live = set.state === "active" && set.slots.length === 2 && !decided;
   return (
-    <a href={`/esports/set/${set.id}`} draggable={false} className="flex h-full flex-col overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm transition hover:border-blue-400 dark:border-slate-700 dark:bg-slate-950">
+    <a href={`/esports/set/${set.id}`} draggable={false} className={`flex h-full flex-col overflow-hidden rounded-lg border bg-white shadow-sm transition hover:border-blue-400 dark:bg-slate-950 ${live ? "border-amber-400 dark:border-amber-500/70" : "border-slate-300 dark:border-slate-700"}`}>
       {rows.map((slot, index) => {
         const entrant = slot ? entrants[slot.entrantId] : null;
         const won = Boolean(slot) && set.winnerEntrantId === slot.entrantId;
@@ -505,11 +513,11 @@ function BracketCard({ set, entrants, hovered, onHover }) {
             className={`flex flex-1 items-center gap-2 px-2 text-sm ${index ? "border-t border-slate-200 dark:border-slate-800" : ""} ${lit ? "bg-blue-100 dark:bg-blue-500/20" : ""}`}
           >
             <span className="w-6 shrink-0 text-right text-[11px] font-bold tabular-nums text-slate-400">{entrant?.seed ?? ""}</span>
-            <span className={`min-w-0 flex-1 truncate ${won ? "font-black text-slate-950 dark:text-white" : slot ? "font-semibold text-slate-500" : "italic text-slate-400"}`}>
-              {slot ? entrantLabel(entrant) : set.slots.length === 1 ? "Bye" : "TBD"}
+            <span className={`min-w-0 flex-1 truncate ${won ? "font-black text-slate-950 dark:text-white" : slot ? (decided ? "font-semibold text-slate-500" : "font-semibold text-slate-800 dark:text-slate-200") : "italic text-slate-400"}`}>
+              {slot ? entrantLabel(entrant) : set.slots.length === 1 && set.state === "complete" ? "Bye" : "TBD"}
             </span>
-            <span className={`w-7 shrink-0 rounded text-center text-xs font-black tabular-nums ${won ? "bg-emerald-500 text-white" : slot ? "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300" : ""}`}>
-              {slot ? (slot.score == null ? (won ? "W" : "L") : slot.score < 0 ? "DQ" : slot.score) : ""}
+            <span className={`w-7 shrink-0 rounded text-center text-xs font-black tabular-nums ${won ? "bg-emerald-500 text-white" : slot && decided ? "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300" : slot && live ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200" : ""}`}>
+              {slotResult(slot, decided, won)}
             </span>
           </div>
         );
@@ -619,12 +627,13 @@ function RoundList({ sets }) {
 
 function SetCard({ set }) {
   const slots = set.slots ?? [];
+  const decided = slots.some((slot) => slot.winner);
   return (
     <a href={`/esports/set/${set.id}`} className="rounded-lg border border-slate-200 transition hover:border-blue-400 dark:border-slate-800">
       {slots.map((slot, index) => (
         <div key={slot.entrantId ?? index} className={`flex items-center justify-between gap-2 px-3 py-1.5 ${index ? "border-t border-slate-100 dark:border-slate-800" : ""}`}>
           <span className={`truncate text-sm ${slot.winner ? "font-black text-slate-950 dark:text-white" : "font-semibold text-slate-500"}`}>{slot.entrantName}</span>
-          <span className={`text-sm tabular-nums ${slot.winner ? "font-black text-slate-950 dark:text-white" : "font-semibold text-slate-500"}`}>{slot.score ?? (slot.winner ? "W" : "L")}</span>
+          <span className={`text-sm tabular-nums ${slot.winner ? "font-black text-slate-950 dark:text-white" : "font-semibold text-slate-500"}`}>{slot.score ?? (decided ? (slot.winner ? "W" : "L") : "")}</span>
         </div>
       ))}
       {slots.length === 1 && <div className="border-t border-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-400 dark:border-slate-800">Bye</div>}
