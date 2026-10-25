@@ -632,18 +632,25 @@ function SetCard({ set }) {
   );
 }
 
+const eventPoints = (row) => Math.round(
+  (Number(row.placement_points) + Number(row.win_points) + Number(row.loss_points)) * Number(row.tournament_multiplier ?? 1) * 1000,
+) / 1000;
+
 function Points({ contributions }) {
-  const rows = [...contributions].sort((left, right) => Number(right.total_points) - Number(left.total_points));
+  const place = (row) => row.details?.placement ?? Number.MAX_SAFE_INTEGER;
+  const rows = [...contributions].sort((left, right) => eventPoints(right) - eventPoints(left) || place(left) - place(right));
+  const multiplier = Number(contributions[0]?.tournament_multiplier ?? 1);
   return (
     <Card padded={false}>
       <p className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 dark:border-slate-800 dark:text-slate-400">
-        Points each player earned toward the power rankings from this event: placement points, plus points for wins and close losses against ranked opponents.
+        Points each player earned at this event toward their region's power ranking: placement points, plus points for wins and close losses against ranked opponents{multiplier !== 1 ? `, times this event's ×${multiplier} multiplier` : ""}.
       </p>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[560px] text-sm">
+        <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-left text-[11px] font-black uppercase tracking-wider text-slate-500 dark:border-slate-800">
               <th className="px-4 py-2">Player</th>
+              <th className="px-2 py-2">Board</th>
               <th className="px-2 py-2 text-right">Place</th>
               <th className="px-2 py-2 text-right">Placement</th>
               <th className="px-2 py-2 text-right">Wins</th>
@@ -655,11 +662,12 @@ function Points({ contributions }) {
             {rows.map((row) => (
               <tr key={`${row.player_id}:${row.region}`} className="border-b border-slate-100 last:border-0 dark:border-slate-800">
                 <td className="px-4 py-2"><a href={`/esports/player/id/${row.player_id}`} className="font-black text-slate-950 hover:text-blue-500 dark:text-white">{row.display_name}</a></td>
+                <td className="px-2 py-2 text-xs font-bold text-slate-500">{regionName(row.region)}</td>
                 <td className="px-2 py-2 text-right font-bold">{ordinal(row.details?.placement)}</td>
                 <td className="px-2 py-2 text-right tabular-nums">{points(row.placement_points)}</td>
                 <td className="px-2 py-2 text-right tabular-nums">{points(row.win_points)}</td>
                 <td className="px-2 py-2 text-right tabular-nums">{points(row.loss_points)}</td>
-                <td className="px-4 py-2 text-right font-black tabular-nums">{points(row.total_points)}</td>
+                <td className="px-4 py-2 text-right font-black tabular-nums">{points(eventPoints(row))}</td>
               </tr>
             ))}
           </tbody>
