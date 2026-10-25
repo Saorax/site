@@ -39,7 +39,16 @@ export function SetPage({ setId }) {
   const picks = (game) => game.entrantSelections?.length
     ? game.entrantSelections.map((pick) => ({ key: `${pick.providerEntrantId}:${pick.legend}`, legend: pick.legend, side: slots.findIndex((slot) => String(slot.provider_entrant_id) === String(pick.providerEntrantId)) }))
     : (game.selections ?? []).map((pick) => ({ key: pick.gameAccountId ?? pick.name, legend: pick.legend, name: pick.name, side: sideOf(pick.gameAccountId) }));
-  const winnerSide = (game) => (game.winnerProviderEntrantId == null ? -1 : slots.findIndex((slot) => String(slot.provider_entrant_id) === String(game.winnerProviderEntrantId)));
+  const scoreWinnerSide = (gameNumber) => {
+    const scores = slots.map((slot) => slot?.score);
+    if (scores.length !== 2 || !scores.every((score) => Number.isInteger(score) && score >= 0) || scores[0] === scores[1]) return -1;
+    const total = scores[0] + scores[1];
+    if (gameNumber < 1 || gameNumber > total) return -1;
+    return Math.min(...scores) === 0 || gameNumber === total ? (scores[0] > scores[1] ? 0 : 1) : -1;
+  };
+  const winnerSide = (game) => (game.winnerProviderEntrantId == null
+    ? scoreWinnerSide(Number(game.gameNumber))
+    : slots.findIndex((slot) => String(slot.provider_entrant_id) === String(game.winnerProviderEntrantId)));
 
   return (
     <PageShell back={{ href: `/esports/event/${set.event_id}?view=matches`, label: set.event_name }}>

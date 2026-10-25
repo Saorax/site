@@ -98,8 +98,8 @@ function ProfileHeader({ data, events, legacy, cmode, onBrowse }) {
   const official = events.filter((event) => event.is_official === true).length;
   const community = events.filter((event) => event.is_official === false).length;
   const summary = data.summary ?? {};
-  const gamesPlayed = Number(legacy?.gamesPlayed ?? 0) + Number(cmode?.gamesWithDetails ?? 0);
-  const gamesWon = Number(legacy?.gamesWon ?? 0);
+  const gamesPlayed = Number(legacy?.gamesPlayed ?? 0) + Number(cmode?.gamesPlayed ?? 0);
+  const gamesWon = Number(legacy?.gamesWon ?? 0) + Number(cmode?.gameWins ?? 0);
   const medal = (key, label, icon, tone) => (
     <button type="button" onClick={() => onBrowse({ finish: key })} className={`py-3 text-center transition hover:bg-white/10 ${tone}`}>
       <div className="text-2xl" aria-hidden="true">{icon}</div>
@@ -182,7 +182,7 @@ function ProfileHeader({ data, events, legacy, cmode, onBrowse }) {
           </div>
           {gamesPlayed > 0 && (
             <div className="border-t border-white/10 px-4 py-2 text-xs text-slate-400">
-              {number(gamesPlayed)} games played · {number(gamesWon)} games won (only start.gg reports game winners)
+              {number(gamesPlayed)} games played · {number(gamesWon)} games won
             </div>
           )}
         </aside>
@@ -218,8 +218,8 @@ function ModeCards({ data, events, legacy, cmode, onBrowse }) {
     return {
       mode, label, modeEvents,
       sets: data.summary?.byMode?.[mode] ?? { playedSets: 0, wins: 0 },
-      games: Number(legacyMode?.gamesPlayed ?? 0) + Number(cmode?.byMode?.[mode]?.gamesWithDetails ?? 0),
-      gameWins: Number(legacyMode?.gamesWon ?? 0),
+      games: Number(legacyMode?.gamesPlayed ?? 0) + Number(cmode?.byMode?.[mode]?.gamesPlayed ?? 0),
+      gameWins: Number(legacyMode?.gamesWon ?? 0) + Number(cmode?.byMode?.[mode]?.gameWins ?? 0),
       earnings: data.earnings?.byMode?.[mode === "other" ? "other" : label] ?? 0,
       ranking: mode === "other" ? null : bestRanking(data.latestRankings ?? [], mode),
     };
@@ -718,7 +718,7 @@ function mergeUsage(rows) {
     const entry = merged.get(key) ?? { name: row.name, games: 0, wins: 0, known: 0 };
     if (row.name.includes(" ") && !entry.name.includes(" ")) entry.name = row.name;
     entry.games += Number(row.games ?? 0);
-    if (row.wins != null) { entry.wins += Number(row.wins); entry.known += Number(row.games ?? 0); }
+    if (row.wins != null) { entry.wins += Number(row.wins); entry.known += Number(row.known ?? row.games ?? 0); }
     merged.set(key, entry);
   }
   return [...merged.values()].sort((left, right) => right.games - left.games);
@@ -727,13 +727,13 @@ function mergeUsage(rows) {
 function CareerUsage({ legacy, cmode }) {
   const legendName = useLegendNames();
   if ((legacy.loading || cmode.loading) && !legacy.data && !cmode.data) return <Loading label="Loading game history..." />;
-  const legends = mergeUsage([...(legacy.data?.characters ?? []), ...(cmode.data?.legends ?? []).map((row) => ({ ...row, wins: null }))]);
-  const maps = mergeUsage([...(legacy.data?.stages ?? []), ...(cmode.data?.maps ?? []).map((row) => ({ ...row, wins: null }))]);
-  const games = Number(legacy.data?.gamesPlayed ?? 0) + Number(cmode.data?.gamesWithDetails ?? 0);
+  const legends = mergeUsage([...(legacy.data?.characters ?? []), ...(cmode.data?.legends ?? [])]);
+  const maps = mergeUsage([...(legacy.data?.stages ?? []), ...(cmode.data?.maps ?? [])]);
+  const games = Number(legacy.data?.gamesPlayed ?? 0) + Number(cmode.data?.gamesPlayed ?? 0);
   return (
     <div className="grid gap-4">
       <p className="text-sm font-semibold text-slate-500">
-        {number(games)} recorded games across start.gg and Challengermode. Win counts come from start.gg, the only provider that reports a winner for each game.
+        {number(games)} recorded games across start.gg and Challengermode. Both providers report game winners when a match's games were reported; for Challengermode sets with only a set score, sweeps and each set's deciding game still count.
       </p>
       <div className="grid gap-4 xl:grid-cols-2">
         <UsageGrid title="Legends" rows={legends} kind="legend" legendName={legendName} empty="No legends reported" />

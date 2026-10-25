@@ -46,6 +46,28 @@ function filePath(file) {
   return `${file.section}/${file.file}`;
 }
 
+function patchGroups(patches) {
+  const groups = [];
+  for (const patch of patches) {
+    const name = String(patch.patch || 'Unknown');
+    const last = groups[groups.length - 1];
+    if (last && last.patch === name) last.manifests.push(patch);
+    else groups.push({ patch: name, manifests: [patch] });
+  }
+  return groups;
+}
+
+function manifestLabel(group, index) {
+  const releaseIndex = group.manifests.length - 1;
+  return index === releaseIndex ? 'Release' : `Hotfix ${releaseIndex - index}`;
+}
+
+function readPatchParams() {
+  if (typeof window === 'undefined') return {};
+  const params = new URLSearchParams(window.location.search);
+  return { patch: params.get('patch') || '', from: params.get('from') || '', view: params.get('view') || '' };
+}
+
 function isMinimalFile(file) {
   const path = filePath(file);
   return minimalFiles.has(path) || minimalDynamicPattern.test(path);
@@ -91,6 +113,29 @@ const powerMovePatterns = [
   ['Up', 'nLight'],
   ['Air', 'nAir'],
 ];
+
+const moveNames = {
+  nSig: 'Neutral Signature',
+  sSig: 'Side Signature',
+  dSig: 'Down Signature',
+  nLight: 'Neutral Light',
+  sLight: 'Side Light',
+  dLight: 'Down Light',
+  nAir: 'Neutral Air',
+  sAir: 'Side Air',
+  dAir: 'Down Air',
+  Recovery: 'Recovery',
+  'Ground Pound': 'Ground Pound',
+};
+
+function withLegendNames(text, heroMap = {}) {
+  const codes = Object.keys(heroMap)
+    .filter((code) => /^\w+$/.test(code) && heroMap[code]?.name && heroMap[code].name !== code)
+    .sort((a, b) => b.length - a.length);
+  if (!text || !codes.length) return text;
+  const pattern = new RegExp(`\\b(${codes.join('|')})\\b`, 'g');
+  return text.replace(pattern, (code) => heroMap[code].name);
+}
 
 function cleanPowerValue(value) {
   const text = String(value ?? '').trim();
@@ -769,9 +814,26 @@ function RecordCard({ type, record, file, lang, heroMap, storeAssetMap, titleOve
   );
 }
 
+const plainNumber = (value) => (typeof value === 'number' || (typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value.trim())) ? Number(value) : null);
+
 function PowerFieldDiff({ field }) {
   const propertyAdded = field.propertyAdded || (isEmptyFieldValue(field.before) && !isEmptyFieldValue(field.after));
   const propertyRemoved = field.propertyRemoved || (!isEmptyFieldValue(field.before) && isEmptyFieldValue(field.after));
+  const before = plainNumber(field.before);
+  const after = plainNumber(field.after);
+  if (before !== null && after !== null) {
+    const effect = classifyPowerField(field);
+    const delta = Math.round((after - before) * 1000) / 1000;
+    const tone = effect === 'buff' ? 'text-emerald-200' : effect === 'nerf' ? 'text-rose-200' : 'text-amber-100';
+    return (
+      <div className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-white/10 bg-black/20 px-2 py-1.5 text-xs">
+        <span className="font-bold uppercase tracking-wide text-slate-300">{displayFieldName(field.field)}</span>
+        <span className={`font-mono font-bold ${tone}`}>
+          {before} {'->'} {after} <span className="opacity-75">({delta > 0 ? '+' : ''}{delta})</span>
+        </span>
+      </div>
+    );
+  }
   return (
     <div className="rounded-lg border border-white/10 bg-black/20 p-2">
       <div className="text-xs font-bold uppercase tracking-wide text-slate-300">{displayFieldName(field.field)}</div>
@@ -921,6 +983,14 @@ function matchesAny(field, patterns) {
   return patterns.some((pattern) => pattern.test(field));
 }
 
+const powerVisualFields = /(Gfx|Anim|Sound|Sfx|Tint|Flip|Camera|Emitter|CustomArt|Icon|Trail|Color)/i;
+
+function isVisualPowerField(field) {
+  const name = String(field?.field || '');
+  return powerVisualFields.test(name)
+    && !matchesAny(name, [...powerBuffIncreaseFields, ...powerNerfIncreaseFields, ...powerBooleanBuffFields, ...powerBooleanNerfFields]);
+}
+
 function classifyPowerField(field) {
   const before = numericSignal(field.before);
   const after = numericSignal(field.after);
@@ -941,6 +1011,8 @@ function classifyPowerChange(entry) {
   if (buffCount > 0 && nerfCount > 0) return { label: 'Mixed', className: 'border-sky-300/40 bg-sky-500/20 text-sky-100' };
   if (buffCount > 0) return { label: 'Buff', className: 'border-emerald-300/40 bg-emerald-500/20 text-emerald-100' };
   if (nerfCount > 0) return { label: 'Nerf', className: 'border-rose-300/40 bg-rose-500/20 text-rose-100' };
+  const fields = entry.record.fields || [];
+  if (fields.length && fields.every(isVisualPowerField)) return { label: 'Visual', className: 'border-slate-400/40 bg-slate-500/20 text-slate-100' };
   return { label: 'Adjustment', className: 'border-amber-300/40 bg-amber-500/20 text-amber-100' };
 }
 
@@ -951,7 +1023,7 @@ function powerClassificationCounts(entries) {
     const key = classification.label.toLowerCase();
     counts[key] = (counts[key] || 0) + 1;
     return counts;
-  }, { buff: 0, nerf: 0, mixed: 0, adjustment: 0 });
+  }, { buff: 0, nerf: 0, mixed: 0, adjustment: 0, visual: 0 });
 }
 
 function formatPowerClassificationCounts(entries) {
@@ -961,6 +1033,7 @@ function formatPowerClassificationCounts(entries) {
     counts.nerf ? `${counts.nerf} nerf${counts.nerf === 1 ? '' : 's'}` : '',
     counts.mixed ? `${counts.mixed} mixed` : '',
     counts.adjustment ? `${counts.adjustment} adjustment${counts.adjustment === 1 ? '' : 's'}` : '',
+    counts.visual ? `${counts.visual} visual` : '',
   ].filter(Boolean).join(' • ');
 }
 
@@ -972,11 +1045,12 @@ function PowerClassificationPills({ entries }) {
       {counts.nerf > 0 && <CountPill label="Nerfs" value={counts.nerf} tone="rose" />}
       {counts.mixed > 0 && <CountPill label="Mixed" value={counts.mixed} tone="blue" />}
       {counts.adjustment > 0 && <CountPill label="Adjustments" value={counts.adjustment} tone="amber" />}
+      {counts.visual > 0 && <CountPill label="Visual" value={counts.visual} />}
     </div>
   );
 }
 
-function PowerChangeCard({ entry }) {
+function PowerChangeCard({ entry, heroMap }) {
   const tone = entry.type === 'added'
     ? sectionColors.added
     : entry.type === 'removed'
@@ -984,7 +1058,14 @@ function PowerChangeCard({ entry }) {
       : sectionColors.changed;
   const typeText = entry.type[0].toUpperCase() + entry.type.slice(1);
   const fields = entry.record.fields || [];
+  const gameplayFields = fields.filter((field) => !isVisualPowerField(field));
+  const visualFields = fields.filter(isVisualPowerField);
   const classification = classifyPowerChange(entry);
+  const title = [
+    entry.parsed.kind === 'signature' ? entry.parsed.hero?.name : '',
+    entry.parsed.weapon.label,
+    moveNames[entry.parsed.move] || entry.parsed.move,
+  ].filter(Boolean).join(' ');
   return (
     <div className={`rounded-xl border p-3 ${tone}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -992,22 +1073,29 @@ function PowerChangeCard({ entry }) {
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-lg bg-black/25 px-2 py-1 text-xs font-bold">{typeText}</span>
             {classification && <span className={`rounded-lg border px-2 py-1 text-xs font-bold ${classification.className}`}>{classification.label}</span>}
-            <span className="rounded-lg bg-black/25 px-2 py-1 text-xs font-bold">{entry.parsed.move}</span>
             <span className="rounded-lg bg-black/25 px-2 py-1 text-xs font-bold">{entry.parsed.variant}</span>
           </div>
-          <div className="mt-2 break-words text-sm font-bold text-white">{entry.parsed.powerName}</div>
-          {entry.record.id && <div className="mt-0.5 text-xs opacity-75">ID {entry.record.id}</div>}
+          <div className="mt-2 break-words text-sm font-bold text-white">{title}</div>
+          <div className="mt-0.5 break-all font-mono text-[11px] opacity-60">{entry.parsed.powerName}{entry.record.id ? ` · ID ${entry.record.id}` : ''}</div>
         </div>
       </div>
       {entry.parsed.description && (
         <div className="mt-2 rounded-lg border border-white/10 bg-black/20 p-2 text-xs leading-relaxed text-slate-100">
-          {entry.parsed.description}
+          {withLegendNames(entry.parsed.description, heroMap)}
         </div>
       )}
-      {fields.length > 0 && (
+      {gameplayFields.length > 0 && (
         <div className="mt-2 space-y-2">
-          {fields.map((field) => <PowerFieldDiff key={field.field} field={field} />)}
+          {gameplayFields.map((field) => <PowerFieldDiff key={field.field} field={field} />)}
         </div>
+      )}
+      {visualFields.length > 0 && (
+        <details className="mt-2 rounded-lg border border-white/10 bg-black/10">
+          <summary className="cursor-pointer px-2 py-1.5 text-xs font-bold text-slate-300">Visual changes ({visualFields.length})</summary>
+          <div className="space-y-2 p-2 pt-0">
+            {visualFields.map((field) => <PowerFieldDiff key={field.field} field={field} />)}
+          </div>
+        </details>
       )}
     </div>
   );
@@ -1331,7 +1419,7 @@ function LegendChangeSection({ groups, lang, heroMap, storeAssetMap }) {
                         >
                           <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
                             {weaponGroup.entries.map((entry) => (
-                              <PowerChangeCard key={`${entry.type}-${entry.record.id}-${entry.parsed.powerName}`} entry={entry} />
+                              <PowerChangeCard key={`${entry.type}-${entry.record.id}-${entry.parsed.powerName}`} entry={entry} heroMap={heroMap} />
                             ))}
                           </div>
                         </CollapsibleDiffBlock>
@@ -1464,7 +1552,7 @@ function PowerFileDiff({ file, heroMap }) {
             >
               <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
                 {weaponGroup.entries.map((entry) => (
-                  <PowerChangeCard key={`${entry.type}-${entry.record.id}-${entry.parsed.powerName}`} entry={entry} />
+                  <PowerChangeCard key={`${entry.type}-${entry.record.id}-${entry.parsed.powerName}`} entry={entry} heroMap={heroMap} />
                 ))}
               </div>
             </CollapsibleDiffBlock>
@@ -1544,6 +1632,10 @@ function FileDiff({ file, mode = 'minimal', lang, heroMap, storeAssetMap }) {
 export default function History() {
   const [patches, setPatches] = useState([]);
   const [selectedPatch, setSelectedPatch] = useState(null);
+  const [compareFrom, setCompareFrom] = useState('');
+  const [listRequest, setListRequest] = useState(0);
+  const [historyRequest, setHistoryRequest] = useState(0);
+  const [knownEmpty, setKnownEmpty] = useState(() => new Set());
   const [historyData, setHistoryData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -1557,18 +1649,27 @@ export default function History() {
   const [storeAssetMap, setStoreAssetMap] = useState({});
 
   useEffect(() => {
+    setError('');
     fetch(`${host}/game/history/all`)
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error(`Patch list request failed: ${res.status}`);
+        return res.json();
+      })
       .then((data) => {
         const list = Array.isArray(data) ? data : [];
         setPatches(list);
-        if (list[0]?.manifest) setSelectedPatch(String(list[0].manifest));
+        const params = readPatchParams();
+        const linked = list.find((patch) => String(patch.manifest) === params.patch);
+        const selected = linked || list[0];
+        if (selected?.manifest) setSelectedPatch(String(selected.manifest));
+        if (linked && params.from) setCompareFrom(params.from);
+        if (params.view === 'full') setViewMode('full');
       })
       .catch((err) => {
         console.error(err);
         setError('Failed to load patch list.');
       });
-  }, []);
+  }, [listRequest]);
 
   useEffect(() => {
     fetch(`${host}/game/langs/0`)
@@ -1629,26 +1730,42 @@ export default function History() {
     setLoading(true);
     setError('');
     setHistoryData(null);
-    fetch(`${host}/game/history/${selectedPatch}`)
+    const from = compareFrom ? `?from=${encodeURIComponent(compareFrom)}` : '';
+    fetch(`${host}/game/history/${selectedPatch}${from}`)
       .then((res) => {
         if (!res.ok) throw new Error(`Patch history request failed: ${res.status}`);
         return res.json();
       })
-      .then((data) => setHistoryData(data))
+      .then((data) => {
+        setHistoryData(data);
+        if (!compareFrom && !(data?.files || []).length) {
+          setKnownEmpty((current) => new Set(current).add(String(data.manifest)));
+        }
+      })
       .catch((err) => {
         console.error(err);
         setError('Failed to load this patch history.');
       })
       .finally(() => setLoading(false));
-  }, [selectedPatch]);
+  }, [selectedPatch, compareFrom, historyRequest]);
 
-  const categories = useMemo(() => {
-    const labels = new Set((historyData?.files || [])
-      .filter((file) => viewMode === 'full' || isMinimalFile(file))
-      .map((file) => file.label)
-      .filter(Boolean));
-    return [...labels].sort((a, b) => a.localeCompare(b));
-  }, [historyData, viewMode]);
+  useEffect(() => {
+    if (!selectedPatch || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    params.set('patch', selectedPatch);
+    if (compareFrom) params.set('from', compareFrom); else params.delete('from');
+    if (viewMode === 'full') params.set('view', 'full'); else params.delete('view');
+    window.history.replaceState(null, '', `${window.location.pathname}?${params}`);
+  }, [selectedPatch, compareFrom, viewMode]);
+
+  const groups = useMemo(() => patchGroups(patches), [patches]);
+  const manifestNames = useMemo(() => new Map(groups.flatMap((group) => group.manifests
+    .map((patch, index) => [String(patch.manifest), `Patch ${group.patch}${group.manifests.length > 1 ? ` ${manifestLabel(group, index)}` : ''}`]))), [groups]);
+  const isEmptyManifest = (patch) => patch.empty === true || knownEmpty.has(String(patch.manifest));
+  const olderManifests = useMemo(() => {
+    const index = patches.findIndex((patch) => String(patch.manifest) === String(selectedPatch));
+    return index < 0 ? [] : patches.slice(index + 1);
+  }, [patches, selectedPatch]);
 
   const filteredFiles = useMemo(() => {
     const text = query.trim().toLowerCase();
@@ -1720,27 +1837,51 @@ export default function History() {
       </div>
       <div className="flex-1 overflow-y-auto app-scrollbar pr-1">
         <div className="space-y-2">
-          {patches.map((patch) => {
-            const active = String(selectedPatch) === String(patch.manifest);
+          {groups.map((group) => {
+            const release = group.manifests[group.manifests.length - 1];
+            const groupActive = group.manifests.some((patch) => String(patch.manifest) === String(selectedPatch));
+            const select = (patch) => {
+              setSelectedPatch(String(patch.manifest));
+              setCompareFrom('');
+              setCategory('');
+              setQuery('');
+              setIsSidebarOpen(false);
+            };
+            const allEmpty = group.manifests.every(isEmptyManifest);
             return (
-              <button
-                key={patch.manifest}
-                type="button"
-                className={`w-full rounded-xl border p-3 text-left transition ${active ? 'border-blue-400 bg-blue-500/20 text-white' : 'border-slate-800 bg-slate-900 text-slate-200 hover:border-slate-600'}`}
-                onClick={() => {
-                  setSelectedPatch(String(patch.manifest));
-                  setCategory('');
-                  setQuery('');
-                  setIsSidebarOpen(false);
-                }}
+              <div
+                key={`${group.patch}-${release.manifest}`}
+                className={`rounded-xl border transition ${groupActive ? 'border-blue-400 bg-blue-500/15' : 'border-slate-800 bg-slate-900 hover:border-slate-600'} ${allEmpty && !groupActive ? 'opacity-50' : ''}`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-base font-bold">Patch {patch.patch || 'Unknown'}</span>
-                  {patch.patchOccurrence && <span className="rounded-full bg-slate-700 px-2 py-0.5 text-[10px]">#{patch.patchOccurrence}/{patch.patchOccurrenceTotal}</span>}
-                </div>
-                <div className="mt-1 text-xs text-slate-400">{formatDate(patch.date)}</div>
-                <div className="mt-1 break-all text-[10px] text-slate-500">{patch.manifest}</div>
-              </button>
+                <button type="button" className="w-full p-3 text-left" onClick={() => select(release)}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-base font-bold text-white">Patch {group.patch}</span>
+                    {group.manifests.length > 1 && <span className="rounded-full bg-slate-700 px-2 py-0.5 text-[10px] text-slate-200">{group.manifests.length - 1} hotfix{group.manifests.length === 2 ? '' : 'es'}</span>}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-400">{formatDate(release.date)}</div>
+                </button>
+                {group.manifests.length > 1 && (
+                  <div className="space-y-1 border-t border-slate-800 p-1.5">
+                    {group.manifests.map((patch, index) => {
+                      const active = String(selectedPatch) === String(patch.manifest);
+                      const empty = isEmptyManifest(patch);
+                      return (
+                        <button
+                          key={patch.manifest}
+                          type="button"
+                          title={`Manifest ${patch.manifest}`}
+                          onClick={() => select(patch)}
+                          className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1 text-left text-xs ${active ? 'bg-blue-500/30 text-white' : 'text-slate-300 hover:bg-slate-800'} ${empty && !active ? 'opacity-50' : ''}`}
+                        >
+                          <span className="font-bold">{manifestLabel(group, index)}</span>
+                          <span className="text-slate-400">{empty ? 'No data changes' : formatDate(patch.date).replace(/, \d{4}/, '')}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {group.manifests.length === 1 && isEmptyManifest(release) && <div className="px-3 pb-2 text-[10px] font-bold text-slate-500">No data changes</div>}
+              </div>
             );
           })}
         </div>
@@ -1768,28 +1909,58 @@ export default function History() {
       <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[20rem_minmax(0,1fr)]">
         <div className="sticky top-16 hidden h-[calc(100dvh-4rem)] overflow-hidden border-r border-slate-800 lg:block">{sidebar}</div>
         <main className="min-w-0 p-3 sm:p-4 lg:p-5">
-          {error && <div className="mb-4 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-rose-200">{error}</div>}
+          {error && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-rose-200">
+              <span>{error}</span>
+              <button
+                type="button"
+                onClick={() => (patches.length ? setHistoryRequest((value) => value + 1) : setListRequest((value) => value + 1))}
+                className="rounded-lg bg-rose-500/20 px-3 py-1.5 text-sm font-bold text-rose-100 hover:bg-rose-500/30"
+              >
+                Retry
+              </button>
+            </div>
+          )}
           {loading && <div className="rounded-xl border border-slate-700 bg-slate-900 p-4 text-slate-300">Loading patch data...</div>}
           {!loading && historyData && (
             <div className="space-y-4">
               <header className="rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-sm">
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                   <div className="min-w-0">
-                    <div className="text-xs font-bold uppercase tracking-wide text-blue-300">Manifest {historyData.manifest}</div>
-                    <h2 className="mt-1 text-2xl font-bold text-white sm:text-3xl">Patch {historyData.patch || 'Unknown'}</h2>
-                    <div className="mt-1 text-sm text-slate-400">
-                      {formatDate(historyData.date)}
-                      {historyData.previousPatch && ` - compared to Patch ${historyData.previousPatch}`}
+                    <div className="text-xs font-bold uppercase tracking-wide text-blue-300" title={`Manifest ${historyData.manifest}`}>
+                      {manifestNames.get(String(historyData.manifest)) || `Patch ${historyData.patch || 'Unknown'}`}
                     </div>
+                    <h2 className="mt-1 text-2xl font-bold text-white sm:text-3xl">Patch {historyData.patch || 'Unknown'}</h2>
+                    <div className="mt-1 text-sm text-slate-400">{formatDate(historyData.date)}</div>
+                    {olderManifests.length > 0 && (
+                      <label className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-400">
+                        Compared to
+                        <select
+                          value={compareFrom}
+                          onChange={(event) => setCompareFrom(event.target.value)}
+                          className="max-w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-white outline-none focus:border-blue-400"
+                        >
+                          <option value="">{manifestNames.get(String(olderManifests[0].manifest)) || 'Previous update'} (previous)</option>
+                          {olderManifests.slice(1).map((patch) => (
+                            <option key={patch.manifest} value={String(patch.manifest)}>
+                              {manifestNames.get(String(patch.manifest)) || `Patch ${patch.patch}`} - {formatDate(patch.date)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                   </div>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
-                    <CountPill label="Added" value={historyData.summary?.added} tone="emerald" />
-                    <CountPill label="Changed" value={historyData.summary?.changed} tone="amber" />
-                    <CountPill label="Removed" value={historyData.summary?.removed} tone="rose" />
-                    <CountPill label="Files" value={historyData.summary?.files} tone="blue" />
-                    <CountPill label="New Files" value={historyData.summary?.filesAdded} />
-                    <CountPill label="Changed Files" value={historyData.summary?.filesChanged} />
-                    <CountPill label="Removed Files" value={historyData.summary?.filesRemoved} />
+                  <div className="flex flex-col items-start gap-2 xl:items-end">
+                    <div className="grid grid-cols-3 gap-2">
+                      <CountPill label="Added" value={historyData.summary?.added} tone="emerald" />
+                      <CountPill label="Changed" value={historyData.summary?.changed} tone="amber" />
+                      <CountPill label="Removed" value={historyData.summary?.removed} tone="rose" />
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      {historyData.summary?.files || 0} file{historyData.summary?.files === 1 ? '' : 's'} changed
+                      {historyData.summary?.filesAdded ? ` • ${historyData.summary.filesAdded} new` : ''}
+                      {historyData.summary?.filesRemoved ? ` • ${historyData.summary.filesRemoved} removed` : ''}
+                    </div>
                   </div>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
@@ -1815,7 +1986,10 @@ export default function History() {
 
               {historyData.categorySummary?.length > 0 && (
                 <section className="rounded-2xl border border-slate-700 bg-slate-900 p-4">
-                  <h3 className="text-lg font-bold text-white">Changed Areas</h3>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-lg font-bold text-white">Changed Areas</h3>
+                    {category && <button type="button" onClick={() => setCategory('')} className="rounded-lg bg-slate-800 px-2 py-1 text-xs font-bold text-slate-200 hover:bg-slate-700">Show all areas</button>}
+                  </div>
                   <div className="mt-3 flex gap-2 overflow-x-auto pb-1 app-scrollbar">
                     {historyData.categorySummary.filter((item) => viewMode === 'full' || (historyData.files || []).some((file) => file.label === item.label && isMinimalFile(file))).map((item) => (
                       <button
@@ -1832,24 +2006,16 @@ export default function History() {
                 </section>
               )}
 
-              <section className="rounded-2xl border border-slate-700 bg-slate-900 p-4">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_16rem]">
+              {(historyData.files || []).length > 0 && (
+                <section className="rounded-2xl border border-slate-700 bg-slate-900 p-4">
                   <input
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder="Search files, item names, IDs, or changed fields"
                     className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-blue-400"
                   />
-                  <select
-                    value={category}
-                    onChange={(event) => setCategory(event.target.value)}
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-blue-400"
-                  >
-                    <option value="">All changed areas</option>
-                    {categories.map((label) => <option key={label} value={label}>{label}</option>)}
-                  </select>
-                </div>
-              </section>
+                </section>
+              )}
 
               <section className="space-y-3">
                 {viewMode === 'minimal' && weaponFiles.map((file) => <FileDiff key={`${file.section}/${file.file}`} file={file} mode={viewMode} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />)}
@@ -1859,7 +2025,11 @@ export default function History() {
                 {otherRenderedFiles.length > 0 ? (
                   otherRenderedFiles.map((file) => <FileDiff key={`${file.section}/${file.file}`} file={file} mode={viewMode} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />)
                 ) : groupedLegendChanges.length > 0 || groupedMapFiles.length > 0 || weaponFiles.length > 0 || skinFiles.length > 0 || storeItemFiles.length > 0 ? null : (
-                  <div className="rounded-xl border border-slate-700 bg-slate-900 p-4 text-slate-400">No matching changes for this filter.</div>
+                  <div className="rounded-xl border border-slate-700 bg-slate-900 p-4 text-slate-400">
+                    {(historyData.files || []).length
+                      ? 'No matching changes for this filter.'
+                      : 'No game data changed in this update. It was likely a client, asset or server-side release.'}
+                  </div>
                 )}
                 {viewMode === 'minimal' && <MapChangeSection files={groupedMapFiles} lang={lang} levelMap={levelMap} heroMap={heroMap} storeAssetMap={storeAssetMap} />}
               </section>

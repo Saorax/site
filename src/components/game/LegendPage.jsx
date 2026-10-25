@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import '../../../fonts/style.css';
 import { host } from "../../stuff";
 import { ImageWithLoader, LoadingSpinner } from "./database/comp/LoadingImage";
@@ -7,6 +7,15 @@ import { commonPowerFieldMessage, summarizeCommonPowerFields } from "./powerHist
 const apiAsset = (src) => typeof src === 'string' && src.startsWith('/game/') ? `${host}${src}` : src;
 const clean = (value) => value !== null && value !== undefined && String(value).trim() !== '' && String(value).trim() !== '--';
 const asArray = (value) => !value ? [] : Array.isArray(value) ? value : [value];
+
+const LangContext = createContext({});
+const resolveLang = (value, lang) => {
+  const text = String(value ?? '').trim();
+  return (text && lang?.[text]) || value;
+};
+const resolveKeyField = (field, lang) => (/Key$/.test(String(field?.field || ''))
+  ? { ...field, before: resolveLang(field.before, lang), after: resolveLang(field.after, lang) }
+  : field);
 
 const stats = [
   { key: 'str', label: 'Strength', runeKey: 'Strength', icon: '/game/attack.png' },
@@ -1134,12 +1143,12 @@ function findLegendSkin(legend, data) {
   });
 }
 
-function usefulSkinFields(group) {
+function usefulSkinFields(group, lang) {
   const costume = group.costume || {};
   const store = group.store || {};
   const rows = [
     ['Name', group.name],
-    ['Description', store.DescriptionKey || costume.DescriptionKey],
+    ['Description', resolveLang(store.DescriptionKey || costume.DescriptionKey, lang)],
     ['Internal Name', costume.CostumeName || store.Item || store.StoreName],
     ['Costume ID', costume.CostumeID],
     ['Store ID', store.StoreID],
@@ -1155,29 +1164,33 @@ function usefulSkinFields(group) {
   return rows.filter(([, value]) => clean(value));
 }
 
-function usefulSkinChangeFields(rows) {
-  const allowed = new Set([
-    'DisplayNameKey',
-    'DescriptionKey',
-    'CostumeName',
-    'CostumeID',
-    'WeaponSet',
-    'StoreName',
-    'StoreID',
-    'Item',
-    'IdolCost',
-    'IdolSaleCost',
-    'GoldCost',
-    'GloryCost',
-    'SpecialCurrencyType',
-    'SpecialCurrencyCost',
-    'Popularity',
-    'Label',
-  ]);
-  return rows
-    .flatMap((row) => asArray(row.record?.fields))
-    .filter((field) => allowed.has(field?.field))
-    .filter((field) => field.field !== 'Label' || field.before === 'LastChance' || field.after === 'LastChance');
+const usefulSkinChangeFieldNames = new Set([
+  'DisplayNameKey',
+  'DescriptionKey',
+  'CostumeName',
+  'CostumeID',
+  'WeaponSet',
+  'StoreName',
+  'StoreID',
+  'Item',
+  'IdolCost',
+  'IdolSaleCost',
+  'GoldCost',
+  'GloryCost',
+  'SpecialCurrencyType',
+  'SpecialCurrencyCost',
+  'Popularity',
+  'Label',
+]);
+
+function skinChangeFields(rows) {
+  const fields = rows.flatMap((row) => asArray(row.record?.fields));
+  const isUseful = (field) => usefulSkinChangeFieldNames.has(field?.field)
+    && (field.field !== 'Label' || field.before === 'LastChance' || field.after === 'LastChance');
+  return {
+    useful: fields.filter(isUseful),
+    other: fields.filter((field) => !isUseful(field)),
+  };
 }
 
 function skinImageUrl(legend, group) {
@@ -1284,7 +1297,7 @@ function buildHistoryVisualGroups(entry, legend) {
   return {
     runes: runeRows,
     weaponSkins: standaloneWeaponRows,
-    skins: skinGroupsList.filter((group) => group.type !== 'changed' || usefulSkinChangeFields(group.rows).length > 0),
+    skins: skinGroupsList,
   };
 }
 
@@ -1379,7 +1392,7 @@ function recordMatchesSignature(record, signature) {
   ]).concat(record?.name).map(normalizeString).filter(Boolean);
   return names.some((name) => (
     name === root
-    || (parts && name.startsWith(parts.prefix) && (!parts.suffix || name.endsWith(parts.suffix)))
+    || (parts && name.startsWith(parts.prefix) && (!parts.suffix || name.slice(parts.prefix.length).includes(parts.suffix)))
   ));
 }
 
@@ -1512,8 +1525,10 @@ function SkinHistoryCard({ group, legend }) {
   const groupedWeapons = asArray(group.weaponRows).map((row) => historyRecordData(row)).filter((weapon) => !isStanceVariantRecord(weapon));
   const fallbackWeapons = group.type === 'added' ? asArray(group.skin?.stuff?.WeaponSet2).slice(0, 2).filter((weapon) => !isStanceVariantRecord(weapon)) : [];
   const weapons = groupedWeapons.length ? groupedWeapons : fallbackWeapons;
-  const fields = group.type === 'added' ? usefulSkinFields(group) : [];
-  const changeFields = usefulSkinChangeFields(group.rows);
+  const lang = useContext(LangContext);
+  const fields = group.type === 'added' ? usefulSkinFields(group, lang) : [];
+  const { useful, other } = skinChangeFields(group.rows);
+  const changeFields = useful.map((field) => resolveKeyField(field, lang));
   const changeFieldGrid = changeFields.length <= 1
     ? 'mt-3 grid gap-2'
     : 'mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3';
@@ -1539,7 +1554,7 @@ function SkinHistoryCard({ group, legend }) {
           )}
         </div>
         <div className="min-w-0">
-          <div className="text-xs font-black uppercase tracking-wide text-blue-600 dark:text-blue-300">{group.type === 'added' ? 'Skin Added' : 'Skin Updated'}</div>
+          <div className="text-xs font-black uppercase tracking-wide text-blue-600 dark:text-blue-300">{group.type === 'added' ? 'Skin Added' : group.type === 'removed' ? 'Skin Removed' : 'Skin Updated'}</div>
           <h4 className="break-words text-xl font-black text-slate-950 dark:text-white">{group.name || group.costume?.CostumeName || group.store?.StoreName}</h4>
           <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {fields.map(([label, value]) => (
@@ -1564,6 +1579,27 @@ function SkinHistoryCard({ group, legend }) {
                 </div>
               ))}
             </div>
+          )}
+          {!!other.length && (
+            <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/70">
+              <summary className="cursor-pointer px-2 py-1.5 text-xs font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {useful.length ? 'Other field changes' : 'Field changes'} ({other.length})
+              </summary>
+              <div className="grid gap-2 border-t border-slate-200 p-2 dark:border-slate-800">
+                {other.map((field, index) => (
+                  <div key={`${field.field}-${index}`} className="rounded-lg bg-white/60 p-2 text-sm dark:bg-slate-950/50">
+                    {isSimpleScalarChange(field) ? (
+                      <div><span className="font-black">{field.field}:</span> <ChangeFieldBody field={field} compact /></div>
+                    ) : (
+                      <>
+                        <div className="text-[10px] font-black uppercase tracking-wide opacity-70">{field.field}</div>
+                        <ChangeFieldBody field={field} />
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </details>
           )}
         </div>
       </div>
@@ -1706,6 +1742,7 @@ function CommonPowerFieldData({ field }) {
 }
 
 function ChangeList({ title, items, tone, file }) {
+  const lang = useContext(LangContext);
   const sourceRows = asArray(items);
   if (!sourceRows.length) return null;
   const isPowerFile = historyPath(file) === 'game/powertypes';
@@ -1755,7 +1792,7 @@ function ChangeList({ title, items, tone, file }) {
             <div className="font-black">{item?.name || item?.id || `${title} ${index + 1}`}</div>
             {item?.fields ? (
               <div className={asArray(item.fields).length === 1 ? 'mt-2 grid gap-2' : isPowerFile ? 'mt-2 grid gap-2 lg:grid-cols-2' : isHurtboxFile ? 'mt-2 grid gap-2 lg:grid-cols-3' : 'mt-2 grid gap-2 md:grid-cols-2 2xl:grid-cols-3'}>
-                {asArray(item.fields).map((field, fieldIndex) => (
+                {asArray(item.fields).map((record) => resolveKeyField(record, lang)).map((field, fieldIndex) => (
                   <div key={`${field?.field || fieldIndex}`} className="rounded-lg bg-white/60 p-2 text-sm dark:bg-slate-950/50">
                     {isSimpleScalarChange(field) ? (
                       <div><span className="font-black">{field?.field}:</span> <ChangeFieldBody field={field} compact /></div>
@@ -1899,7 +1936,6 @@ function HistoryPage({ legend, history }) {
               onChange={(event) => {
                 const value = event.target.value;
                 setSignature(value);
-                if (value) setCategory('signatures');
               }}
               className="min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
             >
@@ -1974,6 +2010,7 @@ const LegendPage = ({ legend, prevLegends = [], nextLegends = [], history }) => 
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
   const [historyRequest, setHistoryRequest] = useState(0);
+  const [lang, setLang] = useState(null);
 
   const safePrev = useMemo(() => asArray(prevLegends).filter(Boolean), [prevLegends]);
   const safeNext = useMemo(() => asArray(nextLegends).filter(Boolean), [nextLegends]);
@@ -1997,6 +2034,14 @@ const LegendPage = ({ legend, prevLegends = [], nextLegends = [], history }) => 
       });
     return () => controller.abort();
   }, [currentTab, historyData, historyRequest, legend?.id]);
+
+  useEffect(() => {
+    if (currentTab !== "history" || lang) return;
+    fetch(`${host}/game/langs/0`)
+      .then((response) => response.json())
+      .then((data) => setLang(data?.[0]?.content || {}))
+      .catch(() => setLang({}));
+  }, [currentTab, lang]);
 
   if (!legend) {
     return (
@@ -2051,7 +2096,9 @@ const LegendPage = ({ legend, prevLegends = [], nextLegends = [], history }) => 
               </button>
             </div>
           ) : (
-            <HistoryPage legend={legend} history={historyData} />
+            <LangContext.Provider value={lang || {}}>
+              <HistoryPage legend={legend} history={historyData} />
+            </LangContext.Provider>
           )
         )}
       </div>
