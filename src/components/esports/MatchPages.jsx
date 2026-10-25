@@ -1,7 +1,7 @@
 import React from "react";
 import { host } from "../../stuff";
 import {
-  apiUrl, Avatar, Badge, Card, date, Empty, ErrorNote, Loading, modeName, PageShell, percent, ProviderLink,
+  apiUrl, Avatar, Badge, Card, date, Empty, ErrorNote, LIVE_REFRESH_MS, LiveUpdates, Loading, modeName, PageShell, percent, ProviderLink,
   useApi,
 } from "./ui";
 
@@ -27,7 +27,7 @@ export function useLegendNames() {
 
 
 export function SetPage({ setId }) {
-  const detail = useApi(apiUrl(`/sets/${setId}`));
+  const detail = useApi(apiUrl(`/sets/${setId}`), { refreshMs: LIVE_REFRESH_MS, refreshWhile: (data) => data?.set?.state === "active" });
   const legendName = useLegendNames();
   const data = detail.data;
   if (detail.error) return <PageShell back={{ href: "/esports/tournaments", label: "Tournaments" }}><ErrorNote message={detail.error} /></PageShell>;
@@ -56,10 +56,19 @@ export function SetPage({ setId }) {
         <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-semibold text-slate-500">
           <span>{set.tournament_name} · {set.round_name} · {date(set.history_at ?? set.starts_at)}</span>
           <span className="flex items-center gap-2">
+            {set.state === "active" && <LiveUpdates updatedAt={detail.updatedAt} />}
             {set.is_official && <Badge tone="blue">Official</Badge>}
             <Badge>{modeName(set.game_mode)}</Badge>
           </span>
         </div>
+        {set.stream && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-violet-500/10 px-3 py-2 text-sm font-bold text-violet-800 dark:text-violet-200">
+            <span aria-hidden="true">▶</span>
+            {set.stream.url
+              ? <a href={set.stream.url} target="_blank" rel="noopener noreferrer" className="hover:underline">{set.state === "complete" ? "Streamed" : "On stream"}: {set.stream.name} ↗</a>
+              : <span>{set.state === "complete" ? "Streamed" : "On stream"}: {set.stream.name}</span>}
+          </div>
+        )}
         <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4">
           {[0, 1].map((index) => {
             const slot = slots[index];

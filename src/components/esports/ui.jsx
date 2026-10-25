@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import countries from "i18n-iso-countries";
 import english from "i18n-iso-countries/langs/en.json";
 import { host } from "../../stuff";
@@ -15,11 +15,17 @@ export function apiUrl(path, params = {}) {
   return `${host}/v2/esports${path}${suffix ? `?${suffix}` : ""}`;
 }
 
-export function useApi(url) {
-  const [state, setState] = useState({ data: null, error: null, loading: Boolean(url) });
+export const LIVE_REFRESH_MS = 60_000;
+
+export function useApi(url, { refreshMs = 0, refreshWhile } = {}) {
+  const [state, setState] = useState({ data: null, error: null, loading: Boolean(url), updatedAt: null });
+  const latest = useRef(state);
+  latest.current = state;
+  const condition = useRef(refreshWhile);
+  condition.current = refreshWhile;
   useEffect(() => {
     if (!url) {
-      setState({ data: null, error: null, loading: false });
+      setState({ data: null, error: null, loading: false, updatedAt: null });
       return undefined;
     }
     const controller = new AbortController();
@@ -32,13 +38,75 @@ export function useApi(url) {
         }
         return response.json();
       })
-      .then((data) => setState({ data, error: null, loading: false }))
+      .then((data) => setState({ data, error: null, loading: false, updatedAt: Date.now() }))
       .catch((error) => {
         if (error.name !== "AbortError") setState((previous) => ({ ...previous, error: error.message, loading: false }));
       });
     return () => controller.abort();
   }, [url]);
+  useEffect(() => {
+    if (!url || !refreshMs) return undefined;
+    let controller = null;
+    const refresh = () => {
+      const current = latest.current;
+      if (document.visibilityState !== "visible" || current.loading || !current.data) return;
+      if (condition.current && !condition.current(current.data)) return;
+      if (current.updatedAt && Date.now() - current.updatedAt < refreshMs - 1000) return;
+      controller?.abort();
+      controller = new AbortController();
+      fetch(url, { signal: controller.signal })
+        .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
+        .then((data) => setState({ data, error: null, loading: false, updatedAt: Date.now() }))
+        .catch(() => {});
+    };
+    const timer = setInterval(refresh, Math.min(refreshMs, 15_000));
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+      controller?.abort();
+    };
+  }, [url, refreshMs]);
   return state;
+}
+
+export function StreamBadge({ stream, className = "" }) {
+  if (!stream?.name) return null;
+  const open = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (stream.url) window.open(stream.url, "_blank", "noopener,noreferrer");
+  };
+  return (
+    <span
+      role={stream.url ? "link" : undefined}
+      tabIndex={stream.url ? 0 : undefined}
+      onClick={open}
+      onKeyDown={(event) => { if (event.key === "Enter") open(event); }}
+      title={stream.url ? `Streamed on ${stream.name}` : `Assigned to stream ${stream.name}`}
+      className={`inline-flex max-w-[9rem] items-center gap-1 rounded-full bg-violet-600 px-1.5 py-0.5 text-[10px] font-black text-white shadow ${stream.url ? "cursor-pointer hover:bg-violet-500" : ""} ${className}`}
+    >
+      <span aria-hidden="true">▶</span>
+      <span className="truncate">{stream.name}</span>
+    </span>
+  );
+}
+
+export function LiveUpdates({ updatedAt, every = LIVE_REFRESH_MS }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  if (!updatedAt) return null;
+  const ago = Math.max(0, Math.round((now - updatedAt) / 1000));
+  const next = Math.max(0, Math.round((updatedAt + every - now) / 1000));
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300" title="Refreshes automatically while the event is live">
+      <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+      Live · updated {ago}s ago{next > 0 ? ` · next in ${next}s` : " · updating"}
+    </span>
+  );
 }
 
 export function useDebounced(value, delay = 300) {

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { FaTwitch, FaTwitter } from "react-icons/fa";
 import {
-  apiUrl, Avatar, Badge, date, Empty, ErrorNote, Loading, ordinal, REGIONS, regionName,
+  apiUrl, Avatar, Badge, date, Empty, ErrorNote, LIVE_REFRESH_MS, LiveUpdates, Loading, ordinal, REGIONS, regionName,
   SearchInput, useApi, useDebounced, useQueryState,
 } from "./ui";
 
@@ -321,7 +321,7 @@ function RankingBoard({ type, region, mode, decay, preset, asOf, eventIds, highl
     asOf: asOf ?? (type === "royale" ? new Date().toISOString().slice(0, 10) : undefined),
     eventIds: ids, baselineEventIds: ids,
     decay: !decay ? "false" : type === "lan" ? "event-count" : undefined,
-  }) : null);
+  }) : null, { refreshMs: LIVE_REFRESH_MS, refreshWhile: (current) => current?.activeEvents?.length > 0 });
 
   const data = ranking.data;
   const players = data?.players ?? [];
@@ -348,7 +348,7 @@ function RankingBoard({ type, region, mode, decay, preset, asOf, eventIds, highl
               {customised && <Badge tone="blue">Custom selection</Badge>}
               {!decay && <Badge>No date decay</Badge>}
               {decay && type === "lan" && <Badge>LAN decay</Badge>}
-              {data?.activeEvents?.length > 0 && <Badge tone="green">Live event in progress</Badge>}
+              {data?.activeEvents?.length > 0 && <LiveUpdates updatedAt={ranking.updatedAt} />}
             </div>
           </div>
         </div>

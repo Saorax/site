@@ -1,8 +1,10 @@
 import React, { useMemo, useRef, useState } from "react";
 import {
-  apiUrl, Avatar, Badge, Card, date, Empty, ErrorNote, Loading, modeName, number, ordinal, PageShell,
-  Pagination, points, ProviderLink, regionName, SearchInput, Select, Tabs, useApi, useDebounced, useQueryState,
+  apiUrl, Avatar, Badge, Card, date, Empty, ErrorNote, LIVE_REFRESH_MS, LiveUpdates, Loading, modeName, number, ordinal, PageShell,
+  Pagination, points, ProviderLink, regionName, SearchInput, Select, StreamBadge, Tabs, useApi, useDebounced, useQueryState,
 } from "./ui";
+
+const eventIsLive = (data) => data?.event?.state === "active";
 
 const stateLabel = { upcoming: "Upcoming", active: "Live", complete: "Completed", cancelled: "Cancelled" };
 const stateTone = { upcoming: "amber", active: "green", complete: "slate", cancelled: "red" };
@@ -148,7 +150,7 @@ function TournamentHeader({ tournament, eventName }) {
 
 
 export function EventPage({ eventId }) {
-  const detail = useApi(apiUrl(`/events/${eventId}`));
+  const detail = useApi(apiUrl(`/events/${eventId}`), { refreshMs: LIVE_REFRESH_MS, refreshWhile: eventIsLive });
   const event = detail.data?.event;
   return (
     <PageShell back={event ? { href: `/esports/tournament/${event.tournament_id}`, label: event.tournament_name } : { href: "/esports/tournaments", label: "Tournaments" }}>
@@ -163,15 +165,15 @@ export function EventPage({ eventId }) {
               provider: event.provider, starts_at: event.starts_at, state: event.state, is_official: event.is_official,
             }}
           />
-          <div className="mt-6"><EventBody eventId={eventId} preloaded={detail.data} /></div>
+          <div className="mt-6"><EventBody eventId={eventId} preloaded={detail.data} updatedAt={detail.updatedAt} /></div>
         </>
       )}
     </PageShell>
   );
 }
 
-function EventBody({ eventId, preloaded }) {
-  const fetched = useApi(preloaded ? null : apiUrl(`/events/${eventId}`));
+function EventBody({ eventId, preloaded, updatedAt }) {
+  const fetched = useApi(preloaded ? null : apiUrl(`/events/${eventId}`), { refreshMs: LIVE_REFRESH_MS, refreshWhile: eventIsLive });
   const data = preloaded ?? fetched.data;
   const [tab, setTab] = useQueryState("view", "standings");
   if (!data) return fetched.error ? <ErrorNote message={fetched.error} /> : <Loading />;
@@ -193,7 +195,10 @@ function EventBody({ eventId, preloaded }) {
             ...(data.contributions?.length ? [{ key: "points", label: "Ranking points" }] : []),
           ]}
         />
-        <span className="text-sm font-bold text-slate-500">{facts}</span>
+        <span className="flex flex-wrap items-center gap-3">
+          {event.state === "active" && <LiveUpdates updatedAt={preloaded ? updatedAt : fetched.updatedAt} />}
+          <span className="text-sm font-bold text-slate-500">{facts}</span>
+        </span>
       </div>
       {tab === "standings" && <Standings entrants={data.entrants ?? []} />}
       {tab === "matches" && <Matches eventId={eventId} sets={data.sets ?? []} />}
@@ -272,7 +277,7 @@ const groupKind = (group) => (group.type === "round_robin" ? "Round robin" : gro
   : group.sections.some((section) => section.key === "losers") ? "Double elimination" : "Single elimination");
 
 function BracketView({ eventId }) {
-  const bracket = useApi(apiUrl(`/events/${eventId}/bracket`));
+  const bracket = useApi(apiUrl(`/events/${eventId}/bracket`), { refreshMs: LIVE_REFRESH_MS, refreshWhile: (data) => data?.live });
   const [phaseKey, setPhaseKey] = useState(null);
   const [groupKey, setGroupKey] = useState(null);
   const [hovered, setHovered] = useState(null);
@@ -500,7 +505,8 @@ function BracketCard({ set, entrants, hovered, onHover }) {
   const decided = Boolean(set.winnerEntrantId);
   const live = set.state === "active" && set.slots.length === 2 && !decided;
   return (
-    <a href={`/esports/set/${set.id}`} draggable={false} className={`flex h-full flex-col overflow-hidden rounded-lg border bg-white shadow-sm transition hover:border-blue-400 dark:bg-slate-950 ${live ? "border-amber-400 dark:border-amber-500/70" : "border-slate-300 dark:border-slate-700"}`}>
+    <a href={`/esports/set/${set.id}`} draggable={false} className={`relative flex h-full flex-col rounded-lg border bg-white shadow-sm transition hover:border-blue-400 dark:bg-slate-950 ${live ? "border-amber-400 dark:border-amber-500/70" : "border-slate-300 dark:border-slate-700"}`}>
+      {set.stream && <StreamBadge stream={set.stream} className="absolute -top-2 right-1 z-10" />}
       {rows.map((slot, index) => {
         const entrant = slot ? entrants[slot.entrantId] : null;
         const won = Boolean(slot) && set.winnerEntrantId === slot.entrantId;
@@ -637,6 +643,7 @@ function SetCard({ set }) {
         </div>
       ))}
       {slots.length === 1 && <div className="border-t border-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-400 dark:border-slate-800">Bye</div>}
+      {set.stream && <div className="border-t border-slate-100 px-3 py-1.5 dark:border-slate-800"><StreamBadge stream={set.stream} /></div>}
     </a>
   );
 }
