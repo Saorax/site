@@ -1,0 +1,635 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import { highlight } from "../../components/bifrost/highlight.js";
+
+const filters = [
+  { key: "all", label: "All" },
+  { key: "look", label: "Looks" },
+  { key: "play", label: "Legends & moves" },
+  { key: "maps", label: "Maps" },
+  { key: "audio", label: "Audio" },
+  { key: "text", label: "Text" },
+];
+
+const caps = [
+  {
+    c: "look", kind: "Skins", visual: true, title: "Recoloured skins",
+    one: "Copy an existing skin and change its colours.",
+    rows: [
+      ["How", "Copy an existing skin in costumeTypes, give it a new CostumeName, use @id for its IDs and set new colours."],
+      ["In game", "Character select, next to that legend's other skins. You own it right away. Mods > ADDED ITEMS has a preview."],
+      ["Note", "You can't pick IDs yourself. @id takes the next free one, and it comes out the same on every PC with the same mods."],
+    ],
+    file: "sample-skin",
+    code: `{ "copy": "Bear", "set": {
+  "CostumeName": "BHSampleTealbear",
+  "CostumeID": "@id",
+  "CostumeIndex": "@id/OwnerHero",
+  "DisplayNameKey": "BHSample_Tealbear_DisplayName",
+  "Body1_Define": "0x1A8C82" } }`,
+  },
+  {
+    c: "look", kind: "Skins", visual: true, title: "Skins with custom art",
+    one: "New art, weapons, signature effects and sounds. Added as a new skin, the original stays.",
+    rows: [
+      ["How", "An art-only SWF loaded through assets, plus MasterFileList and BoneSources rows. palette makes colour schemes work on it, animationAliases borrows lock-in animations, soundBanks adds its sounds."],
+      ["From a .bmod", "Community .bmod skins can be imported. They become a new skin instead of replacing the original."],
+      ["In game", "Character select, with its weapons and signatures. People who don't have the mod see the skin it was copied from."],
+    ],
+    file: "mod.json (parts)",
+    code: `"assets": { "bones/Bones_MySkin.swf": "bones/Bones_MySkin.swf" },
+"animationAliases": { "MySkin": "Xavier" },
+"soundBanks": [ "audio/MySkin.bnk" ],
+"palette": { "costume": "MySkin",
+  "colours": { "3a7bd5": ["Body1", 0, 0, 0] } }`,
+  },
+  {
+    c: "look", kind: "Colours", visual: true, title: "Colour schemes",
+    one: "Extra colours in the colour picker.",
+    rows: [
+      ["How", "ColorSchemeTypes rows. The in-game Colour editor can write these for you."],
+      ["In game", "The colour picker, for every legend. Bifrost allows up to 1024 colour schemes (the game stops at 160)."],
+      ["Note", "The game is strict about this table. Copy a full existing row and edit that."],
+    ],
+    file: "sample-tables",
+    code: `"ColorSchemeTypes": [
+  "<ColorSchemeType ColorSchemeName=\\"BHSampleTeal\\">
+    <ColorSchemeID>@id</ColorSchemeID>
+    <Body1_Swap>0x37BEAE</Body1_Swap> ...
+  </ColorSchemeType>"
+]`,
+  },
+  {
+    c: "look", kind: "Items", visual: true, title: "Weapon skins, avatars and emotes",
+    one: "Also emojis, sidekicks, KO effects, borders and titles. Each one starts as a copy of a game item.",
+    rows: [
+      ["How", "Rows in weaponSkinTypes, avatarTypes, TauntTypes, EmojiTypes, SpawnBotTypes, TrailEffectTypes, SeasonBorderTypes or MonikerTypes."],
+      ["In game", "The normal loadout and podium pickers, already owned. Added podiums, player themes and companions are owned too."],
+      ["Note", "Emotes, sidekicks, KO effects and borders can go up to ID 1023."],
+    ],
+    file: "sample-items",
+    code: `"weaponSkinTypes": [{ "copy": "HammerJade", "set": {
+  "WeaponSkinName": "HammerBHSampleTeal",
+  "WeaponSkinID": "@id", "DbID": "@id",
+  "Weapon_Define": "0x1A8C82" } }],
+"MonikerTypes": [{ "copy": "Birthday01", "set": {
+  "@MonikerName": "BHSampleTitle", "MonikerID": "@id",
+  "Color": "0x8FE3DA" } }]`,
+  },
+  {
+    c: "play", kind: "Legends", visual: false, title: "New legends",
+    one: "A new playable legend with its own name, stats, stances and default skin.",
+    rows: [
+      ["How", "A HeroTypes row (stats have to add up to 22), a default skin in costumeTypes, ten RuneTypes stance rows, and default weaponSkinTypes for both weapons."],
+      ["In game", "The character select roster."],
+      ["Limits", "For now a new legend uses another legend's animations, weapons, portrait and sounds. tools/check_legend_mod.py runs the game's checks on it before you start the game."],
+    ],
+    file: "sample-legend",
+    code: `"HeroTypes": [{ "copy": "Viking", "set": {
+  "@HeroName": "BHSampleHero", "HeroID": "@id",
+  "HeroDisplayName": "SAMPLE VIKING (MOD)",
+  "Strength": "7", "Dexterity": "5",
+  "Weight": "6", "Speed": "4" } }]`,
+  },
+  {
+    c: "play", kind: "Legends", visual: false, title: "Stats and stances",
+    one: "Change a legend's stance stats, or what a stat point does for everyone.",
+    rows: [
+      ["How", "A stance row in RuneTypes for one legend's stance, or a StatTypes copy for a stat value."],
+      ["Editor", "The Move editor's LEGEND and STAT POINTS tabs do the same and save a mod."],
+      ["In game", "Any match with that legend, and the stance panel in the loadout window."],
+    ],
+    file: "mod.json",
+    code: `"RuneTypes": [ { "stance": "Viking", "index": 0,
+                 "set": { "Strength": "9" } } ],
+"StatTypes": [ { "copy": "Speed5",
+                 "set": { "RunSpeed": "50" } } ]`,
+  },
+  {
+    c: "play", kind: "Moves", visual: false, title: "Moves",
+    one: "Damage, knockback, timing, hitboxes, movement and follow-ups. Around 3,700 moves.",
+    rows: [
+      ["How", "powerTypes rows. Copy a move and set the columns you want to change (there are 184)."],
+      ["Editor", "The Move editor in Training changes moves while you play, shows hitboxes, and saves a mod. There's also a web version on this site."],
+      ["Note", "You can't blank a column. Use 0."],
+    ],
+    file: "mod.json",
+    code: `"powerTypes": [
+  { "copy": "BaseNeutral",
+    "set": { "BaseDamage": "30", "RecoverTime": "6" } }
+]`,
+  },
+  {
+    c: "play", kind: "Modes", visual: false, title: "Game modes",
+    one: "New modes for Couch Party and custom rooms, based on an existing mode's rules.",
+    rows: [
+      ["How", "A ScoringTypes row and a GameModeTypes row, usually copies of an existing mode. You can change lives, score to win, teams, items, timers, maps, icon, name and description."],
+      ["In game", "The mode list in Couch Party and custom rooms."],
+      ["Bots", "Bots know how to play King of the Hill style modes. Other new modes get normal bots."],
+    ],
+    file: "sample-mode: King of the Hill",
+    code: `"ScoringTypes": [{ "copy": "COLORPLATFORMS", "set": {
+  "@ScoringName": "BHKINGOFTHEHILL", "@Enabled": "True",
+  "ScoringID": "@id", "IconName": "a_ScoringIcon_CLIMB" } }],
+"GameModeTypes": [{ "copy": "DefaultColorPlatforms", "set": {
+  "@GameModeName": "BHKingOfTheHill", "GameModeID": "@id",
+  "ScoringType": "BHKINGOFTHEHILL" } }]`,
+  },
+  {
+    c: "play", kind: "Animations", visual: false, title: "Animations",
+    one: "Load an extra animation file after the game's to replace an animation.",
+    rows: [
+      ["How", "A MasterFileList row pointing at an .anm file in your mod folder."],
+      ["Note", "There's no animation editor yet, so this one is harder."],
+    ],
+    file: "sample-anim",
+    code: `"MasterFileList": [
+  "<File Stage=\\"Anim\\" Name=\\"mods/sample-anim/Animation_BHSample.anm\\" ... />"
+]`,
+  },
+  {
+    c: "maps", kind: "Maps", visual: false, title: "New maps",
+    one: "Your own stage with platforms, spawns, kill lines, art, music and bot paths.",
+    rows: [
+      ["How", "A LevelDesc_*.xml layout listed in files, a LevelTypes row, and +Name added to the map lists it should be in."],
+      ["Editor", "The map editor (on this site too) lays it out, checks it, makes the bot paths and exports the mod."],
+      ["Testing", "F8 in the menus reloads map files, so you don't need to restart. The next match on that map uses your changes."],
+    ],
+    file: "sample-map",
+    code: `"tables": {
+  "LevelTypes": [ "<LevelType LevelName=\\"BHSampleFlats\\">
+    <DisplayName>Sample Flats (mod)</DisplayName>
+    <LevelID>@id</LevelID> ...</LevelType>" ],
+  "LevelSetTypes": [ "<LevelSetType LevelSetName=\\"StandardAll\\">
+    <LevelTypes>+BHSampleFlats</LevelTypes></LevelSetType>" ]
+},
+"files": [ "LevelDesc_BHSampleFlats.xml" ]`,
+  },
+  {
+    c: "maps", kind: "Map art", visual: true, title: "Map art",
+    one: "Different art for the game's existing maps. Each player picks what they want per map.",
+    rows: [
+      ["How", "A mapArt block: your art files (at the same paths as the game's), which maps they're for, and thumbnails."],
+      ["In game", "Mods > MAP ART. For each map pick the game's art, a mod's, shuffle (random each time) or mass (every piece random). Thumbnails and loading screens match."],
+      ["Note", "No restart needed to turn it on or off."],
+    ],
+    file: "mod.json",
+    code: `"mapArt": {
+  "files": [ "mapArt/Backgrounds/BG_Sakura.png" ],
+  "maps": { "SmallBrawlhaven": "Sakura Brawlhaven" },
+  "mapTypes": { "SmallBrawlhaven": [ "1v1" ] }
+}`,
+  },
+  {
+    c: "audio", kind: "Music", visual: true, title: "Music",
+    one: "MP3s for the menu, character select, results screen, maps, or any one track.",
+    rows: [
+      ["How", "A music block with your tracks (title and volume are optional) and what they replace. *battle means every map."],
+      ["Tool", "tools/make_music_pack.py makes a music mod from a folder of MP3s."],
+      ["In game", "Mods > AUDIO lists every change and whether it's active. No restart needed."],
+    ],
+    file: "sample-music",
+    code: `"music": {
+  "tracks": {
+    "calm": { "file": "music/quiet-a.mp3", "title": "Calm", "volume": 0.9 },
+    "bright": "music/quiet-b.mp3"
+  },
+  "replaces": { "DefaultUI": "calm", "*battle": "bright" }
+}`,
+  },
+  {
+    c: "audio", kind: "Sounds", visual: true, title: "Sounds",
+    one: "Replace any sound: the announcer, menu sounds, hits, voices, moves.",
+    rows: [
+      ["How", "A sounds block that maps a game sound event to your MP3."],
+      ["Event names", "Set \"soundLog\": true and the game logs every sound it plays. tools/sound_events.py lists them all."],
+      ["Tool", "tools/make_sound_pack.py makes a mod from MP3s named after their events."],
+    ],
+    file: "mod.json",
+    code: `"sounds": {
+  "VO_Announcer_InGame_Brawl_Play": "sounds/brawl.mp3"
+}`,
+  },
+  {
+    c: "text", kind: "Text", visual: true, title: "Text",
+    one: "Change menu text, item names and descriptions, or add text for your own items.",
+    rows: [
+      ["How", "strings, per language, using the game's text keys."],
+      ["In game", "Anywhere the game uses that key."],
+    ],
+    file: "sample-strings",
+    code: `"strings": {
+  "English": {
+    "UI_MainMenu_Offline": "Offline (sample mod)"
+  }
+}`,
+  },
+  {
+    c: "text", kind: "Languages", visual: true, title: "New languages",
+    one: "Add a language to the Language setting.",
+    rows: [
+      ["How", "A LanguageTypes row (copied from an existing language) and strings under the new name."],
+      ["Note", "Fonts and untranslated text come from the language you copied, so stick to characters its fonts have."],
+    ],
+    file: "sample-language: Pirate",
+    code: `"tables": { "LanguageTypes": [ { "copy": "English",
+  "set": { "@LanguageName": "Pirate", "DnaCode": "en-PI" } } ] },
+"strings": { "Pirate": {
+  "UI_MainMenu_Play": "Set Sail", "UI_Back": "Belay" } }`,
+  },
+];
+
+const steps = [
+  ["Make a folder", "Next to Brawlhalla.exe, create mods\\my-first-mod."],
+  ["Add mod.json", "It needs an id, a name and a version, then whatever the mod changes. The example renames a menu button."],
+  ["Start the game", "Mods load when the game starts. The Mods screen shows yours and lets you turn it off."],
+  ["Check the report", "Documents\\Bifrost\\bh-mods.txt says what loaded, what changed, and why anything was skipped."],
+];
+
+const firstMod = `{
+  "id": "my-first-mod",
+  "name": "My first mod",
+  "version": "1.0",
+  "strings": {
+    "English": { "UI_MainMenu_Offline": "Practice" }
+  }
+}`;
+
+const samples = [
+  ["sample-strings", "Text", "Changes the text of the main menu's Offline button."],
+  ["sample-tables", "Colours", "Adds a teal colour scheme and renames Bödvar on character select."],
+  ["sample-language", "Language", "Adds Pirate, a copy of English with menu text reworded."],
+  ["sample-skin", "Skin", "Adds Sample Tealbear, a teal and gold Bödvar skin based on Bear."],
+  ["sample-items", "Items", "Adds a hammer, avatar, emote, emoji, sidekick, KO effect, border and title."],
+  ["sample-legend", "Legend", "Adds Sample Viking: own stats, stances, weapons and a green default skin."],
+  ["sample-map", "Map", "Adds Sample Flats, a small map using the art from Plains of Passage."],
+  ["sample-mode", "Mode", "Adds King of the Hill to Couch Party and custom rooms; the hill moves every 15 seconds."],
+  ["sample-music", "Music", "Replaces the menu and map music. Put your own MP3s in under the same names."],
+  ["sample-anim", "Animation", "Stretches Bödvar's hammer idle. Build its .anm from your own game files first."],
+  ["sample-lone-king", "Code mode", "King of the Hill where the hill scores only while one team holds it alone. Needs a source build."],
+];
+
+const editors = [
+  {
+    title: "Colour editor", where: "Mods > COLOUR EDITOR",
+    points: ["Hue, saturation and brightness for each part (hair, main, second, special, cloth, weapon, hands)", "Edit single shades as RRGGBB", "Preview on any legend and skin, idle or doing an emote or attack", "Start from an existing scheme or import XML"],
+    out: "mods\\my-colors",
+  },
+  {
+    title: "Move editor", where: "Training > Settings > PRACTICE",
+    points: ["The common columns of a move, grouped, or all 184", "Hitboxes shown on the legend, drag to move or resize, step through frames", "Stance stats and stat points", "Changes apply right away in Training"],
+    out: "mods\\my-moves or mods\\moves-<name>",
+  },
+  {
+    title: "Web map editor", where: "Bifrost > Map Editor on this site, or tools/map-editor",
+    points: ["Platforms, collisions, spawns and art, using the same pieces the game's maps use", "Drag the kill box, and all ~40 map settings have help text", "Makes bot paths for you", "A Check tab that finds problems and fixes most of them"],
+    out: "<id>.zip, unzip it and press F8",
+  },
+];
+
+const tools = [
+  ["tools/preview_content_mod.py", "Applies your mods to the game's tables and prints what the game will do, before you start it."],
+  ["tools/check_legend_mod.py", "Runs the game's own legend, skin and stance checks on a legend mod."],
+  ["tools/bmod_import.py", "Turns a community .bmod skin, weapon skin, avatar or map art into a mod that adds a new item."],
+  ["tools/make_music_pack.py", "A folder of MP3s into a music mod (menu, character select, maps, victory)."],
+  ["tools/make_sound_pack.py", "MP3s named after sound events into a sounds mod."],
+  ["tools/sound_events.py", "Lists every sound event name the game has."],
+  ["tools/map-editor", "The web map editor."],
+];
+
+const fields = [
+  ["id, name, version", "Required. The id is what makes a mod unique: letters, digits, dot, dash, underscore."],
+  ["author, description, preview", "Shown in the Mods screen. preview is a PNG or JPG in the folder."],
+  ["requires", "Mod ids that must load first."],
+  ["tables", "Add or change rows of any game data table."],
+  ["strings", "Text, per language."],
+  ["files", "XML files such as map layouts."],
+  ["assets", "The game reads your file instead of one of its own."],
+  ["palette", "Shade-preserving colour schemes for a skin with its own art."],
+  ["animationAliases", "Share another skin's lock-in and select animations."],
+  ["soundBanks", "Wwise sound banks in the mod folder."],
+  ["mapArt, music, sounds", "Art for existing maps, tracks, sound effects."],
+];
+
+const forms = [
+  ["\"<Row ...>...</Row>\"", "An XML row in the game's own format. Same name as a game row: changes it. New name: adds it."],
+  ["\"a,b,c\"", "A CSV line in the table's column order."],
+  ["{ \"copy\": \"Name\", \"set\": {...} }", "Copy a game row and change only what you name. A new name makes a new row."],
+  ["{ \"add\": \"...\" }", "Added as it is, for tables whose rows have no name."],
+  ["{ \"stance\": \"Hero\", \"index\": n, \"set\": {...} }", "Change one stance of one legend."],
+  ["@id  ·  @id/Group", "The next free ID, or the next free number within a group (a legend's skin slot)."],
+  ["+Name", "Add to a list instead of replacing it, such as a map set."],
+  ["@none", "Empty a cell in a copied row."],
+];
+
+const report = [
+  ["loaded", "The mod loaded."],
+  ["skipped <why>", "A missing or broken mod.json, a missing field, an id already used, or a missing requirement."],
+  ["off", "Switched off in the Mods screen."],
+  ["conflict", "Two mods change the same thing; the later one in load order wins."],
+  ["row added / row changed", "Every table row your mod touched."],
+  ["renamed", "Two mods added an item with the same name, so the later one was renamed."],
+];
+
+const settings = [
+  ["disabled", "Mods you switched off in the Mods screen."],
+  ["mapArt", "Your art choice per map: default, a mod, shuffle or mass."],
+  ["soundLog", "true logs every sound event to Documents\\Bifrost\\bh-sounds.txt."],
+  ["shareMods", "false never offers to send your mods to a room."],
+  ["hillBots", "false turns off the hill-holding bots in King of the Hill style modes."],
+];
+
+const heroCode = `{
+  "id": "sample-skin",
+  "name": "Sample skin",
+  "version": "1.0",
+  "tables": {
+    "costumeTypes": [{
+      "copy": "Bear",
+      "set": {
+        "CostumeName": "BHSampleTealbear",
+        "CostumeID": "@id",
+        "CostumeIndex": "@id/OwnerHero",
+        "Body1_Define": "0x1A8C82",
+        "Special_Define": "0xD4A017"
+      }
+    }]
+  },
+  "strings": { "English": { "BHSample_Tealbear_DisplayName": "Tealbear" } }
+}`;
+
+const card = "rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900";
+const label = "text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400";
+const pre = "overflow-x-auto rounded-xl bg-slate-950 p-4 text-[13px] leading-relaxed text-slate-200 ring-1 ring-slate-800";
+---
+
+<Layout title="Bifrost Mod Kit">
+  <div class="mx-auto max-w-7xl px-3 py-6 sm:px-4 lg:px-6">
+
+    <section class="grid items-center gap-6 lg:grid-cols-[1.05fr_1fr]">
+      <div class="grid gap-4">
+                <h1 class="text-4xl font-black tracking-tight sm:text-5xl">Bifrost Mod Kit</h1>
+        <p class="max-w-2xl text-lg text-slate-600 dark:text-slate-300">Bifrost mods are folders in the game's <code class="rounded bg-slate-200 px-1 text-base dark:bg-slate-800">mods</code> folder. Each one has a <code class="rounded bg-slate-200 px-1 text-base dark:bg-slate-800">mod.json</code> that lists what it adds or changes: game data rows, text, art, music or sounds. They load when the game starts. Below is what you can change, with examples from the sample mods.</p>
+        <div class="flex flex-wrap gap-2 text-sm font-black">
+          <a href="#start" class="rounded-xl bg-blue-500 px-4 py-2 text-white hover:bg-blue-600">Getting started</a>
+          <a href="#catalogue" class="rounded-xl border border-slate-300 px-4 py-2 hover:border-blue-400 hover:text-blue-500 dark:border-slate-700">What you can change</a>
+          <a href="https://github.com/Saorax/bifrost" class="rounded-xl border border-slate-300 px-4 py-2 hover:border-blue-400 hover:text-blue-500 dark:border-slate-700">Bifrost on GitHub</a>
+        </div>
+      </div>
+      <div class="min-w-0">
+        <p class={`${label} mb-2`}>mods\sample-skin\mod.json</p>
+        <pre class={pre}><code set:html={highlight(heroCode)} /></pre>
+      </div>
+    </section>
+
+    <section id="start" class="mt-10 grid gap-4">
+      <div>
+        <h2 class="text-3xl font-black">Getting started</h2>
+      </div>
+      <div class="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+        <ol class="grid gap-3 sm:grid-cols-2">
+          {steps.map(([t, b], i) => (
+            <li class={`${card} grid gap-1 p-4`}>
+              <span class="text-3xl font-black text-blue-500">{i + 1}</span>
+              <p class="font-black">{t}</p>
+              <p class="text-sm text-slate-600 dark:text-slate-300">{b}</p>
+            </li>
+          ))}
+        </ol>
+        <div class="min-w-0">
+          <p class={`${label} mb-2`}>mods\my-first-mod\mod.json</p>
+          <pre class={pre}><code set:html={highlight(firstMod)} /></pre>
+          <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">After a restart, the Offline button on the main menu says "Practice".</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="catalogue" class="mt-10 grid gap-4">
+      <div class="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 class="text-3xl font-black">What you can change</h2>
+        </div>
+        <p class="max-w-2xl text-sm text-slate-600 dark:text-slate-300">Click a card for details and an example. <b class="text-emerald-600 dark:text-emerald-400">Visual</b> mods are fine online. <b class="text-amber-600 dark:text-amber-400">Gameplay</b> mods only work offline and in custom rooms where everyone has the same mods.</p>
+      </div>
+      <div class="flex flex-wrap gap-2" role="group" aria-label="Filter the catalogue">
+        {filters.map((f, i) => (
+          <button type="button" data-kit-filter={f.key} aria-pressed={i === 0 ? "true" : "false"}
+            class="rounded-xl border border-slate-300 px-3 py-1.5 text-sm font-black text-slate-700 transition hover:border-blue-400 aria-pressed:border-blue-500 aria-pressed:bg-blue-500 aria-pressed:text-white dark:border-slate-700 dark:text-slate-200">{f.label}</button>
+        ))}
+      </div>
+      <div class="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {caps.map((cap) => (
+          <details data-kit-card={cap.c} class={`${card} group open:col-span-full open:border-blue-500`}>
+            <summary class="grid cursor-pointer list-none gap-1.5 p-4 marker:hidden">
+              <span class="flex items-center justify-between gap-2">
+                <span class={label}>{cap.kind}</span>
+                <span class:list={["rounded-full px-2.5 py-0.5 text-xs font-black uppercase", cap.visual ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-amber-500/15 text-amber-700 dark:text-amber-400"]}>{cap.visual ? "Visual" : "Gameplay"}</span>
+              </span>
+              <span class="text-xl font-black">{cap.title}</span>
+              <span class="text-sm text-slate-600 dark:text-slate-300">{cap.one}</span>
+              <span class="text-xs font-black uppercase tracking-wider text-blue-500 group-open:hidden">Details</span>
+            </summary>
+            <div class="grid gap-4 px-4 pb-4 lg:grid-cols-[1fr_1.15fr]">
+              <dl class="grid content-start gap-3">
+                {cap.rows.map(([k, v]) => (
+                  <div>
+                    <dt class="text-xs font-black uppercase tracking-wider text-blue-500">{k}</dt>
+                    <dd class="text-sm">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+              <div class="min-w-0">
+                <p class={`${label} mb-2`}>{cap.file}</p>
+                <pre class={pre}><code set:html={highlight(cap.code)} /></pre>
+              </div>
+            </div>
+          </details>
+        ))}
+      </div>
+      <p class="text-sm text-slate-600 dark:text-slate-300">Other data tables work the same way (map lists, custom game types, music, effect swaps and so on).</p>
+    </section>
+
+    <section class="mt-10 grid gap-4">
+      <div>
+        <h2 class="text-3xl font-black">Example mods</h2>
+        <p class="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-300">These come with Bifrost in <code>examples/mods</code>. Copying one into your <code>mods</code> folder is a good way to start.</p>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {samples.map(([name, kind, about]) => (
+          <div class={`${card} grid gap-1 p-4`}>
+            <span class="flex items-center justify-between gap-2">
+              <code class="font-bold text-blue-500">{name}</code>
+              <span class={label}>{kind}</span>
+            </span>
+            <p class="text-sm text-slate-600 dark:text-slate-300">{about}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <section class="mt-10 grid gap-4">
+      <div>
+        <h2 class="text-3xl font-black">Editors and tools</h2>
+        <p class="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-300">The editors save normal mod folders, so you can turn them off or share them like any other mod.</p>
+      </div>
+      <div class="grid gap-3 md:grid-cols-3">
+        {editors.map((e) => (
+          <div class={`${card} grid content-start gap-2 p-4`}>
+            <p class="text-xl font-black">{e.title}</p>
+            <p class="text-sm font-bold text-slate-500 dark:text-slate-400">{e.where}</p>
+            <ul class="grid list-disc gap-1 pl-5 text-sm">{e.points.map((p) => <li>{p}</li>)}</ul>
+            <p class="font-mono text-xs text-blue-500">→ {e.out}</p>
+          </div>
+        ))}
+      </div>
+      <div class={`${card} overflow-x-auto`}>
+        <table class="w-full text-left text-sm">
+          <thead><tr class={label}><th class="px-4 py-3">Creator tool</th><th class="px-4 py-3">What it does</th></tr></thead>
+          <tbody>
+            {tools.map(([t, d]) => (
+              <tr class="border-t border-slate-200 dark:border-slate-800"><td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-blue-500">{t}</td><td class="px-4 py-2">{d}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p class="text-sm text-slate-600 dark:text-slate-300">The Python tools are in Bifrost's source code. They read the game data from your own install.</p>
+    </section>
+
+    <section class="mt-10 grid gap-4">
+      <div>
+        <h2 class="text-3xl font-black">mod.json reference</h2>
+        <p class="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-300">Mods load in a fixed order, requirements first and then by id, so the same mods give the same result on every PC.</p>
+      </div>
+      <div class="grid gap-4 lg:grid-cols-2">
+        <div class={`${card} overflow-x-auto`}>
+          <table class="w-full text-left text-sm">
+            <thead><tr class={label}><th class="px-4 py-3">Field</th><th class="px-4 py-3">Does</th></tr></thead>
+            <tbody>
+              {fields.map(([f, d]) => (
+                <tr class="border-t border-slate-200 dark:border-slate-800"><td class="px-4 py-2 font-mono text-xs text-blue-500">{f}</td><td class="px-4 py-2">{d}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div class={`${card} overflow-x-auto`}>
+          <table class="w-full text-left text-sm">
+            <thead><tr class={label}><th class="px-4 py-3">In a table</th><th class="px-4 py-3">Means</th></tr></thead>
+            <tbody>
+              {forms.map(([f, d]) => (
+                <tr class="border-t border-slate-200 dark:border-slate-800"><td class="px-4 py-2 font-mono text-xs text-blue-500">{f}</td><td class="px-4 py-2">{d}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="mt-10 grid gap-4 lg:grid-cols-2">
+      <div class="grid content-start gap-3">
+        <div>
+          <h2 class="text-3xl font-black">Load report</h2>
+          <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Each start writes <code>Documents\Bifrost\bh-mods.txt</code>. Lines start with one of these.</p>
+        </div>
+        <div class={`${card} overflow-x-auto`}>
+          <table class="w-full text-left text-sm">
+            <tbody>
+              {report.map(([k, d], i) => (
+                <tr class:list={[i > 0 && "border-t border-slate-200 dark:border-slate-800"]}><td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-blue-500">{k}</td><td class="px-4 py-2">{d}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p class="text-sm text-slate-600 dark:text-slate-300">If the game stops while loading, a row probably failed one of the game's checks: a missing field, stats that don't add up to 22, a legend with fewer than ten stances, or a map with no background or bot paths. Copying full rows and running the checker tools catches most of these.</p>
+      </div>
+      <div class="grid content-start gap-3">
+        <div>
+          <h2 class="text-3xl font-black">Mod settings</h2>
+          <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">In <code>Documents\Bifrost\bh-mod-settings.json</code>. Most of these are set from the Mods screen.</p>
+        </div>
+        <div class={`${card} overflow-x-auto`}>
+          <table class="w-full text-left text-sm">
+            <tbody>
+              {settings.map(([k, d], i) => (
+                <tr class:list={[i > 0 && "border-t border-slate-200 dark:border-slate-800"]}><td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-blue-500">{k}</td><td class="px-4 py-2">{d}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="mt-10 grid gap-4">
+      <div>
+        <h2 class="text-3xl font-black">Sharing mods</h2>
+        <p class="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-300">Bifrost servers have a mod library. Mods are only uploaded when you send them, and public ones have to be approved by the server's reviewers first.</p>
+      </div>
+      <ol class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {[["Upload", "Send a mod from the Mods screen, private or public. You need to be signed in with Discord."],
+          ["Share key", "Each upload gets a key like ABCD-2345. Anyone with the key can install it."],
+          ["Review", "Public mods wait until a reviewer tries them and approves or rejects them."],
+          ["Community tab", "Approved mods show up for everyone, sorted by likes and downloads."],
+          ["Updates", "People who got it from the Community tab get new versions automatically."]].map(([t, b], i) => (
+          <li class={`${card} grid content-start gap-1 p-4`}>
+            <span class="text-3xl font-black text-blue-500">{i + 1}</span>
+            <p class="font-black">{t}</p>
+            <p class="text-sm text-slate-600 dark:text-slate-300">{b}</p>
+          </li>
+        ))}
+      </ol>
+      <p class="text-sm text-slate-600 dark:text-slate-300">Servers only accept data, images, audio and art-only SWFs (no code). Limits: 64 MB per mod, 30 mods or 512 MB per account.</p>
+    </section>
+
+    <section class="mt-10 grid gap-4">
+      <div>
+        <h2 class="text-3xl font-black">Mods online</h2>
+      </div>
+      <div class="grid gap-3 md:grid-cols-2">
+        <div class={`${card} grid content-start gap-2 p-4`}>
+          <p class="flex flex-wrap items-center gap-2 text-xl font-black"><span class="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs uppercase text-emerald-600 dark:text-emerald-400">Visual</span>Fine anywhere</p>
+          <ul class="grid list-disc gap-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+            <li>Skins, colours, weapon skins, avatars, emotes, emojis, sidekicks, borders, KO effects, titles</li>
+            <li>Text, languages, map art, music and sounds</li>
+            <li>Other players see your item if they have the mod, otherwise the game item it was copied from</li>
+          </ul>
+        </div>
+        <div class={`${card} grid content-start gap-2 p-4`}>
+          <p class="flex flex-wrap items-center gap-2 text-xl font-black"><span class="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs uppercase text-amber-700 dark:text-amber-400">Gameplay</span>Custom rooms</p>
+          <ul class="grid list-disc gap-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+            <li>Legends, stats, moves, game modes, maps, animations, any other table</li>
+            <li>Blocked in casual and ranked queues</li>
+            <li>In custom rooms everyone needs the same gameplay mods. The host can send theirs to the room</li>
+            <li>Shared replays remember their mods and offer to download them</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="mt-10 grid gap-4 pb-6">
+      <div>
+        <h2 class="text-3xl font-black">Limits</h2>
+      </div>
+      <ul class="grid gap-2 md:grid-cols-2">
+        {[["New mods need a restart.", "Map art, music and sounds don't, and F8 reloads map files."],
+          ["IDs are picked for you.", "Use @id and every PC gets the same number."],
+          ["When two mods change the same thing,", "the one that loads later wins. The report lists these."],
+          ["New legends reuse existing art.", "Animations, weapons, portrait and sounds come from the legend you copied."],
+          ["Music has to be MP3.", "The welcome announcer line can't be replaced."],
+          ["Mods can't contain code.", "New screens or new game rules need changes to Bifrost itself."],
+          ["Only in Bifrost.", "The Official client doesn't support mods."],
+          ["Mod items are unlocked.", "Anything a mod adds is owned as soon as it loads."]].map(([a, b]) => (
+          <li class={`${card} p-3 text-sm`}><b>{a}</b> <span class="text-slate-600 dark:text-slate-300">{b}</span></li>
+        ))}
+      </ul>
+    </section>
+  </div>
+
+  <script>
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-kit-filter]"));
+    const cards = Array.from(document.querySelectorAll<HTMLDetailsElement>("[data-kit-card]"));
+    function show(filter: string) {
+      buttons.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.kitFilter === filter)));
+      cards.forEach((c) => (c.hidden = !(filter === "all" || c.dataset.kitCard === filter)));
+    }
+    buttons.forEach((b) => b.addEventListener("click", () => show(b.dataset.kitFilter ?? "all")));
+  </script>
+</Layout>

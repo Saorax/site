@@ -1,0 +1,272 @@
+[
+ {
+  "name": "TIMING (frames of 16 ms)",
+  "cols": [
+   {
+    "col": "CastTime",
+    "label": "Cast time",
+    "step": 0,
+    "help": "The move's timing: wind-up and active frames of each hit."
+   },
+   {
+    "col": "FixedRecoverTime",
+    "label": "Fixed recovery",
+    "step": 1,
+    "help": "Frames the legend can't act after the move, whatever happened."
+   },
+   {
+    "col": "RecoverTime",
+    "label": "Recovery",
+    "step": 1,
+    "help": "Frames of recovery after the move."
+   },
+   {
+    "col": "CooldownTime",
+    "label": "Cooldown",
+    "step": 1,
+    "help": "Frames before this move can be used again."
+   },
+   {
+    "col": "OnHitCooldownTime",
+    "label": "Cooldown on hit",
+    "step": 1,
+    "help": "Cooldown when the move hit."
+   },
+   {
+    "col": "FixedStunTime",
+    "label": "Stun",
+    "step": 1,
+    "help": "Frames of hitstun the hit gives (as Training's frame data shows it)."
+   },
+   {
+    "col": "MinCancelTime",
+    "label": "Earliest cancel",
+    "step": 1,
+    "help": "Frames before the move can be cancelled."
+   },
+   {
+    "col": "GCancelTime",
+    "label": "Gravity cancel time",
+    "step": 1,
+    "help": "Frames during which a gravity cancel is possible."
+   },
+   {
+    "col": "AntigravTime",
+    "label": "No-gravity time",
+    "step": 1,
+    "help": "Frames the legend floats while using it."
+   },
+   {
+    "col": "FixedMinChargeTime",
+    "label": "Minimum charge",
+    "step": 1,
+    "help": "Frames a charged move charges at least."
+   }
+  ]
+ },
+ {
+  "name": "HIT",
+  "cols": [
+   {
+    "col": "BaseDamage",
+    "label": "Damage",
+    "step": 1,
+    "help": "Damage of each hit (one value, or one per hit with \",\")."
+   },
+   {
+    "col": "VariableImpulse",
+    "label": "Knockback (grows)",
+    "step": 1,
+    "help": "Knockback that grows with the target's damage."
+   },
+   {
+    "col": "FixedImpulse",
+    "label": "Knockback (fixed)",
+    "step": 1,
+    "help": "Knockback that doesn't depend on damage."
+   },
+   {
+    "col": "MinimumImpulse",
+    "label": "Minimum knockback",
+    "step": 1,
+    "help": "The least knockback a hit gives."
+   },
+   {
+    "col": "ImpulseOffsetX",
+    "label": "Knockback direction X",
+    "step": 5,
+    "help": "Direction of the knockback, sideways part."
+   },
+   {
+    "col": "ImpulseOffsetY",
+    "label": "Knockback direction Y",
+    "step": 5,
+    "help": "Direction of the knockback, up/down part (negative is up)."
+   },
+   {
+    "col": "DIMaxAngle",
+    "label": "Most DI",
+    "step": 5,
+    "help": "How far (degrees) the target can steer the knockback."
+   },
+   {
+    "col": "IsMultihit",
+    "label": "Hits several times",
+    "step": -1,
+    "help": "The move can hit the same target more than once."
+   },
+   {
+    "col": "MinTimeBetweenHits",
+    "label": "Time between hits",
+    "step": 1,
+    "help": "For multi-hit moves: frames between two hits."
+   }
+  ]
+ },
+ {
+  "name": "HITBOX (game units)",
+  "cols": [
+   {
+    "col": "AoERadiusX",
+    "label": "Width",
+    "step": 5,
+    "help": "Hitbox width per hit (\"49&25\": a capsule of 49 and 25; \",\" between hits)."
+   },
+   {
+    "col": "AoERadiusY",
+    "label": "Height",
+    "step": 5,
+    "help": "Hitbox height per hit."
+   },
+   {
+    "col": "CenterOffsetX",
+    "label": "Offset X",
+    "step": 5,
+    "help": "Where the hitbox sits in front of the legend, per hit."
+   },
+   {
+    "col": "CenterOffsetY",
+    "label": "Offset Y",
+    "step": 5,
+    "help": "Where the hitbox sits up/down (negative is up), per hit."
+   },
+   {
+    "col": "TargetMethod",
+    "label": "Shape",
+    "step": 0,
+    "help": "How the hitbox is checked (PBAoE: around the legend; others follow the art)."
+   }
+  ]
+ },
+ {
+  "name": "MOVEMENT",
+  "cols": [
+   {
+    "col": "CastImpulseX",
+    "label": "Push at start X",
+    "step": 5,
+    "help": "Speed given when the move starts, sideways."
+   },
+   {
+    "col": "CastImpulseY",
+    "label": "Push at start Y",
+    "step": 5,
+    "help": "Speed given when the move starts, up/down (negative is up)."
+   },
+   {
+    "col": "FireImpulseX",
+    "label": "Push on each hit X",
+    "step": 5,
+    "help": "Speed given at each active part (\"50~5\": 50, then 5 per frame)."
+   },
+   {
+    "col": "FireImpulseY",
+    "label": "Push on each hit Y",
+    "step": 5,
+    "help": "Speed given at each active part, up/down."
+   },
+   {
+    "col": "SelfImpulseOnHit",
+    "label": "Push when it hits",
+    "step": 0,
+    "help": "Speed the legend gets when the move hits."
+   },
+   {
+    "col": "CancelGravity",
+    "label": "No gravity",
+    "step": -1,
+    "help": "Gravity off during the move."
+   },
+   {
+    "col": "AllowMove",
+    "label": "Can steer",
+    "step": -1,
+    "help": "The legend can move while using it."
+   },
+   {
+    "col": "SpeedLimit",
+    "label": "Speed limit",
+    "step": 1,
+    "help": "Top speed while using it."
+   }
+  ]
+ },
+ {
+  "name": "FOLLOW-UPS (move names)",
+  "cols": [
+   {
+    "col": "ComboName",
+    "label": "Next move",
+    "step": 0,
+    "help": "The move that follows this one (a combo's next part)."
+   },
+   {
+    "col": "ComboOverrideIfHit",
+    "label": "Next move if it hit",
+    "step": 0,
+    "help": "The move that follows when this one hit."
+   },
+   {
+    "col": "ComboOverrideIfRelease",
+    "label": "Next move on release",
+    "step": 0,
+    "help": "The move that follows when the button is let go."
+   },
+   {
+    "col": "ComboOverrideIfButton",
+    "label": "Next move on a press",
+    "step": 0,
+    "help": "The move that follows when the button is pressed again."
+   },
+   {
+    "col": "ComboOverrideIfWall",
+    "label": "Next move at a wall",
+    "step": 0,
+    "help": "The move that follows at a wall."
+   }
+  ]
+ },
+ {
+  "name": "LOOK AND SOUND",
+  "cols": [
+   {
+    "col": "CastAnim",
+    "label": "Animation",
+    "step": 0,
+    "help": "The legend's animation for the move."
+   },
+   {
+    "col": "CastSoundEvent",
+    "label": "Sound at start",
+    "step": 0,
+    "help": "The sound played when it starts."
+   },
+   {
+    "col": "HitSoundEvent",
+    "label": "Sound on hit",
+    "step": 0,
+    "help": "The sound played when it hits."
+   }
+  ]
+ }
+]
