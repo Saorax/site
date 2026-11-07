@@ -1,4 +1,7 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { host } from "../../stuff";
+import { mapName, useLegendNames } from "./MatchPages";
 import {
   apiUrl, Avatar, Badge, Card, date, Empty, ErrorNote, LIVE_REFRESH_MS, LiveUpdates, Loading, modeName, number, ordinal, PageShell,
   Pagination, points, ProviderLink, regionName, SearchInput, Select, StreamBadge, Tabs, useApi, useDebounced, useQueryState,
@@ -297,8 +300,11 @@ const entrantLabel = (entrant) => {
 const groupKind = (group) => (group.type === "round_robin" ? "Round robin" : group.type === "swiss" ? "Swiss"
   : group.sections.some((section) => section.key === "losers") ? "Double elimination" : "Single elimination");
 
+const LegendNames = createContext((code) => code);
+
 function BracketView({ eventId }) {
   const bracket = useApi(apiUrl(`/events/${eventId}/bracket`), { refreshMs: LIVE_REFRESH_MS, refreshWhile: (data) => data?.live });
+  const legendName = useLegendNames();
   const [phaseKey, setPhaseKey] = useState(null);
   const [groupKey, setGroupKey] = useState(null);
   const [hovered, setHovered] = useState(null);
@@ -311,6 +317,7 @@ function BracketView({ eventId }) {
   const jump = (link) => { setPhaseKey(link.phaseKey); setGroupKey(link.groupKey); };
 
   return (
+    <LegendNames.Provider value={legendName}>
     <div className="grid gap-3">
       {data.phases.length > 1 && (
         <Tabs
@@ -350,6 +357,7 @@ function BracketView({ eventId }) {
           : <PoolView group={group} entrants={data.entrants} hovered={hovered} onHover={setHovered} onJump={jump} />}
       </Card>
     </div>
+    </LegendNames.Provider>
   );
 }
 
@@ -544,12 +552,95 @@ function slotResult(slot, decided, won) {
   return decided ? (won ? "W" : "L") : "";
 }
 
+function GamesPeek({ set, entrants, rect }) {
+  const legendName = useContext(LegendNames);
+  const width = 320;
+  const left = rect.right + 8 + width <= window.innerWidth ? rect.right + 8 : Math.max(8, rect.left - 8 - width);
+  const vertical = rect.top > window.innerHeight / 2 ? { bottom: Math.max(8, window.innerHeight - rect.bottom) } : { top: Math.max(8, rect.top) };
+  const slots = [set.slots[0] ?? null, set.slots[1] ?? null];
+  const side = (game, index) => {
+    const slot = slots[index];
+    const picks = slot ? game.picks.filter((pick) => pick.entrantId === slot.entrantId) : [];
+    const won = Boolean(slot) && game.winnerEntrantId === slot.entrantId;
+    const lost = Boolean(slot) && game.winnerEntrantId != null && !won;
+    return (
+      <div className={`flex min-w-0 items-center gap-1 ${index ? "flex-row-reverse" : ""}`}>
+        {(won || lost) && <span className={`w-4 shrink-0 text-center text-xs font-black ${won ? "text-emerald-500" : "text-rose-500"}`}>{won ? "W" : "L"}</span>}
+        {picks.map((pick, position) => (
+          <img
+            key={`${pick.legend}:${position}`}
+            src={`${host}/game/legends/art/${encodeURIComponent(pick.legend)}`}
+            alt={legendName(pick.legend)}
+            title={legendName(pick.legend)}
+            className={`h-8 w-8 shrink-0 rounded-md bg-slate-200 object-cover dark:bg-slate-800 ${lost ? "opacity-50" : ""}`}
+          />
+        ))}
+      </div>
+    );
+  };
+  return createPortal(
+    <div className="pointer-events-none fixed z-50 rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900" style={{ left, width, ...vertical }}>
+      <div className="mb-2 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 text-xs font-black text-slate-900 dark:text-white">
+        <span className="truncate">{entrantLabel(entrants[slots[0]?.entrantId])}</span>
+        <span className="tabular-nums text-slate-500">{slotResult(slots[0], Boolean(set.winnerEntrantId), set.winnerEntrantId === slots[0]?.entrantId)} – {slotResult(slots[1], Boolean(set.winnerEntrantId), set.winnerEntrantId === slots[1]?.entrantId)}</span>
+        <span className="truncate text-right">{entrantLabel(entrants[slots[1]?.entrantId])}</span>
+      </div>
+      <div className="grid gap-1.5">
+        {set.games.map((game) => (
+          <div key={game.number} className="grid grid-cols-[minmax(0,1fr)_5rem_minmax(0,1fr)] items-center gap-2 rounded-lg bg-slate-50 p-1.5 dark:bg-slate-800/60">
+            {side(game, 0)}
+            <div className="flex min-w-0 flex-col items-center gap-0.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Game {game.number}</span>
+              {game.map && (
+                <img
+                  src={`${host}/game/maps/thumbnail/${encodeURIComponent(game.map)}`}
+                  alt=""
+                  onError={(event) => { event.currentTarget.style.display = "none"; }}
+                  className="h-8 w-14 rounded bg-slate-200 object-cover dark:bg-slate-800"
+                />
+              )}
+              {game.map && <span className="max-w-full truncate text-[10px] font-bold text-slate-500" title={mapName(game.map)}>{mapName(game.map)}</span>}
+            </div>
+            {side(game, 1)}
+          </div>
+        ))}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function useGamesPeek(set) {
+  const ref = useRef(null);
+  const timer = useRef(null);
+  const [rect, setRect] = useState(null);
+  const close = () => { clearTimeout(timer.current); setRect(null); };
+  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    if (!rect) return undefined;
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("pointerdown", close, true);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("pointerdown", close, true);
+    };
+  }, [rect]);
+  const open = () => {
+    if (!set.games?.length) return;
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => { if (ref.current) setRect(ref.current.getBoundingClientRect()); }, 200);
+  };
+  return { ref, rect, open, close };
+}
+
 function BracketCard({ set, entrants, hovered, onHover }) {
   const rows = [set.slots[0] ?? null, set.slots[1] ?? null];
   const decided = Boolean(set.winnerEntrantId);
   const live = set.state === "active" && set.slots.length === 2 && !decided;
+  const peek = useGamesPeek(set);
   return (
-    <a href={`/esports/set/${set.id}`} draggable={false} className={`relative flex h-full flex-col rounded-lg border bg-white shadow-sm transition hover:border-blue-400 dark:bg-slate-950 ${live ? "border-amber-400 dark:border-amber-500/70" : "border-slate-300 dark:border-slate-700"}`}>
+    <a ref={peek.ref} onMouseEnter={peek.open} onMouseLeave={peek.close} href={`/esports/set/${set.id}`} draggable={false} className={`relative flex h-full flex-col rounded-lg border bg-white shadow-sm transition hover:border-blue-400 dark:bg-slate-950 ${live ? "border-amber-400 dark:border-amber-500/70" : "border-slate-300 dark:border-slate-700"}`}>
+      {peek.rect && <GamesPeek set={set} entrants={entrants} rect={peek.rect} />}
       {set.stream && <StreamBadge stream={set.stream} className="absolute -top-2 right-1 z-10" />}
       {rows.map((slot, index) => {
         const entrant = slot ? entrants[slot.entrantId] : null;
