@@ -641,7 +641,7 @@ function OpponentDetail({ playerId, playerName, opponent }) {
             {opponent.prefix && <div className="text-sm font-bold text-slate-500">{opponent.prefix}</div>}
             <a href={`/esports/player/id/${opponent.player_id}`} className="text-3xl font-black text-slate-950 hover:text-blue-500 dark:text-white">{opponent.display_name}</a>
             <div className="text-xs font-bold text-slate-500">
-              {playerName} vs {opponent.display_name} · <a href={`/esports/head-to-head?a=${playerId}&b=${opponent.player_id}`} className="text-blue-600 hover:underline dark:text-blue-300">Full head-to-head →</a>
+              {playerName} vs {opponent.display_name}
             </div>
           </div>
           {summary && (
@@ -655,7 +655,7 @@ function OpponentDetail({ playerId, playerName, opponent }) {
       <div className="border-b border-slate-200 p-3 dark:border-slate-800">
         <Tabs value={view} onChange={setView} tabs={[
           { key: "legends", label: "Legend Data" }, { key: "maps", label: "Stage Data" },
-          { key: "events", label: "Events", count: data?.events.length }, { key: "sets", label: "Sets", count: data?.sets.length },
+          { key: "h2h", label: "Head to Head" }, { key: "sets", label: "Sets", count: data?.sets.length },
         ]} />
       </div>
       {detail.error && <div className="p-4"><ErrorNote message={detail.error} /></div>}
@@ -682,20 +682,7 @@ function OpponentDetail({ playerId, playerName, opponent }) {
             </div>
           )}
           {view === "maps" && <UsageGrid title="Stages played" rows={summary.maps} kind="map" empty="No stages reported" />}
-          {view === "events" && (
-            <div className="grid gap-2 lg:grid-cols-2">
-              {data.events.map((event) => (
-                <a key={event.eventId} href={`/esports/event/${event.eventId}`} className="flex items-center gap-3 rounded-xl border border-slate-200 p-2 hover:border-blue-400 dark:border-slate-800">
-                  <EventImage src={event.image} name={event.tournamentName} />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-black text-slate-950 dark:text-white">{event.tournamentName}</div>
-                    <div className="truncate text-xs font-semibold text-slate-500">{event.eventName} · {modeName(event.gameMode)} · {date(event.lastAt)}</div>
-                  </div>
-                  <span className="font-black tabular-nums"><span className="text-emerald-500">{event.wins}</span>–<span className="text-rose-500">{event.losses}</span></span>
-                </a>
-              ))}
-            </div>
-          )}
+          {view === "h2h" && <HeadToHead data={data} playerName={playerName} opponentName={opponent.display_name} />}
           {view === "sets" && (
             <div className="grid gap-2">
               {data.sets.map((set) => (
@@ -709,6 +696,188 @@ function OpponentDetail({ playerId, playerName, opponent }) {
   );
 }
 
+
+const streakLabel = (streak) => (streak ? `${streak.won ? "W" : "L"}${streak.count}` : "–");
+
+const roundLabel = (name) => {
+  const raw = String(name ?? "").trim();
+  if (!raw) return "Match";
+  if (/^grand finals?\s*-\s*finals?$/i.test(raw)) return "Grand Final";
+  const title = raw.replace(/^(upper bracket|lower bracket|single elimination)\s*-\s*/i, "");
+  return title
+    .replace(/^upper\s/i, "Winners ").replace(/^lower\s/i, "Losers ")
+    .replace(/quarter[\s-]*finals?$/i, "Quarter-Final").replace(/semi[\s-]*finals?$/i, "Semi-Final").replace(/(^|\s)finals$/i, "$1Final");
+};
+
+function headToHeadStats(data) {
+  const decided = data.sets.filter((set) => set.won !== null)
+    .sort((left, right) => String(left.at ?? "").localeCompare(String(right.at ?? "")) || (left.setOrder ?? 0) - (right.setOrder ?? 0));
+  const runs = [];
+  for (const set of decided) {
+    const last = runs[runs.length - 1];
+    if (last && last.won === set.won) last.count++;
+    else runs.push({ won: set.won, count: 1 });
+  }
+  const longest = (won) => runs.filter((run) => run.won === won).reduce((best, run) => (!best || run.count > best.count ? run : best), null);
+  const modeOf = new Map(data.events.map((event) => [event.eventId, event.gameMode]));
+  const tally = (keyOf) => {
+    const rows = new Map();
+    for (const set of decided) {
+      const key = keyOf(set);
+      if (key == null) continue;
+      const row = rows.get(key) ?? { key, wins: 0, losses: 0 };
+      if (set.won) row.wins++;
+      else row.losses++;
+      rows.set(key, row);
+    }
+    return [...rows.values()];
+  };
+  const placed = data.events.filter((event) => Number(event.myPlacement) > 0 && Number(event.theirPlacement) > 0);
+  return {
+    decided,
+    current: runs[runs.length - 1] ?? null,
+    longestWin: longest(true),
+    longestLoss: longest(false),
+    first: decided[0]?.at ?? null,
+    last: decided[decided.length - 1]?.at ?? null,
+    years: tally((set) => (set.at ? new Date(set.at).getFullYear() : null)).sort((left, right) => right.key - left.key),
+    modes: tally((set) => modeOf.get(set.eventId) ?? null),
+    placed: placed.length,
+    higher: placed.filter((event) => Number(event.myPlacement) < Number(event.theirPlacement)).length,
+    lower: placed.filter((event) => Number(event.myPlacement) > Number(event.theirPlacement)).length,
+  };
+}
+
+function H2HTile({ label, value, tone, detail }) {
+  return (
+    <div className="rounded-xl bg-slate-100 p-3 dark:bg-slate-800/70">
+      <div className="text-[11px] font-black uppercase tracking-wider text-slate-500">{label}</div>
+      <div className={`mt-0.5 text-2xl font-black tabular-nums ${tone ?? "text-slate-950 dark:text-white"}`}>{value}</div>
+      {detail && <div className="mt-0.5 text-xs font-semibold text-slate-500">{detail}</div>}
+    </div>
+  );
+}
+
+function RecordRow({ label, wins, losses }) {
+  const total = wins + losses;
+  const rate = total ? (wins / total) * 100 : 0;
+  return (
+    <div className="grid grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] items-center gap-3 text-sm">
+      <span className="font-black text-slate-700 dark:text-slate-200">{label}</span>
+      <div className="h-2.5 overflow-hidden rounded-full bg-rose-500/70"><div className="h-full bg-sky-500" style={{ width: `${rate}%` }} /></div>
+      <span className="text-right font-black tabular-nums"><span className="text-sky-500">{wins}</span>–<span className="text-rose-500">{losses}</span></span>
+    </div>
+  );
+}
+
+function HeadToHead({ data, playerName, opponentName }) {
+  const stats = useMemo(() => headToHeadStats(data), [data]);
+  const { summary } = data;
+  const setTotal = summary.setWins + summary.setLosses;
+  const gameTotal = summary.gameWins + summary.gameLosses;
+  const pct = (wins, total) => (total ? `${((wins / total) * 100).toFixed(1)}%` : "–");
+  const form = stats.decided.slice(-12);
+  const setsByEvent = new Map();
+  for (const set of data.sets) setsByEvent.set(set.eventId, [...(setsByEvent.get(set.eventId) ?? []), set]);
+  const tone = (won) => (won ? "text-sky-500" : "text-rose-500");
+
+  if (!data.sets.length) return <Empty>No sets recorded between these players.</Empty>;
+  return (
+    <div className="grid gap-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <H2HTile label="Sets" value={<><span className="text-sky-500">{summary.setWins}</span>–<span className="text-rose-500">{summary.setLosses}</span></>} detail={`${pct(summary.setWins, setTotal)} won`} />
+        <H2HTile label="Games" value={<><span className="text-sky-500">{summary.gameWins}</span>–<span className="text-rose-500">{summary.gameLosses}</span></>} detail={gameTotal ? `${pct(summary.gameWins, gameTotal)} won` : "No game scores"} />
+        <H2HTile label="Current streak" value={streakLabel(stats.current)} tone={stats.current ? tone(stats.current.won) : undefined} detail={`Longest: ${streakLabel(stats.longestWin)} · ${streakLabel(stats.longestLoss)}`} />
+        <H2HTile
+          label="Finished higher"
+          value={stats.placed ? `${stats.higher} of ${stats.placed}` : "–"}
+          detail={stats.placed ? `${opponentName} higher in ${stats.lower}` : "No shared placements"}
+        />
+      </div>
+
+      <div className="grid gap-2">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="text-sm font-black uppercase tracking-wider text-slate-500">Recent form</h3>
+          <span className="text-xs font-semibold text-slate-500">First met {date(stats.first)} · last met {date(stats.last)}</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-[11px] font-bold text-slate-400">Older</span>
+          {form.map((set) => (
+            <a
+              key={set.id}
+              href={`/esports/set/${set.id}`}
+              title={`${data.events.find((event) => event.eventId === set.eventId)?.tournamentName ?? ""} · ${roundLabel(set.roundName)} · ${date(set.at)}`}
+              className={`grid h-8 w-8 place-items-center rounded-lg text-sm font-black text-white transition hover:scale-110 ${set.won ? "bg-sky-500" : "bg-rose-500"}`}
+            >
+              {set.won ? "W" : "L"}
+            </a>
+          ))}
+          <span className="ml-1 text-[11px] font-bold text-slate-400">Newer</span>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid content-start gap-2">
+          <h3 className="text-sm font-black uppercase tracking-wider text-slate-500">By year</h3>
+          {stats.years.map((row) => <RecordRow key={row.key} label={row.key} wins={row.wins} losses={row.losses} />)}
+        </div>
+        <div className="grid content-start gap-2">
+          <h3 className="text-sm font-black uppercase tracking-wider text-slate-500">By gamemode</h3>
+          {stats.modes.map((row) => <RecordRow key={row.key} label={modeName(row.key)} wins={row.wins} losses={row.losses} />)}
+        </div>
+      </div>
+
+      <div className="grid gap-2">
+        <h3 className="text-sm font-black uppercase tracking-wider text-slate-500">Meetings · {data.events.length} {data.events.length === 1 ? "event" : "events"}</h3>
+        {data.events.map((event) => {
+          const sets = [...(setsByEvent.get(event.eventId) ?? [])].sort((left, right) => (left.setOrder ?? 0) - (right.setOrder ?? 0) || String(left.at).localeCompare(String(right.at)));
+          const mine = Number(event.myPlacement) || null;
+          const theirs = Number(event.theirPlacement) || null;
+          const better = mine && theirs ? (mine < theirs ? "mine" : mine > theirs ? "theirs" : null) : null;
+          return (
+            <div key={event.eventId} className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+              <div className="flex items-center gap-3">
+                <EventImage src={event.image} name={event.tournamentName} />
+                <div className="min-w-0 flex-1">
+                  <a href={`/esports/event/${event.eventId}`} className="block truncate font-black text-slate-950 hover:text-blue-500 dark:text-white">{event.tournamentName}</a>
+                  <div className="truncate text-xs font-semibold text-slate-500">
+                    {[event.eventName && event.eventName !== event.tournamentName ? event.eventName : null, modeName(event.gameMode), date(event.lastAt)].filter(Boolean).join(" · ")}
+                  </div>
+                </div>
+                <span className="text-lg font-black tabular-nums"><span className="text-sky-500">{event.wins}</span>–<span className="text-rose-500">{event.losses}</span></span>
+              </div>
+              {(mine || theirs) && (
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs font-bold">
+                  {[[playerName, mine, better === "mine"], [opponentName, theirs, better === "theirs"]].map(([name, place, ahead]) => (
+                    <div key={name} className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1 ${ahead ? "bg-amber-400/15 text-amber-700 dark:text-amber-300" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
+                      <span className="truncate">{name}</span>
+                      <span className="shrink-0 tabular-nums">{place ? ordinal(place) : "–"}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {sets.map((set) => {
+                  const scored = (set.myScore ?? -1) >= 0 && (set.theirScore ?? -1) >= 0;
+                  return (
+                    <a
+                      key={set.id}
+                      href={`/esports/set/${set.id}`}
+                      className={`flex items-center gap-2 rounded-lg border px-2 py-1 text-xs font-bold transition hover:border-blue-400 ${set.won ? "border-sky-300/60 dark:border-sky-500/30" : "border-rose-300/60 dark:border-rose-500/30"}`}
+                    >
+                      <span className="text-slate-600 dark:text-slate-300">{roundLabel(set.roundName)}</span>
+                      <span className={`font-black tabular-nums ${tone(set.won)}`}>{scored ? `${set.myScore}–${set.theirScore}` : set.won ? "W" : "L"}</span>
+                    </a>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function mergeUsage(rows) {
   const merged = new Map();

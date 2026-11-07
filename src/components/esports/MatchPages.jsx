@@ -1,7 +1,7 @@
 import React from "react";
 import { host } from "../../stuff";
 import {
-  apiUrl, Avatar, Badge, Card, date, Empty, ErrorNote, LIVE_REFRESH_MS, LiveUpdates, Loading, modeName, PageShell, percent, ProviderLink,
+  apiUrl, Avatar, Badge, Card, date, Empty, ErrorNote, LIVE_REFRESH_MS, LiveUpdates, Loading, modeName, PageShell, ProviderLink,
   useApi,
 } from "./ui";
 
@@ -122,81 +122,6 @@ export function SetPage({ setId }) {
             </div>
           </div>
         ))}
-      </Card>
-    </PageShell>
-  );
-}
-
-
-export function HeadToHeadPage() {
-  const params = typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search);
-  const [first, second] = [params.get("a"), params.get("b")];
-  const ready = first && second;
-  const h2h = useApi(ready ? apiUrl(`/head-to-head/${first}/${second}`) : null);
-  const firstPlayer = useApi(ready ? apiUrl(`/players/${first}/history`) : null);
-  const secondPlayer = useApi(ready ? apiUrl(`/players/${second}/history`) : null);
-
-  if (!ready) return <PageShell title="Head to head"><Empty>Pick an opponent from a player's Opponents tab to compare them.</Empty></PageShell>;
-  if (h2h.error) return <PageShell title="Head to head"><ErrorNote message={h2h.error} /></PageShell>;
-  if (!h2h.data) return <PageShell><Loading label="Comparing players..." /></PageShell>;
-
-  const players = [firstPlayer.data?.player, secondPlayer.data?.player];
-  const ids = [first, second];
-  const wins = ids.map((id) => Number(h2h.data.wins?.[id] ?? 0));
-  const total = wins[0] + wins[1];
-  const sets = h2h.data.sets ?? [];
-
-  return (
-    <PageShell back={{ href: `/esports/player/id/${first}?tab=opponents`, label: players[0]?.display_name ?? "Player" }}>
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4">
-          {[0, 1].map((index) => {
-            const player = players[index];
-            const block = (
-              <a key={ids[index]} href={`/esports/player/id/${ids[index]}`} className={`flex min-w-0 items-center gap-4 hover:opacity-80 ${index ? "flex-row-reverse text-right" : ""}`}>
-                <Avatar src={player?.image} name={player?.display_name} size="lg" playerId={ids[index]} />
-                <div className="min-w-0">
-                  <div className="truncate text-2xl font-black text-slate-950 dark:text-white">{player?.display_name ?? "..."}</div>
-                  <div className="text-sm font-bold text-slate-500">{percent(wins[index], total)} of sets</div>
-                </div>
-              </a>
-            );
-            return index === 0 ? block : [
-              <div key="score" className="text-center">
-                <div className="text-5xl font-black tabular-nums text-slate-950 dark:text-white">{wins[0]}<span className="mx-2 text-slate-400">–</span>{wins[1]}</div>
-                <div className="text-xs font-black uppercase tracking-wider text-slate-500">{total} sets played</div>
-              </div>,
-              block,
-            ];
-          })}
-        </div>
-        {total > 0 && (
-          <div className="mt-5 flex h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-            <div className="bg-blue-500" style={{ width: `${(wins[0] / total) * 100}%` }} />
-            <div className="bg-rose-500" style={{ width: `${(wins[1] / total) * 100}%` }} />
-          </div>
-        )}
-      </section>
-
-      <Card title="Every set" className="mt-6" padded={false}>
-        {!sets.length && <Empty>These players haven't played each other in a recorded match.</Empty>}
-        {sets.map((set) => {
-          const firstWon = (set.winner_player_ids ?? []).map(String).includes(String(first));
-          return (
-            <a key={set.id} href={`/esports/set/${set.id}`} className="grid grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40">
-              <span className={`truncate rounded-md py-1 text-center text-xs font-black ${firstWon ? "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300" : "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300"}`}>
-                {(firstWon ? players[0] : players[1])?.display_name ?? (firstWon ? "P1" : "P2")}
-              </span>
-              <div className="min-w-0">
-                <div className="truncate font-black text-slate-950 dark:text-white">{set.tournament_name}</div>
-                <div className="truncate text-xs font-semibold text-slate-500">{set.event_name} · {set.round_name} · {date(set.history_at ?? set.tournament_starts_at)}</div>
-              </div>
-              <span className="text-sm font-black tabular-nums text-slate-700 dark:text-slate-200">
-                {(set.slots ?? []).map((slot) => slot.score ?? "–").join("–")}
-              </span>
-            </a>
-          );
-        })}
       </Card>
     </PageShell>
   );
