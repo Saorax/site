@@ -266,6 +266,27 @@ const CARD_H = 58;
 const ROW_GAP = 14;
 const COL_GAP = 44;
 const HEADER_H = 44;
+const PILL_W = 150;
+const PILL_H = 20;
+const PILL_GAP = 20;
+
+const linkLabel = (link) => (link.groupName
+  ? `${link.phaseName} ${/^\d+$/.test(link.groupName) ? `Pool ${link.groupName}` : link.groupName}`
+  : link.phaseName);
+
+function PhasePill({ link, onJump, className = "", style }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onJump?.(link)}
+      title={`Go to ${linkLabel(link)}`}
+      className={`flex items-center justify-center rounded-full border border-slate-300 bg-white px-2.5 text-[11px] font-bold text-slate-500 transition hover:border-blue-400 hover:text-blue-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:text-blue-300 ${className}`}
+      style={{ height: PILL_H, ...style }}
+    >
+      <span className="truncate">{linkLabel(link)}</span>
+    </button>
+  );
+}
 
 const entrantLabel = (entrant) => {
   if (!entrant) return "TBD";
@@ -287,6 +308,7 @@ function BracketView({ eventId }) {
   if (!data.phases.length) return <Card><Empty>No matches were recorded for this event.</Empty></Card>;
   const phase = data.phases.find((item) => item.key === phaseKey) ?? data.phases[0];
   const group = phase.groups.find((item) => item.key === groupKey) ?? phase.groups[0];
+  const jump = (link) => { setPhaseKey(link.phaseKey); setGroupKey(link.groupKey); };
 
   return (
     <div className="grid gap-3">
@@ -321,10 +343,11 @@ function BracketView({ eventId }) {
               entrants={data.entrants}
               hovered={hovered}
               onHover={setHovered}
+              onJump={jump}
               sliced={phase === data.phases[data.phases.length - 1] && phase.groups.length === 1}
             />
           )
-          : <PoolView group={group} entrants={data.entrants} hovered={hovered} onHover={setHovered} />}
+          : <PoolView group={group} entrants={data.entrants} hovered={hovered} onHover={setHovered} onJump={jump} />}
       </Card>
     </div>
   );
@@ -375,7 +398,7 @@ function useDragScroll() {
   };
 }
 
-function EliminationGroup({ group, entrants, hovered, onHover, sliced }) {
+function EliminationGroup({ group, entrants, hovered, onHover, onJump, sliced }) {
   const columns = group.sections.flatMap((section) => section.columns);
   const sizes = [...new Set(columns.map((column) => sliceSize(column.remaining)))].sort((left, right) => right - left);
   const [slice, setSlice] = useState(sliced && sizes.length > 1 ? sizes[sizes.length - 1] : "all");
@@ -421,6 +444,7 @@ function EliminationGroup({ group, entrants, hovered, onHover, sliced }) {
             entrants={entrants}
             hovered={hovered}
             onHover={onHover}
+            onJump={onJump}
             showTitle={group.sections.length > 1}
             onPickColumn={(column) => setFrom(column)}
           />
@@ -434,7 +458,7 @@ function EliminationGroup({ group, entrants, hovered, onHover, sliced }) {
   );
 }
 
-function EliminationSection({ section, entrants, hovered, onHover, showTitle, onPickColumn }) {
+function EliminationSection({ section, entrants, hovered, onHover, onJump, showTitle, onPickColumn }) {
   const layout = useMemo(() => {
     const ys = section.columns.map(() => new Map());
     section.columns.forEach((column, index) => {
@@ -447,9 +471,17 @@ function EliminationSection({ section, entrants, hovered, onHover, showTitle, on
       }
     });
     const height = Math.max(CARD_H, ...ys.flatMap((column) => [...column.values()].map((y) => y + CARD_H)));
-    return { ys, height, width: section.columns.length * (CARD_W + COL_GAP) - COL_GAP };
+    const left = section.columns[0]?.sets.some((set) => set.from && Object.keys(set.from).length) ? PILL_W + PILL_GAP : 0;
+    const right = section.columns.some((column) => column.sets.some((set) => set.next)) ? PILL_GAP + PILL_W : 0;
+    return { ys, height, left, width: left + section.columns.length * (CARD_W + COL_GAP) - COL_GAP + right };
   }, [section]);
-  const x = (index) => index * (CARD_W + COL_GAP);
+  const x = (index) => layout.left + index * (CARD_W + COL_GAP);
+  const incoming = layout.left ? (section.columns[0]?.sets ?? []).flatMap((set) => set.slots.map((slot, row) => {
+    const link = set.from?.[slot.entrantId];
+    return link ? { key: `${set.id}:${slot.entrantId}`, link, y: layout.ys[0].get(set.id) + CARD_H / 4 + row * (CARD_H / 2) } : null;
+  }).filter(Boolean)) : [];
+  const outgoing = section.columns.flatMap((column, index) => column.sets.filter((set) => set.next)
+    .map((set) => ({ key: set.id, link: set.next, x: x(index) + CARD_W, y: layout.ys[index].get(set.id) + CARD_H / 2 })));
 
   return (
     <div className="mb-6 last:mb-0">
@@ -482,7 +514,19 @@ function EliminationSection({ section, entrants, hovered, onHover, showTitle, on
               const y2 = layout.ys[index].get(set.id) + CARD_H / 2;
               return <path key={`${feederId}-${set.id}`} d={`M${x1},${y1} H${middle} V${y2} H${x2}`} fill="none" className="stroke-slate-300 dark:stroke-slate-600" strokeWidth="1.5" />;
             })))}
+            {incoming.map((item) => (
+              <path key={`in-${item.key}`} d={`M${PILL_W},${item.y} H${layout.left}`} fill="none" strokeDasharray="3 3" className="stroke-slate-300 dark:stroke-slate-600" strokeWidth="1.5" />
+            ))}
+            {outgoing.map((item) => (
+              <path key={`out-${item.key}`} d={`M${item.x},${item.y} H${item.x + PILL_GAP}`} fill="none" strokeDasharray="3 3" className="stroke-slate-300 dark:stroke-slate-600" strokeWidth="1.5" />
+            ))}
           </svg>
+          {incoming.map((item) => (
+            <PhasePill key={`in-${item.key}`} link={item.link} onJump={onJump} className="absolute" style={{ left: 0, top: HEADER_H + item.y - PILL_H / 2, width: PILL_W }} />
+          ))}
+          {outgoing.map((item) => (
+            <PhasePill key={`out-${item.key}`} link={item.link} onJump={onJump} className="absolute" style={{ left: item.x + PILL_GAP, top: HEADER_H + item.y - PILL_H / 2, width: PILL_W }} />
+          ))}
           {section.columns.map((column, index) => column.sets.map((set) => (
             <div key={set.id} className="absolute" style={{ left: x(index), top: HEADER_H + layout.ys[index].get(set.id), width: CARD_W, height: CARD_H }}>
               <BracketCard set={set} entrants={entrants} hovered={hovered} onHover={onHover} />
@@ -532,9 +576,10 @@ function BracketCard({ set, entrants, hovered, onHover }) {
   );
 }
 
-function PoolView({ group, entrants, hovered, onHover }) {
+function PoolView({ group, entrants, hovered, onHover, onJump }) {
   const order = group.standings.map((row) => row.entrantId);
   const roundRobin = group.type === "round_robin";
+  const advancing = group.standings.some((row) => row.next);
   return (
     <div className="grid gap-4 p-4">
       <div className="overflow-x-auto">
@@ -546,6 +591,7 @@ function PoolView({ group, entrants, hovered, onHover }) {
               {roundRobin && order.map((id, index) => <th key={id} className="w-14 px-1 py-2 text-center" title={entrantLabel(entrants[id])}>vs {index + 1}</th>)}
               <th className="w-16 px-2 py-2 text-center">Sets</th>
               <th className="w-16 px-2 py-2 text-center">Games</th>
+              {advancing && <th className="w-40 px-2 py-2 text-left">Advances to</th>}
             </tr>
           </thead>
           <tbody>
@@ -579,6 +625,7 @@ function PoolView({ group, entrants, hovered, onHover }) {
                   })}
                   <td className="px-2 py-2 text-center font-black tabular-nums"><span className="text-emerald-500">{row.wins}</span>-<span className="text-rose-500">{row.losses}</span></td>
                   <td className="px-2 py-2 text-center font-semibold tabular-nums text-slate-500">{row.gameWins}-{row.gameLosses}</td>
+                  {advancing && <td className="px-2 py-2">{row.next && <PhasePill link={row.next} onJump={onJump} className="max-w-40" />}</td>}
                 </tr>
               );
             })}
