@@ -361,12 +361,6 @@ function BracketView({ eventId }) {
   );
 }
 
-const sliceSize = (remaining) => {
-  let size = 8;
-  while ((remaining ?? 2) > size) size *= 4;
-  return size;
-};
-const sliceLabel = (size) => (size === 8 ? "Top 8 – Grand Finals" : `Top ${size} – Top ${size / 4}`);
 
 function useDragScroll() {
   const ref = useRef(null);
@@ -408,13 +402,15 @@ function useDragScroll() {
 
 function EliminationGroup({ group, entrants, hovered, onHover, onJump, sliced }) {
   const columns = group.sections.flatMap((section) => section.columns);
-  const sizes = [...new Set(columns.map((column) => sliceSize(column.remaining)))].sort((left, right) => right - left);
-  const [slice, setSlice] = useState(sliced && sizes.length > 1 ? sizes[sizes.length - 1] : "all");
+  const entrantCount = new Set(columns.flatMap((column) => column.sets.flatMap((set) => set.slots.map((slot) => slot.entrantId)))).size;
+  const tiers = [...new Set(columns.map((column) => column.remaining).filter((remaining) => remaining != null && remaining >= 8 && remaining < entrantCount))]
+    .sort((left, right) => right - left);
+  const [slice, setSlice] = useState(sliced && tiers.length ? tiers[tiers.length - 1] : "all");
   const [from, setFrom] = useState(null);
   const scroller = useDragScroll();
   const visible = (column) => (from
     ? (column.remaining ?? 0) <= from.remaining
-    : slice === "all" || sliceSize(column.remaining) === slice);
+    : slice === "all" || (column.remaining ?? 0) <= slice);
   const sections = group.sections
     .map((section) => ({ ...section, columns: section.columns.filter(visible) }))
     .filter((section) => section.columns.length);
@@ -422,12 +418,16 @@ function EliminationGroup({ group, entrants, hovered, onHover, onJump, sliced })
 
   return (
     <div>
-      {((sliced && sizes.length > 1) || from) && (
+      {((sliced && tiers.length > 0) || from) && (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
-          {sliced && sizes.length > 1 && sizes.map((size) => (
-            <button key={size} type="button" onClick={() => { setSlice(size); setFrom(null); }} className={button(!from && slice === size)}>{sliceLabel(size)}</button>
-          ))}
-          {sliced && sizes.length > 1 && <button type="button" onClick={() => { setSlice("all"); setFrom(null); }} className={button(!from && slice === "all")}>Full bracket</button>}
+          {sliced && tiers.length > 0 && (
+            <>
+              <button type="button" onClick={() => { setSlice("all"); setFrom(null); }} className={button(!from && slice === "all")}>Top {entrantCount}</button>
+              {tiers.map((tier) => (
+                <button key={tier} type="button" onClick={() => { setSlice(tier); setFrom(null); }} className={button(!from && slice === tier)}>Top {tier}</button>
+              ))}
+            </>
+          )}
           {from && (
             <button type="button" onClick={() => setFrom(null)} className="ml-auto rounded-lg bg-blue-500/15 px-3 py-1.5 text-xs font-black text-blue-600 dark:text-blue-300">
               From {from.name} ✕
@@ -468,16 +468,39 @@ function EliminationGroup({ group, entrants, hovered, onHover, onJump, sliced })
 
 function EliminationSection({ section, entrants, hovered, onHover, onJump, showTitle, onPickColumn }) {
   const layout = useMemo(() => {
-    const ys = section.columns.map(() => new Map());
-    section.columns.forEach((column, index) => {
+    const step = CARD_H + ROW_GAP;
+    const columns = section.columns;
+    const ys = columns.map(() => new Map());
+    const anchor = columns.reduce((best, column, index) => (column.sets.length > columns[best].sets.length ? index : best), 0);
+    columns[anchor]?.sets.forEach((set, position) => ys[anchor].set(set.id, position * step));
+    for (let index = anchor + 1; index < columns.length; index++) {
       let cursor = 0;
-      for (const set of column.sets) {
-        const fed = set.feeders.map((id) => ys[index - 1]?.get(id)).filter((value) => value != null);
+      for (const set of columns[index].sets) {
+        const fed = set.feeders.map((id) => ys[index - 1].get(id)).filter((value) => value != null);
         const y = Math.max(cursor, fed.length ? fed.reduce((total, value) => total + value, 0) / fed.length : cursor);
         ys[index].set(set.id, y);
-        cursor = y + CARD_H + ROW_GAP;
+        cursor = y + step;
       }
-    });
+    }
+    for (let index = anchor - 1; index >= 0; index--) {
+      const own = new Set(columns[index].sets.map((set) => set.id));
+      const targets = new Map();
+      for (const parent of columns[index + 1].sets) {
+        const fed = parent.feeders.filter((id) => own.has(id));
+        const parentY = ys[index + 1].get(parent.id);
+        fed.forEach((id, position) => targets.set(id, parentY + (fed.length > 1 ? (position - (fed.length - 1) / 2) * step : 0)));
+      }
+      const ordered = [...columns[index].sets].sort((left, right) =>
+        (targets.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (targets.get(right.id) ?? Number.MAX_SAFE_INTEGER));
+      let cursor = -Infinity;
+      for (const set of ordered) {
+        const y = Math.max(cursor, targets.get(set.id) ?? (Number.isFinite(cursor) ? cursor : 0));
+        ys[index].set(set.id, y);
+        cursor = y + step;
+      }
+    }
+    const top = Math.min(0, ...ys.flatMap((column) => [...column.values()]));
+    if (top < 0) ys.forEach((column) => column.forEach((y, id) => column.set(id, y - top)));
     const height = Math.max(CARD_H, ...ys.flatMap((column) => [...column.values()].map((y) => y + CARD_H)));
     const left = section.columns[0]?.sets.some((set) => set.from && Object.keys(set.from).length) ? PILL_W + PILL_GAP : 0;
     const right = section.columns.some((column) => column.sets.some((set) => set.next)) ? PILL_GAP + PILL_W : 0;
