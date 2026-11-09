@@ -1,0 +1,8 @@
+---
+import Layout from "../../../layouts/Layout.astro";
+import ComboPage from "./comp/_index.jsx";
+---
+
+<Layout title="True Combos">
+  <ComboPage client:only="react" />
+</Layout>
