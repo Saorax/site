@@ -248,7 +248,8 @@ function Standings({ entrants, sets = [], live = false }) {
   const status = (entrant) => records.get(String(entrant.id));
   const filtered = entrants
     .filter((entrant) => !term || `${entrant.name} ${(entrant.members ?? []).map((member) => member.name).join(" ")}`.toLowerCase().includes(term))
-    .sort((left, right) => (left.placement ?? 1e9) - (right.placement ?? 1e9) ||
+    .sort((left, right) => (left.placement ?? left.guaranteed_placement ?? 1e9) - (right.placement ?? right.guaranteed_placement ?? 1e9) ||
+      Number(left.placement != null) - Number(right.placement != null) ||
       Number(Boolean(status(left)?.out)) - Number(Boolean(status(right)?.out)) ||
       (left.seed ?? 1e9) - (right.seed ?? 1e9));
   return (
@@ -260,7 +261,10 @@ function Standings({ entrants, sets = [], live = false }) {
       {filtered.slice((page - 1) * perPage, page * perPage).map((entrant) => (
         <div key={entrant.id} className="grid grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-slate-100 px-4 py-2.5 last:border-0 dark:border-slate-800">
           <span className={`text-lg font-black tabular-nums ${Number(entrant.placement) <= 3 ? "text-amber-500" : "text-slate-950 dark:text-white"}`}>
-            {entrant.disqualified ? "DQ" : entrant.placement == null && status(entrant)?.out ? <span className="text-sm text-slate-500">Out</span> : ordinal(entrant.placement)}
+            {entrant.disqualified ? "DQ"
+              : entrant.placement == null && entrant.guaranteed_placement
+                ? <span className="flex flex-col leading-none text-slate-500" title="Worst place this team can still finish"><span>{ordinal(entrant.guaranteed_placement)}</span><span className="mt-0.5 text-[10px] font-bold uppercase tracking-wide">or better</span></span>
+                : entrant.placement == null && status(entrant)?.out ? <span className="text-sm text-slate-500">Out</span> : ordinal(entrant.placement)}
           </span>
           <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
             {(entrant.members ?? []).length
@@ -567,7 +571,8 @@ function EliminationSection({ section, entrants, hovered, onHover, onJump, showT
             >
               <div className="truncate text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-300">{column.name}</div>
               <div className="text-[11px] font-bold text-slate-400">
-                {column.placement ? `Losers place ${ordinal(column.placement)}` : `${column.sets.length} ${column.sets.length === 1 ? "match" : "matches"}`}
+                {[column.placement && `Losers place ${ordinal(column.placement)}`, column.advances && "Winners advance"].filter(Boolean).join(" · ") ||
+                  `${column.sets.length} ${column.sets.length === 1 ? "match" : "matches"}`}
               </div>
             </button>
           ))}
