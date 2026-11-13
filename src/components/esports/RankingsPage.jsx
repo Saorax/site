@@ -55,7 +55,7 @@ export default function RankingsPage() {
   const circuit = useApi(isCircuit ? apiUrl("/circuit", { split, region }) : null);
 
   const officialEvents = useMemo(() => (catalog.data?.catalog ?? [])
-    .filter((event) => event.official && event.state === "complete" && (type === "pr" || event.category === type))
+    .filter((event) => event.official && (event.state === "complete" || event.state === "active") && (type === "pr" || event.category === type))
     .sort((left, right) => new Date(right.startsAt) - new Date(left.startsAt)), [catalog.data, type]);
   const presetIds = useMemo(() => (type === "pr"
     ? officialEvents.filter((event) => event.inWindow && event.baseEligible).map((event) => event.eventId)
@@ -288,6 +288,7 @@ function Sidebar(props) {
                           <span className="block truncate text-xs font-black text-slate-800 dark:text-slate-100">{event.tournamentName}</span>
                           <span className="block text-[11px] font-semibold text-slate-500">
                             {date(event.startsAt)} · {event.entrantCount ?? 0} entrants{event.multiplier !== 1 ? ` · ×${event.multiplier}` : ""}
+                            {event.state === "active" && <span className="ml-1 font-black text-emerald-600 dark:text-emerald-400">· Live</span>}
                           </span>
                         </span>
                         {event.image && <img src={event.image} alt="" loading="lazy" className="h-8 w-8 shrink-0 rounded object-cover" />}
