@@ -443,10 +443,17 @@ function useDragScroll() {
 
 function EliminationGroup({ group, entrants, hovered, onHover, onJump, sliced }) {
   const columns = group.sections.flatMap((section) => section.columns);
-  const entrantCount = new Set(columns.flatMap((column) => column.sets.flatMap((set) => set.slots.map((slot) => slot.entrantId)))).size;
+  const entrantCount = Math.max(
+    new Set(columns.flatMap((column) => column.sets.flatMap((set) => set.slots.map((slot) => slot.entrantId)))).size,
+    ...columns.map((column) => column.remaining ?? 0),
+  );
   const tiers = [...new Set(columns.map((column) => column.remaining).filter((remaining) => remaining != null && remaining >= 8 && remaining < entrantCount))]
     .sort((left, right) => right - left);
-  const [slice, setSlice] = useState(sliced && tiers.length ? tiers[tiers.length - 1] : "all");
+  const playing = Math.max(0, ...columns.filter((column) => column.sets.some((set) => set.state !== "complete")).map((column) => column.remaining ?? 0));
+  const [slice, setSlice] = useState(() => {
+    if (!sliced || !tiers.length) return "all";
+    return playing ? [...tiers].reverse().find((tier) => tier >= playing) ?? "all" : tiers[tiers.length - 1];
+  });
   const [from, setFrom] = useState(null);
   const scroller = useDragScroll();
   const visible = (column) => (from
