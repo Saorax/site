@@ -203,21 +203,54 @@ function EventBody({ eventId, preloaded, updatedAt }) {
           <span className="text-sm font-bold text-slate-500">{facts}</span>
         </span>
       </div>
-      {tab === "standings" && <Standings entrants={data.entrants ?? []} />}
+      {tab === "standings" && <Standings entrants={data.entrants ?? []} sets={data.sets ?? []} live={event.state === "active"} />}
       {tab === "matches" && <Matches eventId={eventId} sets={data.sets ?? []} />}
       {tab === "points" && <Points contributions={data.contributions ?? []} />}
     </div>
   );
 }
 
-function Standings({ entrants }) {
+const LOWER_BRACKET = /\b(lower|losers)\b/i;
+
+function liveRecords(sets) {
+  const records = new Map();
+  const record = (entrantId) => {
+    const key = String(entrantId);
+    if (!records.has(key)) records.set(key, { wins: 0, losses: 0, playing: false, out: false });
+    return records.get(key);
+  };
+  for (const set of sets) {
+    const slots = set.slots ?? [];
+    if (slots.length < 2) continue;
+    if (set.state === "active") {
+      for (const slot of slots) record(slot.entrantId).playing = true;
+      continue;
+    }
+    if (set.state !== "complete" || !slots.some((slot) => slot.winner)) continue;
+    for (const slot of slots) {
+      const entry = record(slot.entrantId);
+      if (slot.winner) entry.wins++;
+      else {
+        entry.losses++;
+        if (LOWER_BRACKET.test(set.round_name ?? "")) entry.out = true;
+      }
+    }
+  }
+  return records;
+}
+
+function Standings({ entrants, sets = [], live = false }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const perPage = 50;
   const term = search.trim().toLowerCase();
+  const records = useMemo(() => (live ? liveRecords(sets) : new Map()), [live, sets]);
+  const status = (entrant) => records.get(String(entrant.id));
   const filtered = entrants
     .filter((entrant) => !term || `${entrant.name} ${(entrant.members ?? []).map((member) => member.name).join(" ")}`.toLowerCase().includes(term))
-    .sort((left, right) => (left.placement ?? 1e9) - (right.placement ?? 1e9) || (left.seed ?? 1e9) - (right.seed ?? 1e9));
+    .sort((left, right) => (left.placement ?? 1e9) - (right.placement ?? 1e9) ||
+      Number(Boolean(status(left)?.out)) - Number(Boolean(status(right)?.out)) ||
+      (left.seed ?? 1e9) - (right.seed ?? 1e9));
   return (
     <Card padded={false}>
       <div className="border-b border-slate-200 p-4 dark:border-slate-800">
@@ -227,7 +260,7 @@ function Standings({ entrants }) {
       {filtered.slice((page - 1) * perPage, page * perPage).map((entrant) => (
         <div key={entrant.id} className="grid grid-cols-[4rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-slate-100 px-4 py-2.5 last:border-0 dark:border-slate-800">
           <span className={`text-lg font-black tabular-nums ${Number(entrant.placement) <= 3 ? "text-amber-500" : "text-slate-950 dark:text-white"}`}>
-            {entrant.disqualified ? "DQ" : ordinal(entrant.placement)}
+            {entrant.disqualified ? "DQ" : entrant.placement == null && status(entrant)?.out ? <span className="text-sm text-slate-500">Out</span> : ordinal(entrant.placement)}
           </span>
           <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
             {(entrant.members ?? []).length
@@ -239,7 +272,11 @@ function Standings({ entrants }) {
               ))
               : <span className="truncate font-black text-slate-950 dark:text-white">{entrant.name}</span>}
           </div>
-          <span className="text-xs font-semibold text-slate-500">{entrant.seed ? `Seed ${entrant.seed}` : ""}</span>
+          <span className="flex items-center gap-3 text-xs font-semibold text-slate-500">
+            {status(entrant)?.playing && <Badge tone="green">Playing</Badge>}
+            {status(entrant) && <span className="font-black tabular-nums text-slate-700 dark:text-slate-200">{status(entrant).wins}–{status(entrant).losses}</span>}
+            {entrant.seed ? `Seed ${entrant.seed}` : ""}
+          </span>
         </div>
       ))}
       <Pagination page={page} totalPages={Math.ceil(filtered.length / perPage)} onChange={setPage} />

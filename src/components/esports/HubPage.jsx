@@ -22,6 +22,7 @@ export default function HubPage() {
       <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <TopPlayers />
         <div className="grid gap-4">
+          <LiveTournaments />
           <TournamentList title="Upcoming official tournaments" state="upcoming" />
           <TournamentList title="Recent official results" state="complete" />
         </div>
@@ -80,7 +81,7 @@ function GlobalSearch() {
   );
 }
 
-export function TournamentLine({ tournament }) {
+export function TournamentLine({ tournament, live = false }) {
   return (
     <a href={`/esports/tournament/${tournament.id}`} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800">
       {tournament.image
@@ -90,6 +91,7 @@ export function TournamentLine({ tournament }) {
         <div className="truncate text-sm font-black text-slate-950 dark:text-white">{tournament.name}</div>
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
           {date(tournament.starts_at)}
+          {live && <Badge tone="green">Live</Badge>}
           {tournament.classification === "official" && <Badge tone="blue">Official</Badge>}
         </div>
       </div>
@@ -124,6 +126,23 @@ function TopPlayers() {
       <a href={`/pr?region=${region}&mode=${mode}`} className="block border-t border-slate-200 px-4 py-2.5 text-sm font-black text-blue-600 hover:bg-slate-50 dark:border-slate-800 dark:text-blue-300 dark:hover:bg-slate-800/50">
         Full {regionName(region)} {mode === "2" ? "2v2" : "1v1"} rankings →
       </a>
+    </Card>
+  );
+}
+
+const LIVE_STALE_AFTER_MS = 2 * 24 * 60 * 60 * 1000;
+
+function LiveTournaments() {
+  const list = useApi(apiUrl("/tournaments", { official: "official", state: "active", perPage: 6 }));
+  const cutoff = Date.now() - LIVE_STALE_AFTER_MS;
+  const items = (list.data?.items ?? []).filter((tournament) => {
+    const last = tournament.ends_at ?? tournament.starts_at;
+    return !tournament.date_outlier && (!last || new Date(last).getTime() >= cutoff);
+  }).slice(0, 5);
+  if (!items.length) return null;
+  return (
+    <Card title="Live official tournaments" action={<a href="/esports/tournaments?official=official&state=active" className="text-sm font-black text-blue-600 dark:text-blue-300">All →</a>}>
+      <div className="-mx-2">{items.map((tournament) => <TournamentLine key={tournament.id} tournament={tournament} live />)}</div>
     </Card>
   );
 }

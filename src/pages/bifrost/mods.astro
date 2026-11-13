@@ -41,7 +41,7 @@ const caps = [
 "animationAliases": { "MySkin": "Xavier" },
 "soundBanks": [ "audio/MySkin.bnk" ],
 "palette": { "costume": "MySkin",
-  "colours": { "3a7bd5": ["Body1", 0, 0, 0] } }`,
+  "colours": { "3a7bd5": ["1a8c82", 0.016, -0.067, -0.02] } }`,
   },
   {
     c: "look", kind: "Colours", visual: true, title: "Colour schemes",
@@ -305,7 +305,7 @@ const fields = [
   ["strings", "Text, per language."],
   ["files", "XML files such as map layouts."],
   ["assets", "The game reads your file instead of one of its own."],
-  ["palette", "Shade-preserving colour schemes for a skin with its own art."],
+  ["palette", "Shade-preserving colour schemes for a skin with its own art: each drawn shade (hex) lists its anchor colour (one of the skin's Define colours, hex) and its hue, lightness and saturation offsets from it."],
   ["animationAliases", "Share another skin's lock-in and select animations."],
   ["soundBanks", "Wwise sound banks in the mod folder."],
   ["mapArt, music, sounds", "Art for existing maps, tracks, sound effects."],
