@@ -213,6 +213,9 @@ function EventBody({ eventId, preloaded, updatedAt }) {
 
 const LOWER_BRACKET = /\b(lower|losers)\b/i;
 
+const reportedGames = (set) => (set.games ?? []).filter((game) =>
+  game.map || (game.picks ?? game.selections ?? []).some((pick) => pick.legend));
+
 function liveRecords(sets) {
   const records = new Map();
   const record = (entrantId) => {
@@ -344,7 +347,7 @@ const TICKER_CSS = `@keyframes esports-ticker { from { transform: translateX(0);
 
 function TickerItem({ set, copy = false }) {
   const slots = set.slots ?? [];
-  const legends = [...new Set((set.games ?? []).flatMap((game) => (game.selections ?? []).map((pick) => pick.legend)).filter(Boolean))].slice(0, 4);
+  const legends = [...new Set(reportedGames(set).flatMap((game) => (game.selections ?? []).map((pick) => pick.legend)).filter(Boolean))].slice(0, 4);
   return (
     <a
       href={`/esports/set/${set.id}`}
@@ -373,7 +376,7 @@ function TickerItem({ set, copy = false }) {
 }
 
 function MatchTicker({ sets }) {
-  const items = useMemo(() => sets.filter((set) => set.games?.length && (set.slots ?? []).length === 2).sort(byLatest).slice(0, 20), [sets]);
+  const items = useMemo(() => sets.filter((set) => reportedGames(set).length && (set.slots ?? []).length === 2).sort(byLatest).slice(0, 20), [sets]);
   if (!items.length) return null;
   return (
     <section className="mb-4 flex items-center gap-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 py-2 pl-3 dark:border-slate-800 dark:bg-slate-950" aria-label="Latest results with match data">
@@ -752,7 +755,7 @@ function GamesPeek({ set, entrants, rect }) {
         <span className="truncate text-right">{entrantLabel(entrants[slots[1]?.entrantId])}</span>
       </div>
       <div className="grid gap-1.5">
-        {set.games.map((game) => (
+        {reportedGames(set).map((game) => (
           <div key={game.number} className="grid grid-cols-[minmax(0,1fr)_5rem_minmax(0,1fr)] items-center gap-2 rounded-lg bg-slate-50 p-1.5 dark:bg-slate-800/60">
             {side(game, 0)}
             <div className="flex min-w-0 flex-col items-center gap-0.5">
@@ -792,7 +795,7 @@ function useGamesPeek(set) {
     };
   }, [rect]);
   const open = () => {
-    if (!set.games?.length) return;
+    if (!reportedGames(set).length) return;
     clearTimeout(timer.current);
     timer.current = setTimeout(() => { if (ref.current) setRect(ref.current.getBoundingClientRect()); }, 200);
   };
@@ -801,14 +804,15 @@ function useGamesPeek(set) {
 
 function BracketCard({ set, entrants, hovered, onHover }) {
   const rows = slotRows(set);
+  const reported = reportedGames(set).length;
   const decided = Boolean(set.winnerEntrantId);
   const live = set.state === "active" && set.slots.length === 2 && !decided;
   const peek = useGamesPeek(set);
   return (
-    <a ref={peek.ref} onMouseEnter={peek.open} onMouseLeave={peek.close} href={`/esports/set/${set.id}`} draggable={false} className={`relative flex h-full flex-col rounded-lg border bg-white shadow-sm transition hover:border-blue-400 dark:bg-slate-950 ${live ? "border-amber-400 dark:border-amber-500/70" : set.games?.length ? "border-emerald-500/60 dark:border-emerald-500/50" : "border-slate-300 dark:border-slate-700"}`}>
+    <a ref={peek.ref} onMouseEnter={peek.open} onMouseLeave={peek.close} href={`/esports/set/${set.id}`} draggable={false} className={`relative flex h-full flex-col rounded-lg border bg-white shadow-sm transition hover:border-blue-400 dark:bg-slate-950 ${live ? "border-amber-400 dark:border-amber-500/70" : reported ? "border-emerald-500/60 dark:border-emerald-500/50" : "border-slate-300 dark:border-slate-700"}`}>
       {peek.rect && <GamesPeek set={set} entrants={entrants} rect={peek.rect} />}
       {set.stream && <StreamBadge stream={set.stream} className="absolute -top-2 right-1 z-10" />}
-      {set.games?.length > 0 && <MatchDataBadge games={set.games.length} className="absolute -top-2 left-1 z-10" />}
+      {reported > 0 && <MatchDataBadge games={reported} className="absolute -top-2 left-1 z-10" />}
       {rows.map((slot, index) => {
         const entrant = slot ? entrants[slot.entrantId] : null;
         const won = Boolean(slot) && set.winnerEntrantId === slot.entrantId;
@@ -956,10 +960,10 @@ function SetCard({ set }) {
         </div>
       ))}
       {slots.length === 1 && <div className="border-t border-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-400 dark:border-slate-800">Bye</div>}
-      {(set.stream || set.games?.length > 0) && (
+      {(set.stream || reportedGames(set).length > 0) && (
         <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 px-3 py-1.5 dark:border-slate-800">
           {set.stream && <StreamBadge stream={set.stream} />}
-          {set.games?.length > 0 && <MatchDataBadge games={set.games.length} />}
+          {reportedGames(set).length > 0 && <MatchDataBadge games={reportedGames(set).length} />}
         </div>
       )}
     </a>
