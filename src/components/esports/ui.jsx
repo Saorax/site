@@ -70,24 +70,35 @@ export function useApi(url, { refreshMs = 0, refreshWhile } = {}) {
   return state;
 }
 
+export const vodTime = (seconds) => {
+  const total = Math.max(0, Math.floor(seconds ?? 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = String(Math.floor((total % 3600) / 60)).padStart(hours ? 2 : 1, "0");
+  return `${hours ? `${hours}:` : ""}${minutes}:${String(total % 60).padStart(2, "0")}`;
+};
+
+export const vodTitle = (stream) => `Watch on the ${stream.name} VOD from ${vodTime(stream.vod.offsetSeconds)}${stream.vod.estimated ? " (start time estimated)" : ""}`;
+
 export function StreamBadge({ stream, className = "" }) {
   if (!stream?.name) return null;
+  const target = stream.vod?.url ?? stream.url;
   const open = (event) => {
     event.preventDefault();
     event.stopPropagation();
-    if (stream.url) window.open(stream.url, "_blank", "noopener,noreferrer");
+    if (target) window.open(target, "_blank", "noopener,noreferrer");
   };
   return (
     <span
-      role={stream.url ? "link" : undefined}
-      tabIndex={stream.url ? 0 : undefined}
+      role={target ? "link" : undefined}
+      tabIndex={target ? 0 : undefined}
       onClick={open}
       onKeyDown={(event) => { if (event.key === "Enter") open(event); }}
-      title={stream.url ? `Streamed on ${stream.name}` : `Assigned to stream ${stream.name}`}
-      className={`inline-flex max-w-[9rem] items-center gap-1 rounded-full bg-violet-600 px-1.5 py-0.5 text-[10px] font-black text-white shadow ${stream.url ? "cursor-pointer hover:bg-violet-500" : ""} ${className}`}
+      title={stream.vod ? vodTitle(stream) : stream.url ? `Streamed on ${stream.name}` : `Assigned to stream ${stream.name}`}
+      className={`inline-flex max-w-[9rem] items-center gap-1 rounded-full bg-violet-600 px-1.5 py-0.5 text-[10px] font-black text-white shadow ${target ? "cursor-pointer hover:bg-violet-500" : ""} ${className}`}
     >
       <span aria-hidden="true">▶</span>
       <span className="truncate">{stream.name}</span>
+      {stream.vod && <span className="shrink-0 rounded bg-white/20 px-1">VOD</span>}
     </span>
   );
 }

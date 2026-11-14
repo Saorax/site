@@ -2,7 +2,7 @@ import React from "react";
 import { host } from "../../stuff";
 import {
   apiUrl, Avatar, Badge, Card, date, Empty, ErrorNote, LIVE_REFRESH_MS, LiveUpdates, Loading, modeName, PageShell, ProviderLink,
-  useApi,
+  useApi, vodTime, vodTitle,
 } from "./ui";
 
 export const mapName = (value) => {
@@ -67,6 +67,11 @@ export function SetPage({ setId }) {
             {set.stream.url
               ? <a href={set.stream.url} target="_blank" rel="noopener noreferrer" className="hover:underline">{set.state === "complete" ? "Streamed" : "On stream"}: {set.stream.name} ↗</a>
               : <span>{set.state === "complete" ? "Streamed" : "On stream"}: {set.stream.name}</span>}
+            {set.stream.vod && (
+              <a href={set.stream.vod.url} target="_blank" rel="noopener noreferrer" title={vodTitle(set.stream)} className="ml-auto rounded-lg bg-violet-600 px-2.5 py-1 text-xs font-black text-white hover:bg-violet-500">
+                Watch VOD from {set.stream.vod.estimated ? "about " : ""}{vodTime(set.stream.vod.offsetSeconds)} ↗
+              </a>
+            )}
           </div>
         )}
         <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-4">
