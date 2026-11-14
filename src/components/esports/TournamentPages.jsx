@@ -188,6 +188,7 @@ function EventBody({ eventId, preloaded, updatedAt }) {
   ].filter(Boolean).join(" · ");
   return (
     <div>
+      <MatchTicker sets={data.sets ?? []} />
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <Tabs
           value={tab}
@@ -290,17 +291,101 @@ function Standings({ entrants, sets = [], live = false }) {
 
 function Matches({ eventId, sets }) {
   const [layout, setLayout] = useQueryState("layout", "bracket");
+  const streamed = sets.filter((set) => set.stream);
+  const layouts = [["bracket", "Bracket"], ["list", "List"], ...(streamed.length ? [["stream", `On stream (${streamed.length})`]] : [])];
   return (
     <div className="grid gap-3">
       <div className="flex">
         <div className="inline-flex overflow-hidden rounded-lg border border-slate-300 bg-white text-sm font-black dark:border-slate-700 dark:bg-slate-900">
-          {[["bracket", "Bracket"], ["list", "List"]].map(([key, label]) => (
+          {layouts.map(([key, label]) => (
             <button key={key} type="button" onClick={() => setLayout(key)} className={`px-4 py-2 transition ${layout === key ? "bg-blue-500 text-white" : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"}`}>{label}</button>
           ))}
         </div>
       </div>
-      {layout === "bracket" ? <BracketView eventId={eventId} /> : <RoundList sets={sets} />}
+      {layout === "stream" && streamed.length ? <StreamList sets={streamed} />
+        : layout === "list" ? <RoundList sets={sets} /> : <BracketView eventId={eventId} />}
     </div>
+  );
+}
+
+const setStatus = (set) => (set.state === "active" && (set.slots ?? []).length === 2 && !(set.slots ?? []).some((slot) => slot.winner) ? "live"
+  : set.state === "complete" || (set.slots ?? []).some((slot) => slot.winner) ? "done" : "upcoming");
+const setRecency = (set) => new Date(set.history_at ?? set.observed_at ?? 0).getTime();
+const byLatest = (left, right) => setRecency(right) - setRecency(left) || (right.set_order ?? 0) - (left.set_order ?? 0);
+
+function StreamList({ sets }) {
+  const order = { live: 0, upcoming: 1, done: 2 };
+  const sections = [["live", "Live now"], ["upcoming", "Coming up"], ["done", "Played on stream"]]
+    .map(([key, title]) => [title, sets.filter((set) => setStatus(set) === key)
+      .sort(key === "upcoming" ? (left, right) => (left.set_order ?? 0) - (right.set_order ?? 0) : byLatest)])
+    .filter(([, list]) => list.length);
+  return (
+    <div className="grid gap-4">
+      {sections.map(([title, list]) => (
+        <Card key={title} title={title} action={<span className="text-xs font-bold text-slate-500">{list.length} {list.length === 1 ? "match" : "matches"}</span>}>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {[...list].sort((left, right) => order[setStatus(left)] - order[setStatus(right)]).map((set) => (
+              <div key={set.id} className="grid gap-1">
+                <span className="truncate text-[11px] font-black uppercase tracking-wider text-slate-500">{set.round_name ?? "Match"}</span>
+                <SetCard set={set} />
+              </div>
+            ))}
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+const TICKER_CSS = `@keyframes esports-ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.esports-ticker-track { animation: esports-ticker var(--ticker-duration, 60s) linear infinite; }
+.esports-ticker:hover .esports-ticker-track, .esports-ticker:focus-within .esports-ticker-track { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .esports-ticker { overflow-x: auto; } .esports-ticker-track { animation: none; } .esports-ticker-copy { display: none; } }`;
+
+function TickerItem({ set, copy = false }) {
+  const slots = set.slots ?? [];
+  const legends = [...new Set((set.games ?? []).flatMap((game) => (game.selections ?? []).map((pick) => pick.legend)).filter(Boolean))].slice(0, 4);
+  return (
+    <a
+      href={`/esports/set/${set.id}`}
+      tabIndex={copy ? -1 : undefined}
+      aria-hidden={copy || undefined}
+      className="flex shrink-0 items-center gap-2 rounded-lg border border-emerald-500/30 bg-white px-2.5 py-1.5 text-xs transition hover:border-emerald-500 dark:bg-slate-900"
+    >
+      {setStatus(set) === "live" && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" aria-label="Live" />}
+      <span className="max-w-[7rem] truncate font-bold uppercase tracking-wide text-slate-400">{String(set.round_name ?? "").split(" - ").pop()}</span>
+      {slots.map((slot, index) => (
+        <React.Fragment key={slot.entrantId ?? index}>
+          {index > 0 && <span className="text-slate-400">–</span>}
+          <span className={`max-w-[9rem] truncate ${slot.winner ? "font-black text-slate-950 dark:text-white" : "font-semibold text-slate-500"}`}>{slot.entrantName}</span>
+          {slot.score != null && <span className="font-black tabular-nums text-slate-700 dark:text-slate-200">{slot.score}</span>}
+        </React.Fragment>
+      ))}
+      {legends.length > 0 && (
+        <span className="flex -space-x-1.5">
+          {legends.map((legend) => (
+            <img key={legend} src={`${host}/game/legends/art/${encodeURIComponent(legend)}`} alt="" className="h-5 w-5 rounded-full border border-white bg-slate-200 object-cover dark:border-slate-900 dark:bg-slate-800" />
+          ))}
+        </span>
+      )}
+    </a>
+  );
+}
+
+function MatchTicker({ sets }) {
+  const items = useMemo(() => sets.filter((set) => set.games?.length && (set.slots ?? []).length === 2).sort(byLatest).slice(0, 20), [sets]);
+  if (!items.length) return null;
+  return (
+    <section className="mb-4 flex items-center gap-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 py-2 pl-3 dark:border-slate-800 dark:bg-slate-950" aria-label="Latest results with match data">
+      <style>{TICKER_CSS}</style>
+      <span className="shrink-0 rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-white">Match data</span>
+      <div className="esports-ticker min-w-0 flex-1 overflow-hidden">
+        <div className="esports-ticker-track flex w-max gap-2 pr-2" style={{ "--ticker-duration": `${Math.max(30, items.length * 6)}s` }}>
+          {items.map((set) => <TickerItem key={set.id} set={set} />)}
+          <span className="esports-ticker-copy flex gap-2">{items.map((set) => <TickerItem key={`copy-${set.id}`} set={set} copy />)}</span>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -331,6 +416,15 @@ function PhasePill({ link, onJump, className = "", style }) {
     </button>
   );
 }
+
+const slotRows = (set) => {
+  const rows = [null, null];
+  set.slots.forEach((slot, index) => {
+    const position = set.positions?.[index] ?? index;
+    rows[position === 0 || position === 1 ? (rows[position] ? 1 - position : position) : rows.indexOf(null)] = slot;
+  });
+  return rows;
+};
 
 const entrantLabel = (entrant) => {
   if (!entrant) return "TBD";
@@ -550,14 +644,14 @@ function EliminationSection({ section, entrants, hovered, onHover, onJump, showT
     const top = Math.min(0, ...ys.flatMap((column) => [...column.values()]));
     if (top < 0) ys.forEach((column) => column.forEach((y, id) => column.set(id, y - top)));
     const height = Math.max(CARD_H, ...ys.flatMap((column) => [...column.values()].map((y) => y + CARD_H)));
-    const left = section.columns[0]?.sets.some((set) => set.from && Object.keys(set.from).length) ? PILL_W + PILL_GAP : 0;
+    const left = section.columns[0]?.sets.some((set) => (set.from && Object.keys(set.from).length) || set.sources?.some(Boolean)) ? PILL_W + PILL_GAP : 0;
     const right = section.columns.some((column) => column.sets.some((set) => set.next)) ? PILL_GAP + PILL_W : 0;
     return { ys, height, left, width: left + section.columns.length * (CARD_W + COL_GAP) - COL_GAP + right };
   }, [section]);
   const x = (index) => layout.left + index * (CARD_W + COL_GAP);
-  const incoming = layout.left ? (section.columns[0]?.sets ?? []).flatMap((set) => set.slots.map((slot, row) => {
-    const link = set.from?.[slot.entrantId];
-    return link ? { key: `${set.id}:${slot.entrantId}`, link, y: layout.ys[0].get(set.id) + CARD_H / 4 + row * (CARD_H / 2) } : null;
+  const incoming = layout.left ? (section.columns[0]?.sets ?? []).flatMap((set) => slotRows(set).map((slot, row) => {
+    const link = slot ? set.from?.[slot.entrantId] : set.sources?.[row];
+    return link ? { key: `${set.id}:${row}`, link, y: layout.ys[0].get(set.id) + CARD_H / 4 + row * (CARD_H / 2) } : null;
   }).filter(Boolean)) : [];
   const outgoing = section.columns.flatMap((column, index) => column.sets.filter((set) => set.next)
     .map((set) => ({ key: set.id, link: set.next, x: x(index) + CARD_W, y: layout.ys[index].get(set.id) + CARD_H / 2 })));
@@ -706,14 +800,15 @@ function useGamesPeek(set) {
 }
 
 function BracketCard({ set, entrants, hovered, onHover }) {
-  const rows = [set.slots[0] ?? null, set.slots[1] ?? null];
+  const rows = slotRows(set);
   const decided = Boolean(set.winnerEntrantId);
   const live = set.state === "active" && set.slots.length === 2 && !decided;
   const peek = useGamesPeek(set);
   return (
-    <a ref={peek.ref} onMouseEnter={peek.open} onMouseLeave={peek.close} href={`/esports/set/${set.id}`} draggable={false} className={`relative flex h-full flex-col rounded-lg border bg-white shadow-sm transition hover:border-blue-400 dark:bg-slate-950 ${live ? "border-amber-400 dark:border-amber-500/70" : "border-slate-300 dark:border-slate-700"}`}>
+    <a ref={peek.ref} onMouseEnter={peek.open} onMouseLeave={peek.close} href={`/esports/set/${set.id}`} draggable={false} className={`relative flex h-full flex-col rounded-lg border bg-white shadow-sm transition hover:border-blue-400 dark:bg-slate-950 ${live ? "border-amber-400 dark:border-amber-500/70" : set.games?.length ? "border-emerald-500/60 dark:border-emerald-500/50" : "border-slate-300 dark:border-slate-700"}`}>
       {peek.rect && <GamesPeek set={set} entrants={entrants} rect={peek.rect} />}
       {set.stream && <StreamBadge stream={set.stream} className="absolute -top-2 right-1 z-10" />}
+      {set.games?.length > 0 && <MatchDataBadge games={set.games.length} className="absolute -top-2 left-1 z-10" />}
       {rows.map((slot, index) => {
         const entrant = slot ? entrants[slot.entrantId] : null;
         const won = Boolean(slot) && set.winnerEntrantId === slot.entrantId;
@@ -727,7 +822,7 @@ function BracketCard({ set, entrants, hovered, onHover }) {
           >
             <span className="w-6 shrink-0 text-right text-[11px] font-bold tabular-nums text-slate-400">{entrant?.seed ?? ""}</span>
             <span className={`min-w-0 flex-1 truncate ${won ? "font-black text-slate-950 dark:text-white" : slot ? (decided ? "font-semibold text-slate-500" : "font-semibold text-slate-800 dark:text-slate-200") : "italic text-slate-400"}`}>
-              {slot ? entrantLabel(entrant) : set.slots.length === 1 && set.state === "complete" ? "Bye" : "TBD"}
+              {slot ? entrantLabel(entrant) : set.slots.length === 1 && set.state === "complete" ? "Bye" : set.sources?.[index] ? `From ${linkLabel(set.sources[index])}` : "TBD"}
             </span>
             <span className={`w-7 shrink-0 rounded text-center text-xs font-black tabular-nums ${won ? "bg-emerald-500 text-white" : slot && decided ? "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300" : slot && live ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200" : ""}`}>
               {slotResult(slot, decided, won)}
@@ -841,6 +936,14 @@ function RoundList({ sets }) {
   );
 }
 
+function MatchDataBadge({ games, className = "" }) {
+  return (
+    <span title="Legends and maps were recorded for this match" className={`inline-flex items-center rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-black text-white shadow ${className}`}>
+      {games} {games === 1 ? "game" : "games"} · data
+    </span>
+  );
+}
+
 function SetCard({ set }) {
   const slots = set.slots ?? [];
   const decided = slots.some((slot) => slot.winner);
@@ -853,7 +956,12 @@ function SetCard({ set }) {
         </div>
       ))}
       {slots.length === 1 && <div className="border-t border-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-400 dark:border-slate-800">Bye</div>}
-      {set.stream && <div className="border-t border-slate-100 px-3 py-1.5 dark:border-slate-800"><StreamBadge stream={set.stream} /></div>}
+      {(set.stream || set.games?.length > 0) && (
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 px-3 py-1.5 dark:border-slate-800">
+          {set.stream && <StreamBadge stream={set.stream} />}
+          {set.games?.length > 0 && <MatchDataBadge games={set.games.length} />}
+        </div>
+      )}
     </a>
   );
 }
@@ -889,7 +997,10 @@ function Points({ contributions }) {
               <tr key={`${row.player_id}:${row.region}`} className="border-b border-slate-100 last:border-0 dark:border-slate-800">
                 <td className="px-4 py-2"><a href={`/esports/player/id/${row.player_id}`} className="font-black text-slate-950 hover:text-blue-500 dark:text-white">{row.display_name}</a></td>
                 <td className="px-2 py-2 text-xs font-bold text-slate-500">{regionName(row.region)}</td>
-                <td className="px-2 py-2 text-right font-bold">{ordinal(row.details?.placement)}</td>
+                <td className="px-2 py-2 text-right font-bold">
+                  {ordinal(row.details?.placement)}
+                  {row.provisional && row.details?.placement != null && <span className="block text-[10px] font-bold uppercase tracking-wide text-slate-400" title="Still in: points for the worst place they can finish">or better</span>}
+                </td>
                 <td className="px-2 py-2 text-right tabular-nums">{points(row.placement_points)}</td>
                 <td className="px-2 py-2 text-right tabular-nums">{points(row.win_points)}</td>
                 <td className="px-2 py-2 text-right tabular-nums">{points(row.loss_points)}</td>
