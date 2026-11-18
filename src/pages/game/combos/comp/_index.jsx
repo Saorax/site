@@ -9,8 +9,8 @@ const TICK_MS = 16;
 const TRANSITIONS = {
   link: "then",
   jump: "jump",
-  dash: "dash",
-  dashjump: "dash jump",
+  dash: "dash (dodge down-forward)",
+  dashjump: "dash jump (dodge down-forward, then jump)",
   chase: "chase dodge",
   gc: "gravity cancel",
   string: "string (light pressed during the swing)",
@@ -272,21 +272,22 @@ function DamageBar({ ranges }) {
 
 function baseTransitionLabel(transition, hold, instant, direction, airJump) {
   if (transition === "chase" && CHASE_DIRECTIONS[direction]) return `${airJump ? (Number(hold) > 0 ? `jump, wait ${hold}, ` : "jump, ") : ""}chase dodge ${CHASE_DIRECTIONS[direction]}`;
-  if (transition === "dashjump" && Number(hold) > 0) return `dash, wait ${hold}, jump`;
+  if (transition === "dashjump" && Number(hold) > 0) return `dash (dodge down-forward), wait ${hold}, jump`;
   if (transition === "jump" && instant) return "jump + attack together";
   if (transition === "gc") return `${airJump ? "jump, " : ""}${Number(hold) > 0 ? `gravity cancel, dodge after ${hold} frames` : "gravity cancel"}`;
   return TRANSITIONS[transition] || transition;
 }
 
-function transitionLabel(transition, hold, instant, direction, airJump, reverse) {
-  const label = baseTransitionLabel(transition, hold, instant, direction, airJump);
+function transitionLabel(transition, hold, instant, direction, airJump, reverse, dodgeWait) {
+  const base = baseTransitionLabel(transition, hold, instant, direction, airJump);
+  const label = Number(dodgeWait) > 0 ? `wait ${dodgeWait} frames, ${base}` : base;
   return reverse ? `${label}, turn around` : label;
 }
 
-function ComboSteps({ start, airDrift, jumpTick, first, heldDirection, transition, hold, instant, direction, airJump, reverse, second, moveLabel }) {
+function ComboSteps({ start, mode, airDrift, jumpTick, first, heldDirection, transition, hold, instant, direction, airJump, reverse, dodgeWait, second, moveLabel }) {
   const steps = [
     ...(start === "air" ? [{ kind: "transition", key: "jump", lead: true }] : []),
-    { kind: "move", key: first, held: heldDirection },
+    { kind: "move", key: first, held: heldDirection, split: mode === "split" },
     ...(transition && transition !== "link" ? [{ kind: "transition", key: transition }] : []),
     { kind: "move", key: second },
   ];
@@ -297,11 +298,11 @@ function ComboSteps({ start, airDrift, jumpTick, first, heldDirection, transitio
           {index > 0 && <ArrowRight className="h-3.5 w-3.5 text-slate-500" />}
           {step.kind === "transition" ? (
             <span className="rounded-lg bg-sky-500/15 px-2 py-1 text-xs font-bold text-sky-200">
-              {step.lead ? (airDrift === 0 ? "jump straight up" : airDrift === 2 ? "jump forward, then let go" : "jump") : transitionLabel(step.key, hold, instant, direction, airJump, reverse)}
+              {step.lead ? (airDrift === 0 ? "jump straight up" : airDrift === 2 ? "jump forward, then let go" : "jump") : transitionLabel(step.key, hold, instant, direction, airJump, reverse, dodgeWait)}
             </span>
           ) : (
             <span className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1 text-sm font-black text-white">
-              {moveLabel(step.key)}{step.held ? <span className="font-bold text-slate-400"> · hold {step.held}</span> : null}
+              {step.split ? <span title="Chakram split mode: the chakram was split by an earlier down light, so every move uses its split version until a down light joins it again" className="font-bold text-amber-300">split </span> : null}{moveLabel(step.key)}{step.held ? <span className="font-bold text-slate-400"> · hold {step.held}</span> : null}
             </span>
           )}
         </span>
@@ -417,7 +418,7 @@ function ComboCard({ combo, moveLabel, legends, stanceTotals, onPlay, focusHeroI
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-2">
           <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">{combo.start === "air" ? "From a jump" : "From the ground"}</span>
-          <ComboSteps start={combo.start} airDrift={best?.airDrift} jumpTick={best?.jumpTick} first={combo.first} heldDirection={best?.heldDirection} transition={best?.transition} hold={best?.hold} instant={best?.instant} direction={best?.direction} airJump={best?.airJump} reverse={best?.reverse} second={combo.second} moveLabel={moveLabel} />
+          <ComboSteps start={combo.start} mode={combo.mode} airDrift={best?.airDrift} jumpTick={best?.jumpTick} first={combo.first} heldDirection={best?.heldDirection} transition={best?.transition} hold={best?.hold} instant={best?.instant} direction={best?.direction} airJump={best?.airJump} reverse={best?.reverse} dodgeWait={best?.dodgeWait} second={combo.second} moveLabel={moveLabel} />
         </div>
         <button
           onClick={() => onPlay(best)}
@@ -721,7 +722,7 @@ function WeaponSection({ legends, weapons, onPlay }) {
           <div className="grid gap-3 xl:grid-cols-2">
             {combos.map((combo) => (
               <ComboCard
-                key={`${combo.start || "ground"}-${combo.first}-${combo.second}`}
+                key={`${combo.start || "ground"}-${combo.mode || "joined"}-${combo.first}-${combo.second}`}
                 combo={combo}
                 moveLabel={moveLabel}
                 legends={legends}
@@ -926,7 +927,7 @@ function LegendSection({ legends, weapons: weaponList, onPlay }) {
             <div className="grid gap-3 xl:grid-cols-2">
               {statCombos.map((combo) => (
                 <ComboCard
-                  key={`stat-${combo.start || "ground"}-${combo.first}-${combo.second}`}
+                  key={`stat-${combo.start || "ground"}-${combo.mode || "joined"}-${combo.first}-${combo.second}`}
                   combo={combo}
                   moveLabel={moveLabel}
                   legends={legends}
@@ -993,6 +994,7 @@ function ComboPlayer({ play, onClose }) {
           weapon: weaponSlot,
           first: combo.first,
           second: combo.second,
+          ...(combo.mode ? { mode: combo.mode } : {}),
           damage,
           levels: { strength: holder.strength, dexterity: holder.dexterity, speed: holder.speed },
           ...(Number.isFinite(Number(holder.airStart)) && holder.airStart !== null && holder.airStart !== undefined ? { airStart: holder.airStart } : {}),
@@ -1010,7 +1012,7 @@ function ComboPlayer({ play, onClose }) {
     return () => {
       cancelled = true;
     };
-  }, [heroId, targetHeroId, targetDefense, combo.first, combo.second, damage, holder.strength, holder.dexterity, holder.speed, holder.transition, holder.airStart, holder.airDrift, holder.jumpTick, holder.distance, holder.heldDirection]);
+  }, [heroId, targetHeroId, targetDefense, combo.mode, combo.first, combo.second, damage, holder.strength, holder.dexterity, holder.speed, holder.transition, holder.airStart, holder.airDrift, holder.jumpTick, holder.distance, holder.heldDirection]);
 
   const timeline = useMemo(() => {
     const data = state.data;
@@ -1078,9 +1080,9 @@ function ComboPlayer({ play, onClose }) {
   const phase = !timeline
     ? ""
     : tick < timeline.endTick
-      ? moveLabel(combo.first)
+      ? `${combo.mode === "split" ? "split " : ""}${moveLabel(combo.first)}`
       : tick < timeline.startTick
-        ? transitionLabel(verdict?.transition || "link", verdict?.hold, verdict?.instant, verdict?.direction, verdict?.airJump ?? holder.airJump, verdict?.reverse ?? holder.reverse)
+        ? transitionLabel(verdict?.transition || "link", verdict?.hold, verdict?.instant, verdict?.direction, verdict?.airJump ?? holder.airJump, verdict?.reverse ?? holder.reverse, verdict?.dodgeWait ?? holder.dodgeWait)
         : moveLabel(combo.second);
   const stunned = timeline && tick < timeline.freeTick;
   const markers = timeline ? [
@@ -1098,6 +1100,7 @@ function ComboPlayer({ play, onClose }) {
           <div className="flex min-w-0 flex-col gap-2">
             <ComboSteps
               start={combo.start}
+              mode={combo.mode}
               airDrift={holder.airDrift}
               jumpTick={holder.jumpTick}
               first={combo.first}
@@ -1108,6 +1111,7 @@ function ComboPlayer({ play, onClose }) {
               direction={verdict?.direction ?? holder.direction}
               airJump={verdict?.airJump ?? holder.airJump}
               reverse={verdict?.reverse ?? holder.reverse}
+              dodgeWait={verdict?.dodgeWait ?? holder.dodgeWait}
               second={combo.second}
               moveLabel={moveLabel}
             />
