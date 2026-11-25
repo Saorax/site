@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { Img, PageShell } from '../ui';
+import { Img, PageShell, formatNumber } from '../ui';
 import SiteSearch from '../ui/SiteSearch';
 import { sections } from '../../data/sections';
 import { LatestPatchTile, LatestWinnerTile, NewestLegendTile, OnNowTile, RegionLeadersTile } from './LiveTiles';
 import { ToolGroup, WhatsNew } from './ToolCards';
-import { useLatestPatch, useNewestLegend, useRegionLeaders } from './live';
+import { useLatestPatch, useNewestLegend, useRegionLeaders, useSiteTotals } from './live';
 
 const order = ['competitive', 'ranked', 'game', 'bifrost'];
 
@@ -13,6 +13,7 @@ export default function HomePage() {
   const patch = useLatestPatch();
   const [mode, setMode] = useState('1');
   const leaders = useRegionLeaders(Number(mode));
+  const totals = useSiteTotals();
   const groups = order.map((key) => sections.find((section) => section.key === key)).filter(Boolean);
   return (
     <PageShell>
@@ -23,9 +24,14 @@ export default function HomePage() {
           </div>
         )}
         <div className="relative max-w-3xl">
-          <h1 className="text-2xl font-bold text-white sm:text-4xl">Brawlhalla rankings, results and game data</h1>
-          <p className="mt-2 text-sm text-slate-300 sm:text-base">
-            Results from start.gg and Challengermode. Legend, move and patch data from the game files.
+          <h1 className="text-2xl font-bold text-white sm:text-4xl">The Definitive Brawlhalla Database</h1>
+          <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-slate-300 sm:text-base">
+            {totals.map((item) => (
+              <a key={item.key} href={item.href} className="whitespace-nowrap hover:text-white">
+                <span className={`font-bold tabular-nums text-white transition-opacity ${item.value == null ? 'opacity-40' : ''}`}>{item.value == null ? '…' : formatNumber(item.value)}</span>{' '}
+                {item.label}
+              </a>
+            ))}
           </p>
           <div className="mt-3 max-w-2xl">
             <SiteSearch variant="page" limit={5} />

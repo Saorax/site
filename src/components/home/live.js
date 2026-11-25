@@ -164,3 +164,28 @@ export function useWhatsOn(perPage = 8) {
     nextOfficial: upcoming.find((tournament) => tournament.classification === 'official') ?? null,
   };
 }
+
+export function useSiteTotals() {
+  const tournaments = useApi(esportsUrl('/tournaments', { perPage: 1 }));
+  const players = useApi(esportsUrl('/players', { perPage: 1 }));
+  const ranked = useApi(apiUrl('/v2/raybot'));
+  const legends = useApi(apiUrl('/game/legends/summary'));
+  const history = useApi(apiUrl('/game/history/all'));
+  const legendCount = Array.isArray(legends.data)
+    ? legends.data.filter((legend) => !String(legend.id).startsWith('beta-') && !(legend.tags || []).includes('beta')).length
+    : null;
+  const patches = Array.isArray(history.data) ? history.data.filter((item) => item.patch) : [];
+  const firstPatch = patches.reduce((first, item) => (!first || item.date < first.date ? item : first), null);
+  return [
+    { key: 'tournaments', value: tournaments.data?.total, label: 'tournaments', href: '/esports/tournaments' },
+    { key: 'players', value: players.data?.total, label: 'players', href: '/esports/player' },
+    { key: 'ranked', value: ranked.data?.estimatedCounts?.players, label: 'ranked profiles', href: '/raybot' },
+    { key: 'legends', value: legendCount, label: 'legends', href: '/game/legends' },
+    {
+      key: 'patches',
+      value: patches.length ? new Set(patches.map((item) => item.patch)).size : null,
+      label: firstPatch ? `patches since ${new Date(firstPatch.date * 1000).getUTCFullYear()}` : 'patches',
+      href: '/game/patch',
+    },
+  ];
+}
