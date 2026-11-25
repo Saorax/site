@@ -1,8 +1,9 @@
 import "../../../../styles/global.css";
 import "../../../../../fonts/style.css";
 import { host } from "../../../../stuff";
-import { ArrowRight, ChevronDown, Hand, Info, LoaderCircle, Pause, Play, RotateCcw, Search, SkipBack, Swords, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, ChevronDown, Hand, Info, Pause, Play, RotateCcw, SkipBack, Swords, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Card, CountPill, CountPills, EmptyState, ErrorState, LegendFace, LoadingState, PageHeader, PageShell, Pill, SearchInput, Section, SelectInput, Spinner, Tabs, Toggle, pillTones, useQueryFlag, useQueryState } from "../../../../components/ui";
 
 const MAX_DAMAGE = 200;
 const TICK_MS = 16;
@@ -41,13 +42,7 @@ const SORTS = [
   { key: "damage", label: "Widest damage range" },
 ];
 
-const panel = "rounded-2xl border border-slate-700 bg-slate-900 shadow-sm";
-const eyebrow = "text-xs font-black uppercase tracking-[0.2em] text-blue-300";
-const chip = (active) => classes(
-  "rounded-xl border px-2.5 py-1.5 text-xs font-black transition",
-  active ? "border-blue-400 bg-blue-500/15 text-blue-200" : "border-slate-700 bg-slate-950 text-slate-300 hover:border-blue-300",
-);
-const field = "rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-bold text-white outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-400/30";
+const smallButton = "inline-flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 text-xs font-bold text-slate-200 transition hover:bg-slate-700";
 
 function classes(...values) {
   return values.filter(Boolean).join(" ");
@@ -93,6 +88,28 @@ function mergeRanges(lists) {
   return merged;
 }
 
+function backThrowRanges(holder) {
+  return holder?.throwHeldRanges || (holder?.throwHeld === "back" ? holder.ranges || [] : []);
+}
+
+function mixedThrow(holder) {
+  const back = backThrowRanges(holder);
+  return back.length > 0 && rangeText(back) !== rangeText(holder.ranges || []);
+}
+
+function mergeCharges(lists) {
+  const byCharge = new Map();
+  for (const entry of lists.flat()) {
+    if (!entry?.charge) continue;
+    byCharge.set(entry.charge, [...(byCharge.get(entry.charge) || []), entry.ranges || []]);
+  }
+  return [...byCharge.entries()].sort((left, right) => left[0] - right[0]).map(([charge, ranges]) => ({ charge, ranges: mergeRanges(ranges) }));
+}
+
+function chargeText(charges) {
+  return charges.map((entry) => `charge the throw ${entry.charge} tick${entry.charge === 1 ? "" : "s"} at ${rangeText(entry.ranges)}`).join(", ");
+}
+
 function rangeWidth(ranges) {
   return ranges.reduce((sum, range) => sum + range.to - range.from + 20, 0);
 }
@@ -131,11 +148,15 @@ function flattenDefenses(payload, defense) {
       const matching = (verdicts || []).filter((verdict) => defense === null || inDefenses(verdict.defenses, defense));
       if (!matching.length) return null;
       const best = [...matching].sort((left, right) => Number(right.leeway ?? -99) - Number(left.leeway ?? -99))[0];
-      const { defenses: bestDefenses, ...fields } = best;
+      const { defenses: bestDefenses, throwHeldRanges: _bestBack, throwCharges: _bestCharges, ...fields } = best;
+      const backRanges = mergeRanges(matching.map(backThrowRanges));
+      const charges = mergeCharges(matching.map((verdict) => verdict.throwCharges || []));
       return {
         ...stance,
         ...fields,
         ranges: mergeRanges(matching.map((verdict) => verdict.ranges || [])),
+        ...(backRanges.length ? { throwHeldRanges: backRanges } : {}),
+        ...(charges.length ? { throwCharges: charges } : {}),
         playRanges: best.ranges,
         playDefense: defense ?? bestDefenses?.[0]?.from ?? 5,
         defenses: defense === null ? defenses : [{ from: defense, to: defense }],
@@ -148,46 +169,57 @@ function flattenDefenses(payload, defense) {
 
 function useLegends() {
   const [legends, setLegends] = useState([]);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    let cancelled = false;
+    setError("");
     getJson(`${host}/game/legends/summary`)
-      .then((list) => setLegends(
+      .then((list) => !cancelled && setLegends(
         list
           .filter((legend) => !legend.beta?.isBeta && !String(legend.id).startsWith("beta-"))
           .sort((left, right) => (left.releaseOrder ?? 9999) - (right.releaseOrder ?? 9999) || Number(left.release || 0) - Number(right.release || 0) || legendName(left).localeCompare(legendName(right))),
       ))
-      .catch(() => setLegends([]));
-  }, []);
-  return legends;
+      .catch((reason) => {
+        if (cancelled) return;
+        setLegends([]);
+        setError(String(reason?.message || reason));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
+  const retry = useCallback(() => setAttempt((value) => value + 1), []);
+  return { legends, error, retry };
 }
 
 function useWeaponStatus() {
   const [weapons, setWeapons] = useState([]);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    let timer = null;
-    const load = () => {
-      getJson(`${host}/game/combos/weapons`, { cache: "no-store" })
-        .then((list) => {
-          if (cancelled) return;
-          setWeapons(list);
-          if (list.some((entry) => entry.defenses?.status !== "ready" || entry.defenses?.airStatus !== "ready")) timer = setTimeout(load, 60000);
-        })
-        .catch(() => {
-          if (!cancelled) timer = setTimeout(load, 15000);
-        });
-    };
-    load();
+    setError("");
+    getJson(`${host}/game/combos/weapons`, { cache: "no-store" })
+      .then((list) => {
+        if (cancelled) return;
+        setWeapons(list);
+        setLoaded(true);
+      })
+      .catch((reason) => !cancelled && setError(String(reason?.message || reason)));
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
     };
-  }, []);
-  return weapons;
+  }, [attempt]);
+  const retry = useCallback(() => setAttempt((value) => value + 1), []);
+  return { weapons, loaded, error, retry };
 }
 
 function usePolled(url, interval = 4000) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     if (!url) {
       setData(null);
@@ -203,7 +235,7 @@ function usePolled(url, interval = 4000) {
         .then((payload) => {
           if (cancelled) return;
           setData(payload);
-          if (payload.status !== "ready" || payload.air?.status === "pending") timer = setTimeout(load, payload.status === "ready" ? 60000 : interval);
+          if (payload.status === "computing" || payload.air?.status === "computing") timer = setTimeout(load, interval);
         })
         .catch((reason) => !cancelled && setError(String(reason?.message || reason)));
     };
@@ -212,8 +244,9 @@ function usePolled(url, interval = 4000) {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [url, interval]);
-  return { data, error };
+  }, [url, interval, attempt]);
+  const retry = useCallback(() => setAttempt((value) => value + 1), []);
+  return { data, error, retry };
 }
 
 function legendImage(legends, heroId, fallbackName) {
@@ -228,22 +261,8 @@ function WeaponIcon({ name, className }) {
   return <img src={weaponIcon(name)} alt="" loading="lazy" onError={() => setBroken(true)} className={classes(className, "object-contain")} />;
 }
 
-function SummaryTile({ label, value }) {
-  return (
-    <div className="rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2 text-center shadow-sm">
-      <div className="text-lg font-black leading-none text-white">{value}</div>
-      <div className="mt-1 text-[10px] font-black uppercase tracking-wide text-slate-400">{label}</div>
-    </div>
-  );
-}
-
-function Notice({ tone = "slate", children }) {
-  const tones = {
-    slate: "border-slate-700 bg-slate-900 text-slate-300",
-    rose: "border-rose-400/50 bg-rose-500/10 text-rose-200",
-    sky: "border-sky-400/40 bg-sky-500/10 text-sky-100",
-  };
-  return <div className={classes("rounded-2xl border p-4 text-sm font-bold", tones[tone])}>{children}</div>;
+function Notice({ children }) {
+  return <div className={classes("max-w-5xl rounded-xl border p-2 text-sm", pillTones.sky)}>{children}</div>;
 }
 
 function DamageBar({ ranges }) {
@@ -274,46 +293,92 @@ function baseTransitionLabel(transition, hold, instant, direction, airJump) {
   if (transition === "chase" && CHASE_DIRECTIONS[direction]) return `${airJump ? (Number(hold) > 0 ? `jump, wait ${hold}, ` : "jump, ") : ""}chase dodge ${CHASE_DIRECTIONS[direction]}`;
   if (transition === "dashjump" && Number(hold) > 0) return `dash (dodge down-forward), wait ${hold}, jump`;
   if (transition === "jump" && instant) return "jump + attack together";
-  if (transition === "gc") return `${airJump ? "jump, " : ""}${Number(hold) > 0 ? `gravity cancel, dodge after ${hold} frames` : "gravity cancel"}`;
+  if (transition === "gc") return `${airJump ? "jump, " : ""}${Number(hold) > 0 ? `gravity cancel, dodge after ${hold} frames` : "gravity cancel"}${direction === "forwardDown" ? " (dodge down-forward)" : direction === "down" ? " (dodge down)" : ""}`;
   return TRANSITIONS[transition] || transition;
 }
 
 function transitionLabel(transition, hold, instant, direction, airJump, reverse, dodgeWait) {
   const base = baseTransitionLabel(transition, hold, instant, direction, airJump);
   const label = Number(dodgeWait) > 0 ? `wait ${dodgeWait} frames, ${base}` : base;
-  return reverse ? `${label}, turn around` : label;
+  return reverse === "tap" ? `${label}, tap back on the last frame of the move to turn around` : reverse ? `${label}, turn around` : label;
 }
 
-function ComboSteps({ start, mode, airDrift, jumpTick, first, heldDirection, transition, hold, instant, direction, airJump, reverse, dodgeWait, second, moveLabel }) {
-  const steps = [
+function comboStepList({ start, mode, first, heldDirection, transition, hold, instant, direction, airJump, reverse, dodgeWait, second, throwHeld, chain, links }) {
+  const tail = Array.isArray(chain) && chain.length
+    ? chain.flatMap((key, index) => {
+      const link = links?.[index] || (index === 0 ? { transition, hold, instant, direction, airJump, reverse, dodgeWait } : {});
+      return [
+        ...(link.transition && link.transition !== "link" && link.transition !== "throw" ? [{ kind: "transition", key: link.transition, link }] : link.reverse ? [{ kind: "transition", key: "link", link }] : []),
+        { kind: "move", key },
+      ];
+    })
+    : [
+      ...(transition && transition !== "link" && transition !== "throw" ? [{ kind: "transition", key: transition }] : reverse ? [{ kind: "transition", key: "link" }] : []),
+      { kind: "move", key: second, held: throwHeld },
+    ];
+  return [
     ...(start === "air" ? [{ kind: "transition", key: "jump", lead: true }] : []),
     { kind: "move", key: first, held: heldDirection, split: mode === "split" },
-    ...(transition && transition !== "link" ? [{ kind: "transition", key: transition }] : []),
-    { kind: "move", key: second },
+    ...tail,
   ];
+}
+
+function transitionStepText(step, { airDrift, hold, instant, direction, airJump, reverse, dodgeWait }) {
+  if (step.lead) return airDrift === 0 ? "jump straight up" : airDrift === 2 ? "jump forward, then let go" : "jump";
+  if (step.link) return transitionLabel(step.key, step.link.hold, step.link.instant, step.link.direction, step.link.airJump, step.link.backTap ? "tap" : step.link.reverse, step.link.dodgeWait);
+  return transitionLabel(step.key, hold, instant, direction, airJump, reverse, dodgeWait);
+}
+
+function ComboSteps(props) {
+  const { jumpTick, approach, momentum, moveLabel } = props;
+  const steps = comboStepList(props);
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {steps.map((step, index) => (
         <span key={`${step.key}-${index}-${step.lead ? "lead" : ""}`} className="flex items-center gap-1.5">
           {index > 0 && <ArrowRight className="h-3.5 w-3.5 text-slate-500" />}
           {step.kind === "transition" ? (
-            <span className="rounded-lg bg-sky-500/15 px-2 py-1 text-xs font-bold text-sky-200">
-              {step.lead ? (airDrift === 0 ? "jump straight up" : airDrift === 2 ? "jump forward, then let go" : "jump") : transitionLabel(step.key, hold, instant, direction, airJump, reverse, dodgeWait)}
-            </span>
+            <Pill tone="sky" className="whitespace-normal py-1">
+              {transitionStepText(step, props)}
+            </Pill>
           ) : (
-            <span className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1 text-sm font-black text-white">
+            <span className="rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1 text-sm font-bold text-white">
               {step.split ? <span title="Chakram split mode: the chakram was split by an earlier down light, so every move uses its split version until a down light joins it again" className="font-bold text-amber-300">split </span> : null}{moveLabel(step.key)}{step.held ? <span className="font-bold text-slate-400"> · hold {step.held}</span> : null}
             </span>
           )}
         </span>
       ))}
       {typeof jumpTick === "number" && (
-        <span title="The first move misses a standing opponent at every spacing, so this was checked against an opponent who jumps into it" className="rounded-lg bg-amber-500/15 px-2 py-1 text-xs font-bold text-amber-200">
+        <Pill tone="amber" className="py-1" title="The first move misses a standing opponent at every spacing, so this was checked against an opponent who jumps into it">
           vs a jumping opponent
-        </span>
+        </Pill>
+      )}
+      {approach === "run" && (
+        <Pill tone="amber" className="py-1" title="Not true against a standing opponent: this was checked against an opponent who runs into the first move">
+          vs a running opponent
+        </Pill>
+      )}
+      {(momentum === "run" || momentum === "dash") && (
+        <Pill tone="amber" className="py-1" title={momentum === "dash" ? "Dash into the first move and press it on the dash's first frame: the dash's speed carries into the attack and makes this combo true at more damage values than from standing" : "Run into the first move: the running speed carries into the attack and makes this combo true at more damage values than from standing"}>
+          {momentum === "dash" ? "dash into it" : "run into it"}
+        </Pill>
       )}
     </div>
   );
+}
+
+function driftText(entry) {
+  if (!entry) return "";
+  if (Number.isFinite(Number(entry.driftSwitch)) && entry.driftSwitch !== null) {
+    const first = entry.drift === "away" ? "hold away" : entry.drift === "toward" ? "hold toward" : "hold nothing";
+    const then = entry.driftAfter === "toward" ? "hold toward" : entry.driftAfter === "away" ? "hold away" : "let go";
+    return `${first} for the first ${entry.driftSwitch} frames of the jump, then ${then}`;
+  }
+  return entry.drift === "toward" ? "hold toward" : "";
+}
+
+function stanceName(stance) {
+  return String(stance ?? "").replace(/\bWeight\b/, "Defense");
 }
 
 function stanceStats(holder) {
@@ -331,10 +396,17 @@ function groupHolders(holders) {
 }
 
 function holderTitle(holder) {
-  return `${stanceStats(holder)}${holder.defenses ? ` · opponent DEF ${defenseText(holder.defenses)}` : ""} · true at ${rangeText(holder.ranges)}`;
+  return `${stanceStats(holder)}${holder.defenses ? ` · opponent DEF ${defenseText(holder.defenses)}` : ""} · true at ${rangeText(holder.ranges)}${mixedThrow(holder) ? ` · hold back while throwing at ${rangeText(backThrowRanges(holder))}` : ""}${holder.throwCharges?.length ? ` · ${chargeText(holder.throwCharges)}` : ""}`;
 }
 
 function StanceButton({ holder, onPlay }) {
+  if (!onPlay) {
+    return (
+      <span title={holderTitle(holder)} className={classes("rounded-md px-1.5 py-0.5 text-[11px] font-bold", holder.stance === "Base" ? "bg-emerald-500/15 text-emerald-200" : "bg-slate-800 text-slate-300")}>
+        {stanceName(holder.stance)}
+      </span>
+    );
+  }
   return (
     <button
       onClick={() => onPlay(holder)}
@@ -344,7 +416,7 @@ function StanceButton({ holder, onPlay }) {
         holder.stance === "Base" ? "bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25" : "bg-slate-800 text-slate-300 hover:bg-slate-700",
       )}
     >
-      {holder.stance}
+      {stanceName(holder.stance)}
     </button>
   );
 }
@@ -361,7 +433,9 @@ function HolderList({ holders, stanceTotals, legends, onPlay }) {
             <img src={legendImage(legends, group.heroId, group.legend)} alt="" loading="lazy" className="h-7 w-7 shrink-0 rounded-lg object-contain" />
             <div className="flex min-w-0 flex-wrap items-center gap-1">
               <span className="mr-1 truncate text-xs font-black text-slate-100">{group.legend}</span>
-              {all ? (
+              {all && !onPlay ? (
+                <Pill tone="emerald" className="text-[11px]">every stance</Pill>
+              ) : all ? (
                 <button
                   onClick={() => onPlay(group.stances.find((stance) => stance.stance === "Base") || group.stances[0])}
                   className="rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-bold text-emerald-200 hover:bg-emerald-500/25"
@@ -381,25 +455,28 @@ function HolderList({ holders, stanceTotals, legends, onPlay }) {
 
 function StatPill({ label, value, accent }) {
   return (
-    <div className={classes("rounded-lg border px-2 py-1 text-center", accent ? "border-blue-400/40 bg-blue-500/10" : "border-slate-700 bg-slate-950")}>
-      <div className={classes("text-[10px] font-black uppercase tracking-wide", accent ? "text-blue-300" : "text-slate-500")}>{label}</div>
-      <div className="text-xs font-black text-white">{value}</div>
+    <div className={classes("rounded-lg border px-2 py-1 text-center", accent ? pillTones.blue : pillTones.slate)}>
+      <div className="text-[10px] uppercase tracking-wide opacity-80">{label}</div>
+      <div className="text-xs font-bold text-white">{value}</div>
     </div>
   );
 }
 
 function LeewayBadge({ leeway }) {
   if (!Number.isFinite(leeway) || leeway < 0) return null;
-  const tone = leeway >= 3 ? "bg-emerald-500/15 text-emerald-200" : leeway >= 1 ? "bg-sky-500/15 text-sky-200" : "bg-amber-500/15 text-amber-200";
+  const tone = leeway >= 3 ? "emerald" : leeway >= 1 ? "sky" : "amber";
   return (
-    <span title="How many frames later the second attack could still land before the opponent can act" className={classes("rounded-lg px-2 py-1 text-xs font-black", tone)}>
+    <Pill tone={tone} className="py-1" title="How many frames later the second attack could still land before the opponent can act">
       {leeway === 0 ? "frame perfect" : `${leeway} frame${leeway === 1 ? "" : "s"} to spare`}
-    </span>
+    </Pill>
   );
 }
 
-function ComboCard({ combo, moveLabel, legends, stanceTotals, onPlay, focusHeroId, note }) {
-  const [open, setOpen] = useState(false);
+function comboKey(combo) {
+  return `${combo.start || "ground"}-${combo.mode || "joined"}-${combo.first}-${(combo.chain || [combo.second]).join("-")}${combo.opponent ? `-vs-${combo.opponent}` : ""}${combo.attacker ? `-${combo.attacker}` : ""}`;
+}
+
+function comboSummary(combo, focusHeroId) {
   const holders = focusHeroId ? combo.holders.filter((holder) => String(holder.heroId) === String(focusHeroId)) : combo.holders;
   const ranges = mergeRanges(holders.map((holder) => holder.ranges));
   const leeway = Math.max(...holders.map((holder) => Number(holder.leeway ?? -99)));
@@ -409,33 +486,52 @@ function ComboCard({ combo, moveLabel, legends, stanceTotals, onPlay, focusHeroI
   const defenseSpan = holders.some((holder) => holder.defenses)
     ? valueRanges(holders.flatMap((holder) => DEFENSES.filter((defense) => inDefenses(holder.defenses, defense))))
     : null;
+  const backRanges = mergeRanges(holders.map(backThrowRanges));
+  const throwMix = backRanges.length > 0 && holders.some((holder) => mixedThrow(holder) || !backThrowRanges(holder).length);
+  const charges = mergeCharges(holders.map((holder) => holder.throwCharges || []));
   const details = [
-    best?.drift === "toward" ? "hold toward" : "",
-    Number.isFinite(Number(best?.distance)) && best?.distance !== null ? `start ${best.distance} units away` : "",
+    throwMix ? `hold back while throwing for some stances (${rangeText(backRanges)})` : "",
+    charges.length ? `${chargeText(charges)}${charges.length === 1 && rangeText(charges[0].ranges) === rangeText(ranges) ? "" : " (some stances)"}` : "",
   ].filter(Boolean);
+  const steps = { start: combo.start, mode: combo.mode, airDrift: best?.airDrift, jumpTick: best?.jumpTick, approach: best?.approach, momentum: best?.momentum, first: combo.first, heldDirection: best?.heldDirection, transition: best?.transition, hold: best?.hold, instant: best?.instant, direction: best?.direction, airJump: best?.airJump, reverse: best?.backTap ? "tap" : best?.reverse, dodgeWait: best?.dodgeWait, second: combo.second, throwHeld: throwMix ? undefined : backRanges.length ? "back" : best?.throwHeld, chain: combo.chain, links: best?.steps };
+  return { holders, ranges, leeway, best, groups, everyone, defenseSpan, details, steps };
+}
+
+function ComboCard({ combo, moveLabel, legends, stanceTotals, onPlay, focusHeroId, note, highlighted = false }) {
+  const [open, setOpen] = useState(highlighted);
+  const ref = useRef(null);
+  const { holders, ranges, leeway, best, groups, everyone, defenseSpan, details, steps } = comboSummary(combo, focusHeroId);
+  useEffect(() => {
+    if (!highlighted) return;
+    setOpen(true);
+    ref.current?.scrollIntoView({ block: "center" });
+  }, [highlighted]);
   return (
-    <article className={classes(panel, "flex flex-col gap-3 p-4 transition hover:border-slate-500")}>
+    <div ref={ref}>
+    <Card as="article" className={classes("flex h-full flex-col gap-3 p-3 transition hover:border-slate-500", highlighted && "ring-2 ring-blue-400")}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-2">
-          <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">{combo.start === "air" ? "From a jump" : "From the ground"}</span>
-          <ComboSteps start={combo.start} mode={combo.mode} airDrift={best?.airDrift} jumpTick={best?.jumpTick} first={combo.first} heldDirection={best?.heldDirection} transition={best?.transition} hold={best?.hold} instant={best?.instant} direction={best?.direction} airJump={best?.airJump} reverse={best?.reverse} dodgeWait={best?.dodgeWait} second={combo.second} moveLabel={moveLabel} />
+          <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{combo.start === "air" ? "From a jump" : "From the ground"}</span>
+          <ComboSteps {...steps} moveLabel={moveLabel} />
         </div>
-        <button
-          onClick={() => onPlay(best)}
-          className="flex shrink-0 items-center gap-1.5 rounded-xl bg-blue-500 px-3 py-2 text-xs font-black text-white transition hover:bg-blue-400"
-        >
-          <Play className="h-3.5 w-3.5" />
-          Watch
-        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <button
+            onClick={() => onPlay(best)}
+            className="flex items-center gap-1.5 rounded-xl bg-blue-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-400"
+          >
+            <Play className="h-3.5 w-3.5" />
+            Watch
+          </button>
+        </div>
       </div>
-      {note && <div className="rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-xs font-bold text-amber-200">{note}</div>}
+      {note && <div className={classes("rounded-lg border px-2.5 py-1.5 text-xs font-bold", pillTones.amber)}>{note}</div>}
       <div className="grid grid-cols-4 gap-1.5">
         <StatPill label="Opp. DEF" value={defenseSpan ? defenseText(defenseSpan) : "5"} accent />
         {STAT_KEYS.map(([key, label]) => <StatPill key={key} label={label} value={statRange(holders, key) ?? "–"} />)}
       </div>
       <div className="flex flex-col gap-1.5">
         <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs">
-          <span className="font-bold text-slate-400">True at <span className="font-black text-emerald-300">{rangeText(ranges)}</span></span>
+          <span className="font-bold text-slate-400">True at <span className="text-emerald-300">{rangeText(ranges)}</span></span>
           <LeewayBadge leeway={leeway} />
         </div>
         <DamageBar ranges={ranges} />
@@ -444,7 +540,7 @@ function ComboCard({ combo, moveLabel, legends, stanceTotals, onPlay, focusHeroI
       {!focusHeroId && (
         <div className="border-t border-slate-800 pt-3">
           {everyone ? (
-            <span className="text-xs font-black text-emerald-200">Every legend and stance</span>
+            <Pill tone="emerald">Every legend and stance</Pill>
           ) : (
             <>
               <button onClick={() => setOpen((value) => !value)} className="flex w-full items-center justify-between gap-2 text-left">
@@ -474,15 +570,16 @@ function ComboCard({ combo, moveLabel, legends, stanceTotals, onPlay, focusHeroI
           {holders.map((holder) => <StanceButton key={holder.stance} holder={holder} onPlay={onPlay} />)}
         </div>
       )}
-    </article>
+    </Card>
+    </div>
   );
 }
 
 function Progress({ data, label }) {
   return (
-    <div className={classes(panel, "flex flex-col gap-2 p-4 text-sm text-slate-300")}>
-      <span className="flex items-center gap-2 font-bold">
-        <LoaderCircle className="h-4 w-4 animate-spin text-blue-400" />
+    <Card role="status" className="flex max-w-3xl flex-col gap-2 text-sm text-slate-300">
+      <span className="flex items-center gap-2">
+        <Spinner />
         {label}
       </span>
       <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
@@ -491,15 +588,15 @@ function Progress({ data, label }) {
       <span className="text-xs text-slate-500">
         {data?.total ? `${data.done} of ${data.total} checks` : "Waiting for earlier jobs to finish"}
       </span>
-    </div>
+    </Card>
   );
 }
 
 function FilterRow({ label, children }) {
   return (
     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-      <span className="text-[11px] font-black uppercase tracking-wide text-slate-500 sm:w-32 sm:shrink-0">{label}</span>
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">{children}</div>
+      <span className="text-sm text-slate-300 sm:w-36 sm:shrink-0">{label}</span>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">{children}</div>
     </div>
   );
 }
@@ -507,11 +604,13 @@ function FilterRow({ label, children }) {
 function MoveFilter({ moves, firstMove, setFirstMove }) {
   return (
     <FilterRow label="Starts with">
-      {[{ key: "all", label: "Any move" }, ...(moves || [])].map((move) => (
-        <button key={move.key} onClick={() => setFirstMove(move.key)} className={chip(firstMove === move.key)}>
-          {move.label}
-        </button>
-      ))}
+      <Tabs
+        variant="small"
+        label="Starts with"
+        value={firstMove}
+        onChange={setFirstMove}
+        items={[{ key: "all", label: "Any move" }, ...(moves || []).filter((move) => !move.followOnly)].map((move) => ({ value: move.key, label: move.label }))}
+      />
     </FilterRow>
   );
 }
@@ -528,10 +627,10 @@ function DamageFilter({ damage, setDamage }) {
         onChange={(event) => setDamage(Number(event.target.value))}
         className="w-full max-w-xs accent-blue-400"
       />
-      <span className="w-12 text-sm font-black text-white">{damage === null ? "Any" : `${damage}%`}</span>
+      <span className="w-12 text-sm font-bold text-white">{damage === null ? "Any" : `${damage}%`}</span>
       {damage !== null && (
-        <button onClick={() => setDamage(null)} className="text-xs font-bold text-slate-400 underline hover:text-white">
-          any
+        <button type="button" onClick={() => setDamage(null)} className={smallButton}>
+          Any
         </button>
       )}
     </FilterRow>
@@ -566,41 +665,102 @@ function filterCombos(combos, { firstMove, damage, heroId, baseOnly, start = "al
 function weaponReadiness(entry) {
   const ground = entry?.defenses?.status === "ready";
   const air = entry?.defenses?.airStatus === "ready";
-  return { ground, air, label: ground && air ? "ready" : ground ? "ground ready" : "rebuilding" };
+  return { ground, air };
+}
+
+const READINESS_DOTS = [
+  ["bg-emerald-400", "ground and jump"],
+  ["bg-sky-400", "ground only"],
+  ["bg-slate-600", "not published yet"],
+];
+
+function readinessDot(ready) {
+  return READINESS_DOTS[ready.ground && ready.air ? 0 : ready.ground ? 1 : 2];
 }
 
 function WeaponPicker({ weapons, weapon, setWeapon }) {
+  const allReady = weapons.every((entry) => {
+    const ready = weaponReadiness(entry);
+    return ready.ground && ready.air;
+  });
   return (
-    <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
-      {weapons.map((entry) => {
-        const ready = weaponReadiness(entry);
-        return (
-          <button
-            key={entry.weapon}
-            onClick={() => setWeapon(entry.weapon)}
-            title={`${weaponLabel(entry.weapon)}: ${ready.ground ? "ground combos ready" : "ground combos being rebuilt"}, ${ready.air ? "jump combos ready" : "jump combos being rebuilt"}`}
-            className={classes(chip(weapon === entry.weapon), "flex shrink-0 items-center gap-2 whitespace-nowrap")}
-          >
-            <WeaponIcon name={entry.weapon} className="h-7 w-7" />
-            <span>{weaponLabel(entry.weapon)}</span>
-            <span className={classes("h-2 w-2 rounded-full", ready.ground && ready.air ? "bg-emerald-400" : ready.ground ? "bg-sky-400" : "bg-slate-600")} />
-          </button>
-        );
+    <>
+    <Tabs
+      variant="chips"
+      label="Weapon"
+      value={weapon}
+      onChange={setWeapon}
+      className="sm:flex-wrap sm:overflow-visible sm:pb-0"
+      items={weapons.map((entry) => {
+        const [dot, text] = readinessDot(weaponReadiness(entry));
+        return {
+          value: entry.weapon,
+          title: allReady ? weaponLabel(entry.weapon) : `${weaponLabel(entry.weapon)}: ${text}`,
+          icon: <WeaponIcon name={entry.weapon} className="h-7 w-7" />,
+          label: (
+            <span className="flex items-center gap-2 whitespace-nowrap">
+              {weaponLabel(entry.weapon)}
+              {!allReady && <span className={classes("h-2 w-2 rounded-full", dot)} />}
+            </span>
+          ),
+        };
       })}
-    </div>
+    />
+    {!allReady && (
+      <div className="flex flex-wrap gap-3 text-[11px] font-bold text-slate-500">
+        {READINESS_DOTS.map(([dot, text]) => (
+          <span key={text} className="flex items-center gap-1.5"><span className={classes("h-2 w-2 rounded-full", dot)} />{text}</span>
+        ))}
+      </div>
+    )}
+    </>
   );
 }
 
+function weaponSlug(name) {
+  return weaponLabel(name).replace(/\s+/g, "");
+}
+
+function weaponFromParam(value, weapons) {
+  const wanted = String(value || "").toLowerCase();
+  if (!wanted) return "";
+  const names = [...new Set([...weapons.map((entry) => entry.weapon), ...Object.keys(WEAPON_LABELS)])];
+  return names.find((name) => name.toLowerCase() === wanted || weaponSlug(name).toLowerCase() === wanted) || value;
+}
+
+function numberParam(value) {
+  return value === "" || value === null || !Number.isFinite(Number(value)) ? null : Number(value);
+}
+
+function useClearOnLeave(keys) {
+  useEffect(() => () => {
+    const url = new URL(window.location.href);
+    keys.forEach((key) => url.searchParams.delete(key));
+    window.history.replaceState(null, "", url);
+  }, []);
+}
+
+function useNumberParam(key) {
+  const [raw, setRaw] = useQueryState(key, "");
+  const set = useCallback((value) => setRaw(value === null || value === undefined ? "" : String(value)), [setRaw]);
+  return [numberParam(raw), set];
+}
+
 function WeaponSection({ legends, weapons, onPlay }) {
-  const [weapon, setWeapon] = useState("Sword");
-  const [firstMove, setFirstMove] = useState("all");
-  const [start, setStart] = useState("all");
-  const [damage, setDamage] = useState(null);
-  const [heroId, setHeroId] = useState("");
-  const [baseOnly, setBaseOnly] = useState(false);
-  const [defense, setDefense] = useState(null);
-  const [sort, setSort] = useState("stances");
-  const [picked, setPicked] = useState(false);
+  useClearOnLeave(["weapon", "first", "start", "dmg", "hero", "base", "def", "sort", "open"]);
+  const [weaponParam, setWeaponParam] = useQueryState("weapon", "Sword");
+  const weapon = weaponFromParam(weaponParam, weapons) || "Sword";
+  const setWeapon = (name) => setWeaponParam(weaponSlug(name));
+  const [firstMove, setFirstMove] = useQueryState("first", "all");
+  const [start, setStart] = useQueryState("start", "all");
+  const [damage, setDamage] = useNumberParam("dmg");
+  const [heroId, setHeroId] = useQueryState("hero", "");
+  const [baseOnly, setBaseOnly] = useQueryFlag("base");
+  const [defense, setDefense] = useNumberParam("def");
+  const [sortParam, setSort] = useQueryState("sort", "stances");
+  const sort = SORTS.some((option) => option.key === sortParam) ? sortParam : "stances";
+  const [openKey, setOpenKey] = useQueryState("open", "");
+  const [picked, setPicked] = useState(() => new URLSearchParams(window.location.search).has("weapon"));
   useEffect(() => {
     if (picked || !weapons.length) return;
     const current = weapons.find((item) => item.weapon === weapon);
@@ -610,18 +770,17 @@ function WeaponSection({ legends, weapons, onPlay }) {
   }, [weapons, picked, weapon]);
   const chooseWeapon = (name) => {
     setPicked(true);
+    if (name === weapon) return;
     setWeapon(name);
-  };
-  const entry = weapons.find((item) => item.weapon === weapon);
-  const readiness = weaponReadiness(entry);
-  const { data: raw, error } = usePolled(weapons.length ? `${host}/game/combos/weapon/${encodeURIComponent(weapon)}?layout=defenses` : "", 60000);
-  const data = useMemo(() => (raw?.status === "ready" ? flattenDefenses(raw, defense) : raw), [raw, defense]);
-
-  useEffect(() => {
     setFirstMove("all");
     setHeroId("");
     setStart("all");
-  }, [weapon]);
+    setOpenKey("");
+  };
+  const entry = weapons.find((item) => item.weapon === weapon);
+  const readiness = weaponReadiness(entry);
+  const { data: raw, error, retry } = usePolled(readiness.ground ? `${host}/game/combos/weapon/${encodeURIComponent(weapon)}?layout=defenses` : "");
+  const data = useMemo(() => (raw?.status === "ready" ? flattenDefenses(raw, defense) : raw), [raw, defense]);
 
   const ready = data?.status === "ready";
   const moveLabel = (key) => data?.moves?.find((move) => move.key === key)?.label || key;
@@ -644,138 +803,135 @@ function WeaponSection({ legends, weapons, onPlay }) {
   };
 
   return (
-    <section className="flex flex-col gap-4">
-      <div className={classes(panel, "p-3 sm:p-4")}>
+    <div className="flex flex-col gap-3">
+      <Section padded={false} bodyClassName="space-y-3 p-3">
         <WeaponPicker weapons={weapons.length ? weapons : [{ weapon: "Sword" }]} weapon={weapon} setWeapon={chooseWeapon} />
-        <div className="mt-3 flex flex-wrap gap-3 text-[11px] font-bold text-slate-500">
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-400" />all combos ready</span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sky-400" />ground ready, jump combos still being simulated</span>
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-slate-600" />being rebuilt</span>
-        </div>
-      </div>
-      {error && <Notice tone="rose">{error}</Notice>}
-      {data && !ready && (
-        <Notice tone="sky">
-          <span className="flex items-center gap-2">
-            <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-sky-300" />
-            The {weaponLabel(weapon)} list is being rebuilt after an engine fix. It appears here on its own once its ground combos are done; this page checks again every minute.
-          </span>
-        </Notice>
+      </Section>
+      {error && <ErrorState message={`Couldn't load the ${weaponLabel(weapon)} list.`} detail={error} onRetry={retry} />}
+      {entry && (!readiness.ground || (data && !ready)) && (
+        <Notice>The {weaponLabel(weapon)} list isn't published yet.</Notice>
       )}
       {ready && (
         <>
-          <div className={classes(panel, "flex flex-col gap-3 p-3 sm:p-4")}>
+          <Section title="Filters" headingAs="h2" collapsible defaultOpen className="max-w-5xl" bodyClassName="space-y-3" actions={filtered ? (
+            <button type="button" onClick={reset} className={smallButton}>
+              <RotateCcw className="h-3.5 w-3.5" />
+              Clear filters
+            </button>
+          ) : null}>
             <FilterRow label="Opponent defense">
-              {[null, ...DEFENSES].map((value) => (
-                <button
-                  key={value ?? "any"}
-                  onClick={() => setDefense(value)}
-                  title={value === null ? "Combos that work against at least one defense" : `Combos that work against a DEF ${value} opponent`}
-                  className={classes(chip(defense === value), "min-w-9")}
-                >
-                  {value === null ? "Any" : value}
-                </button>
-              ))}
+              <Tabs
+                variant="small"
+                label="Opponent defense"
+                value={defense === null ? "any" : defense}
+                onChange={(value) => setDefense(value === "any" ? null : Number(value))}
+                items={["any", ...DEFENSES].map((value) => ({
+                  value,
+                  label: value === "any" ? "Any" : value,
+                  title: value === "any" ? "Combos that work against at least one defense" : `Combos that work against a DEF ${value} opponent`,
+                }))}
+              />
             </FilterRow>
             {data.air?.status === "ready" && (
               <FilterRow label="Starts from">
-                {[["all", "Anywhere"], ["ground", "Ground"], ["air", "A jump"]].map(([key, label]) => (
-                  <button key={key} onClick={() => setStart(key)} className={chip(start === key)}>{label}</button>
-                ))}
+                <Tabs
+                  variant="small"
+                  label="Starts from"
+                  value={start}
+                  onChange={setStart}
+                  items={[["all", "Anywhere"], ["ground", "Ground"], ["air", "A jump"]].map(([value, label]) => ({ value, label }))}
+                />
               </FilterRow>
             )}
             <MoveFilter moves={(data.moves || []).filter((move) => (data.combos || []).some((combo) => combo.first === move.key))} firstMove={firstMove} setFirstMove={setFirstMove} />
             <DamageFilter damage={damage} setDamage={setDamage} />
             <FilterRow label="Legend">
-              <select value={heroId} onChange={(event) => setHeroId(event.target.value)} className={field}>
-                <option value="">Any {weaponLabel(weapon)} user</option>
-                {[...(data.legends || [])].sort((left, right) => left.legend.localeCompare(right.legend)).map((legend) => (
-                  <option key={legend.heroId} value={legend.heroId}>{legend.legend}</option>
-                ))}
-              </select>
-              <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-bold text-slate-200">
-                <input type="checkbox" checked={baseOnly} onChange={(event) => setBaseOnly(event.target.checked)} className="h-4 w-4 accent-blue-400" />
-                Base stance only
-              </label>
+              <SelectInput
+                label="Legend"
+                className="[&>span]:sr-only"
+                value={heroId}
+                onChange={setHeroId}
+                options={[
+                  { value: "", label: `Any ${weaponLabel(weapon)} user` },
+                  ...[...(data.legends || [])].sort((left, right) => left.legend.localeCompare(right.legend)).map((legend) => ({ value: String(legend.heroId), label: legend.legend })),
+                ]}
+              />
+              <Toggle label="Base stance only" checked={baseOnly} onChange={setBaseOnly} />
             </FilterRow>
-          </div>
+          </Section>
           {data.air && data.air.status !== "ready" && (
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-400">
-              <LoaderCircle className="h-3.5 w-3.5 animate-spin text-blue-400" />
-              Combos that start with a jump are still being simulated for {weaponLabel(weapon)}; ground combos are complete.
-            </div>
+            <Notice>{weaponLabel(weapon)} combos from a jump aren't published yet. Ground combos are all here.</Notice>
           )}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="text-lg font-black text-white">{combos.length} true combo{combos.length === 1 ? "" : "s"}</span>
-              {filtered && (
-                <button onClick={reset} className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-slate-400 hover:bg-slate-800 hover:text-white">
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  Reset filters
-                </button>
-              )}
-            </div>
-            <select value={sort} onChange={(event) => setSort(event.target.value)} className={field}>
-              {SORTS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
-            </select>
-          </div>
-          <div className="grid gap-3 xl:grid-cols-2">
+          <Section
+            title={`${combos.length} true combo${combos.length === 1 ? "" : "s"}`}
+            headingAs="h2"
+            actions={(
+              <div className="flex flex-wrap items-center gap-2">
+                <SelectInput label="Sort" value={sort} onChange={setSort} options={SORTS.map((option) => ({ value: option.key, label: option.label }))} />
+              </div>
+            )}
+          >
+          {!!combos.length && (
+          <div className="grid gap-3 xl:grid-cols-2 min-[112.5rem]:grid-cols-3 min-[137.5rem]:grid-cols-4">
             {combos.map((combo) => (
               <ComboCard
-                key={`${combo.start || "ground"}-${combo.mode || "joined"}-${combo.first}-${combo.second}`}
+                key={comboKey(combo)}
                 combo={combo}
                 moveLabel={moveLabel}
                 legends={legends}
                 stanceTotals={stanceTotals}
                 focusHeroId={heroId || null}
+                highlighted={openKey === comboKey(combo)}
                 onPlay={(holder) => onPlay({ weaponData: data, combo, holder, moveLabel, targetHeroId: 3, targetDefense: holder.playDefense, targetName: `a DEF ${holder.playDefense} opponent` })}
               />
             ))}
           </div>
-          {!combos.length && <Notice>No true combos match these filters.</Notice>}
+          )}
+          {!combos.length && (
+            <EmptyState
+              bare
+              title="No True Combos match these filters"
+              action={filtered ? <button type="button" onClick={reset} className={smallButton}>Clear filters</button> : null}
+            />
+          )}
+          </Section>
         </>
       )}
-      {readiness.ground && !data && !error && <Notice>Loading the {weaponLabel(weapon)} list…</Notice>}
-    </section>
+      {readiness.ground && !data && !error && <LoadingState label={`Loading the ${weaponLabel(weapon)} list…`} />}
+    </div>
   );
 }
 
-function LegendPicker({ legends, selected, onSelect }) {
+function LegendPicker({ legends, selected, onSelect, error, onRetry }) {
   const [query, setQuery] = useState("");
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return legends.filter((legend) => !needle || legendName(legend).toLowerCase().includes(needle));
   }, [legends, query]);
   return (
-    <div className={classes(panel, "flex flex-col gap-3 p-3")}>
-      <label className="flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 focus-within:border-blue-400">
-        <Search className="h-4 w-4 text-slate-400" />
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Find a legend"
-          className="w-full bg-transparent text-sm font-bold text-white outline-none placeholder:text-slate-500"
-        />
-      </label>
-      <div className="grid max-h-[60vh] grid-cols-4 gap-2 overflow-y-auto pr-1 sm:grid-cols-6 lg:grid-cols-3 xl:grid-cols-4">
-        {filtered.map((legend) => (
-          <button
-            key={legend.id}
-            onClick={() => onSelect(legend)}
-            title={legendName(legend)}
-            className={classes(
-              "flex flex-col items-center gap-1 rounded-xl border p-1.5 text-[11px] font-bold transition",
-              String(selected?.id) === String(legend.id)
-                ? "border-blue-400 bg-blue-500/15 text-blue-200"
-                : "border-slate-800 bg-slate-950 text-slate-300 hover:border-slate-600",
-            )}
-          >
-            <img src={legendImage(legends, legend.id, legendName(legend))} alt="" loading="lazy" className="h-12 w-12 object-contain" />
-            <span className="w-full truncate text-center">{legendName(legend)}</span>
-          </button>
-        ))}
-      </div>
-    </div>
+    <Section padded={false} bodyClassName="flex flex-col gap-3 p-3">
+      <SearchInput value={query} onChange={setQuery} placeholder="Find a legend" />
+      {error ? (
+        <ErrorState message="Couldn't load the legend list." detail={error} onRetry={onRetry} />
+      ) : !legends.length ? (
+        <LoadingState bare label="Loading legends…" />
+      ) : !filtered.length ? (
+        <EmptyState bare title="No legend matches" action={<button type="button" onClick={() => setQuery("")} className={smallButton}>Clear search</button>} />
+      ) : (
+        <div className="grid max-h-48 grid-cols-4 gap-2 overflow-y-auto pr-1 app-scrollbar sm:grid-cols-6 lg:max-h-[60vh] lg:grid-cols-3 xl:grid-cols-4">
+          {filtered.map((legend) => (
+            <LegendFace
+              key={legend.id}
+              name={legendName(legend)}
+              src={legendImage(legends, legend.id, legendName(legend))}
+              onClick={() => onSelect(legend)}
+              highlight={String(selected?.id) === String(legend.id) ? "selected" : ""}
+              className="w-full border border-slate-800 bg-slate-950 font-bold"
+            />
+          ))}
+        </div>
+      )}
+    </Section>
   );
 }
 
@@ -802,14 +958,32 @@ function onlyReason(combo, heroId, stances, weapon, name) {
   return `Only ${name}'s ${lines.length === 1 ? "stat line" : "stat lines"} ${lines.join(" / ")} ${lines.length === 1 ? "lands" : "land"} it`;
 }
 
-function LegendSection({ legends, weapons: weaponList, onPlay }) {
+function LegendSection({ legends, legendsError, onRetryLegends, weapons: weaponList, onPlay }) {
   const [legend, setLegend] = useState(null);
-  const [weaponSlot, setWeaponSlot] = useState(1);
-  const [firstMove, setFirstMove] = useState("all");
-  const [damage, setDamage] = useState(null);
+  const [weaponSlot, setWeaponSlot] = useState(() => (new URLSearchParams(window.location.search).get("weapon") === "2" ? 2 : 1));
+  useClearOnLeave(["first", "dmg", "open"]);
+  const [firstMove, setFirstMove] = useQueryState("first", "all");
+  const [damage, setDamage] = useNumberParam("dmg");
+  const [openKey] = useQueryState("open", "");
   useEffect(() => {
-    if (!legend && legends.length) setLegend(legends.find((entry) => String(entry.id) === "3") || legends[0]);
+    if (legend || !legends.length) return;
+    const wanted = new URLSearchParams(window.location.search).get("legend");
+    setLegend(legends.find((entry) => String(entry.id) === wanted) || legends.find((entry) => String(entry.id) === "3") || legends[0]);
   }, [legends, legend]);
+  useEffect(() => {
+    if (!legend) return undefined;
+    const url = new URL(window.location.href);
+    url.searchParams.set("legend", String(legend.id));
+    if (weaponSlot === 2) url.searchParams.set("weapon", "2");
+    else url.searchParams.delete("weapon");
+    window.history.replaceState(null, "", url);
+    return () => {
+      const next = new URL(window.location.href);
+      next.searchParams.delete("legend");
+      next.searchParams.delete("weapon");
+      window.history.replaceState(null, "", next);
+    };
+  }, [legend, weaponSlot]);
   const weapons = legend
     ? [
         { slot: 1, name: legend.weapons?.main?.name },
@@ -820,7 +994,7 @@ function LegendSection({ legends, weapons: weaponList, onPlay }) {
   const weaponStatus = weaponList.find((item) => item.weapon === weaponName) || null;
   const readiness = weaponReadiness(weaponStatus);
   const sig = usePolled(legend ? `${host}/game/combos/${legend.id}?weapon=${weaponSlot}` : "");
-  const weaponRaw = usePolled(readiness.ground ? `${host}/game/combos/weapon/${encodeURIComponent(weaponName)}?layout=defenses` : "", 60000);
+  const weaponRaw = usePolled(readiness.ground ? `${host}/game/combos/weapon/${encodeURIComponent(weaponName)}?layout=defenses` : "");
   const weaponData = useMemo(() => (weaponRaw.data?.status === "ready" ? flattenDefenses(weaponRaw.data, LEGEND_TAB_DEFENSE) : weaponRaw.data), [weaponRaw.data]);
   const sigReady = sig.data?.status === "ready";
   const weaponReady = weaponData?.status === "ready";
@@ -847,39 +1021,32 @@ function LegendSection({ legends, weapons: weaponList, onPlay }) {
     }
     return [...seen.values()];
   }, [sig.data, sigReady, weaponData, weaponReady]);
-  const heading = (text, count) => (
-    <h2 className="flex items-center gap-2 text-lg font-black text-white">
-      {text}
-      {count !== null && <span className="rounded-md bg-slate-800 px-2 py-0.5 text-xs font-black text-slate-300">{count}</span>}
-    </h2>
-  );
   return (
-    <section className="flex flex-col gap-4 lg:flex-row">
+    <div className="flex flex-col gap-3 lg:flex-row">
       <aside className="lg:w-80 lg:shrink-0">
-        <LegendPicker legends={legends} selected={legend} onSelect={(next) => { setLegend(next); setFirstMove("all"); }} />
+        <LegendPicker legends={legends} error={legendsError} onRetry={onRetryLegends} selected={legend} onSelect={(next) => { setLegend(next); setFirstMove("all"); }} />
       </aside>
-      <div className="flex min-w-0 flex-1 flex-col gap-4">
-        <div className={classes(panel, "flex flex-col gap-3 p-4")}>
+      <div className="flex min-w-0 flex-1 flex-col gap-3">
+        <Section padded={false} bodyClassName="flex flex-col gap-3 p-3">
           <div className="flex flex-wrap items-center gap-3">
             {legend && <img src={legendImage(legends, legend.id, name)} alt="" className="h-12 w-12 rounded-xl object-contain" />}
-            <div className="min-w-0 flex-1">
-              <div className={eyebrow}>Legend combos</div>
-              <div className="text-2xl font-black text-white">{name}</div>
+            <div className="min-w-[10rem] flex-1">
+              <div className="text-xs font-bold uppercase tracking-wide text-blue-300">Legend combos</div>
+              <h2 className="text-2xl font-bold text-white">{name}</h2>
             </div>
-            <div className="flex gap-2">
-              {weapons.map((entry) => (
-                <button
-                  key={entry.slot}
-                  onClick={() => { setWeaponSlot(entry.slot); setFirstMove("all"); }}
-                  className={classes(chip(weaponSlot === entry.slot), "flex items-center gap-2")}
-                >
-                  <WeaponIcon name={entry.name} className="h-7 w-7" />
-                  {weaponLabel(entry.name)}
-                </button>
-              ))}
-            </div>
+            <Tabs
+              variant="chips"
+              label="Weapon"
+              value={weaponSlot}
+              onChange={(value) => { setWeaponSlot(Number(value)); setFirstMove("all"); }}
+              items={weapons.map((entry) => ({
+                value: entry.slot,
+                icon: <WeaponIcon name={entry.name} className="h-7 w-7" />,
+                label: weaponLabel(entry.name),
+              }))}
+            />
           </div>
-          <p className="text-sm text-slate-400">
+          <p className="max-w-prose text-sm text-slate-400">
             Combos only {name} can do with {label}: ones that start or end with {name}'s own signatures, and {label} combos that
             no other {label} user lands in any stance, because they only work with {name}'s strength, dexterity or speed (checked against a DEF {LEGEND_TAB_DEFENSE} opponent).
           </p>
@@ -889,60 +1056,68 @@ function LegendSection({ legends, weapons: weaponList, onPlay }) {
               <DamageFilter damage={damage} setDamage={setDamage} />
             </div>
           )}
-        </div>
-        <div className="flex flex-col gap-3">
-          {heading("Signature combos", sigReady ? sigCombos.length : null)}
-          {sig.error && <Notice tone="rose">{sig.error}</Notice>}
-          {sig.data && !sigReady && <Progress data={sig.data} label={`Simulating ${name}'s signature combos for each stance…`} />}
-          {sigReady && (
-            <div className="grid gap-3 xl:grid-cols-2">
+        </Section>
+        <Section
+          title="Signature combos"
+          headingAs="h3"
+          count={sigReady ? sigCombos.length : null}
+        >
+          {sig.error && <ErrorState message={`Couldn't load ${name}'s signature combos.`} detail={sig.error} onRetry={sig.retry} />}
+          {sig.data?.status === "computing" && <Progress data={sig.data} label={`Simulating ${name}'s signature combos for each stance…`} />}
+          {sig.data && !sigReady && sig.data.status !== "computing" && <Notice>{name}'s {label} signature combos aren't published yet.</Notice>}
+          {legend && !sig.data && !sig.error && <LoadingState inline label="Loading signature combos…" />}
+          {sigReady && !!sigCombos.length && (
+            <div className="grid gap-3 xl:grid-cols-2 min-[112.5rem]:grid-cols-3 min-[137.5rem]:grid-cols-4">
               {sigCombos.map((combo) => (
                 <ComboCard
-                  key={`sig-${combo.first}-${combo.second}`}
+                  key={`sig-${combo.first}-${(combo.chain || [combo.second]).join("-")}`}
                   combo={combo}
                   moveLabel={moveLabel}
                   legends={legends}
                   stanceTotals={new Map()}
                   focusHeroId={sig.data.heroId}
+                  highlighted={openKey === comboKey(combo)}
                   onPlay={(holder) => onPlay({ weaponData: sig.data, combo, holder, moveLabel })}
                 />
               ))}
             </div>
           )}
-          {sigReady && !sigCombos.length && <Notice>No signature combos match these filters.</Notice>}
-        </div>
-        <div className="flex flex-col gap-3">
-          {heading(`Only ${name}'s stats`, weaponReady ? statCombos.length : null)}
-          {weaponRaw.error && <Notice tone="rose">{weaponRaw.error}</Notice>}
+          {sigReady && !sigCombos.length && <EmptyState bare title="No signature combos match these filters" />}
+        </Section>
+        <Section
+          title={`Only ${name}'s stats`}
+          headingAs="h3"
+          count={weaponReady ? statCombos.length : null}
+        >
+          {weaponRaw.error && <ErrorState message={`Couldn't load the ${label} list.`} detail={weaponRaw.error} onRetry={weaponRaw.retry} />}
           {weaponName && !readiness.ground && (
-            <Notice tone="sky">
-              These come from the full {label} list, which is being rebuilt after an engine fix. They show up here once its ground combos are done.
-            </Notice>
+            <Notice>These come from the {label} list, which isn't published yet.</Notice>
           )}
-          {readiness.ground && !weaponReady && !weaponRaw.error && <Notice>Loading the {label} list…</Notice>}
+          {readiness.ground && !weaponReady && !weaponRaw.error && (weaponRaw.data ? <Notice>The {label} list isn't published yet.</Notice> : <LoadingState inline label={`Loading the ${label} list…`} />)}
           {weaponReady && weaponRaw.data?.air?.status !== "ready" && (
-            <div className="text-xs font-bold text-slate-400">Jump combos for {label} are still being simulated; only ground combos are compared so far.</div>
+            <div className="text-xs font-bold text-slate-400">{label} combos from a jump aren't published yet, so only ground combos are compared.</div>
           )}
-          {weaponReady && (
-            <div className="grid gap-3 xl:grid-cols-2">
+          {weaponReady && !!statCombos.length && (
+            <div className="grid gap-3 xl:grid-cols-2 min-[112.5rem]:grid-cols-3 min-[137.5rem]:grid-cols-4">
               {statCombos.map((combo) => (
                 <ComboCard
-                  key={`stat-${combo.start || "ground"}-${combo.mode || "joined"}-${combo.first}-${combo.second}`}
+                  key={`stat-${comboKey(combo)}`}
                   combo={combo}
                   moveLabel={moveLabel}
                   legends={legends}
                   stanceTotals={new Map()}
                   focusHeroId={legend.id}
+                  highlighted={openKey === comboKey(combo)}
                   note={onlyReason(combo, legend.id, stances, label, name)}
                   onPlay={(holder) => onPlay({ weaponData, combo, holder, moveLabel, targetHeroId: 3, targetDefense: holder.playDefense, targetName: `a DEF ${holder.playDefense} opponent` })}
                 />
               ))}
             </div>
           )}
-          {weaponReady && !statCombos.length && <Notice>Every {label} combo {name} can do is also true for another {label} user{firstMove !== "all" || damage !== null ? " at these filters" : ""}.</Notice>}
-        </div>
+          {weaponReady && !statCombos.length && <EmptyState bare title={`Every ${label} combo ${name} can do is also true for another ${label} user${firstMove !== "all" || damage !== null ? " at these filters" : ""}`} />}
+        </Section>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -958,15 +1133,48 @@ function parseViewBox(value) {
   return [x, y, width, height].every(Number.isFinite) ? { x, y, width, height } : null;
 }
 
+function readShowBoxes() {
+  try {
+    return window.localStorage.getItem("combo-show-boxes") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeShowBoxes(value) {
+  try {
+    window.localStorage.setItem("combo-show-boxes", value ? "1" : "0");
+  } catch {}
+}
+
+function BoxOverlay({ boxes, box }) {
+  if (!boxes || !box) return null;
+  return (
+    <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`${box.x} ${box.y} ${box.width} ${box.height}`} preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      {boxes.target && (
+        <rect x={boxes.target.x - boxes.target.width / 2} y={boxes.target.y - boxes.target.height / 2} width={boxes.target.width} height={boxes.target.height} rx={boxes.target.width / 2} fill="rgba(250,204,21,.14)" stroke="#facc15" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />
+      )}
+      {(boxes.hurt || []).map((entry, index) => (
+        <rect key={`hurt-${index}`} x={entry.x - entry.width / 2} y={entry.y - entry.height / 2} width={entry.width} height={entry.height} rx={entry.width / 2} fill="rgba(34,211,238,.14)" stroke="#22d3ee" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />
+      ))}
+      {(boxes.hit || []).map((entry, index) => (
+        <ellipse key={`hit-${index}`} cx={entry.x} cy={entry.y} rx={entry.rx} ry={entry.ry} fill="rgba(248,113,113,.25)" stroke="#fb7185" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />
+      ))}
+    </svg>
+  );
+}
+
 function ComboPlayer({ play, onClose }) {
   const { weaponData, combo, holder, moveLabel, targetHeroId, targetDefense, targetName } = play;
   const [state, setState] = useState({ loading: true, error: "", data: null });
   const [tick, setTick] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState(0.5);
+  const [showBoxes, setShowBoxes] = useState(readShowBoxes);
   const playRanges = holder.playRanges || holder.ranges || [];
   const damageStart = playRanges[0]?.from ?? 0;
   const [damage, setDamage] = useState(damageStart);
+  const [attempt, setAttempt] = useState(0);
   const heroId = holder.heroId;
   const weaponSlot = Number.isFinite(Number(holder.weaponSlot)) ? Number(holder.weaponSlot) : Number(weaponData.weaponSlot ?? 1);
 
@@ -994,6 +1202,7 @@ function ComboPlayer({ play, onClose }) {
           weapon: weaponSlot,
           first: combo.first,
           second: combo.second,
+          ...(combo.chain ? { chain: combo.chain } : {}),
           ...(combo.mode ? { mode: combo.mode } : {}),
           damage,
           levels: { strength: holder.strength, dexterity: holder.dexterity, speed: holder.speed },
@@ -1002,7 +1211,9 @@ function ComboPlayer({ play, onClose }) {
           ...(holder.heldDirection ? { heldDirection: holder.heldDirection } : {}),
           ...(holder.airDrift === 0 || holder.airDrift === 2 ? { airDrift: holder.airDrift } : {}),
           ...(typeof holder.jumpTick === "number" ? { approach: "jump", jumpTick: holder.jumpTick } : {}),
-          ...(holder.transition ? { transitions: [holder.transition] } : {}),
+          ...(holder.approach === "run" ? { approach: "run" } : {}),
+          ...(holder.momentum === "run" || holder.momentum === "dash" ? { momentum: holder.momentum, ...(holder.momentum === "dash" ? { momentumDelay: Number(holder.momentumDelay) || 0 } : {}) } : {}),
+          ...(holder.transition && !combo.chain ? { transitions: [holder.transition] } : {}),
           ...(targetHeroId && targetHeroId !== 3 ? { targetHeroId } : {}),
           ...(targetDefense ? { targetDefense } : {}),
         }),
@@ -1012,15 +1223,21 @@ function ComboPlayer({ play, onClose }) {
     return () => {
       cancelled = true;
     };
-  }, [heroId, targetHeroId, targetDefense, combo.mode, combo.first, combo.second, damage, holder.strength, holder.dexterity, holder.speed, holder.transition, holder.airStart, holder.airDrift, holder.jumpTick, holder.distance, holder.heldDirection]);
+  }, [heroId, targetHeroId, targetDefense, combo.mode, combo.first, combo.second, (combo.chain || []).join(">"), damage, holder.strength, holder.dexterity, holder.speed, holder.transition, holder.airStart, holder.airDrift, holder.jumpTick, holder.approach, holder.momentum, holder.momentumDelay, holder.distance, holder.heldDirection, attempt]);
 
   const timeline = useMemo(() => {
     const data = state.data;
     if (!data) return null;
     const startTick = Number(data.verdict?.startTick ?? 0);
-    const firstFrames = (data.firstPart?.frames || []).filter((frame) => frame.svg);
-    const secondFrames = (data.secondPart?.frames || []).filter((frame) => frame.svg);
-    if (!firstFrames.length || !secondFrames.length) return null;
+    const parts = Array.isArray(data.parts)
+      ? data.parts.map((part) => ({ start: Number(part.startTick || 0), frames: (part.frames || []).filter((frame) => frame.svg), hits: part.targetHits || [] }))
+      : [
+        { start: 0, frames: (data.firstPart?.frames || []).filter((frame) => frame.svg), hits: data.firstPart?.targetHits || [] },
+        { start: startTick, frames: (data.secondPart?.frames || []).filter((frame) => frame.svg), hits: data.secondPart?.targetHits || [] },
+      ];
+    if (parts.length < 2 || parts.some((part) => !part.frames.length)) return null;
+    const firstFrames = parts[0].frames;
+    const secondFrames = parts.slice(1).flatMap((part) => part.frames);
     const pick = (frames, value) => {
       let chosen = frames[0];
       for (const frame of frames) {
@@ -1029,11 +1246,12 @@ function ComboPlayer({ play, onClose }) {
       }
       return chosen;
     };
-    const lastSecond = Number(secondFrames[secondFrames.length - 1].tick ?? 0);
-    const total = startTick + lastSecond + 1;
+    const lastPart = parts[parts.length - 1];
+    const total = lastPart.start + Number(lastPart.frames[lastPart.frames.length - 1].tick ?? 0) + 1;
     const frames = [];
     for (let value = 0; value < total; value += 1) {
-      frames.push(value < startTick ? pick(firstFrames, value) : pick(secondFrames, value - startTick));
+      const part = parts.filter((entry) => entry.start <= value).pop() || parts[0];
+      frames.push(pick(part.frames, value - part.start));
     }
     const points = frames.flatMap((frame) => [frame.actor, frame.target]).filter((point) => point && Number.isFinite(point.x) && Number.isFinite(point.y));
     let box;
@@ -1053,7 +1271,7 @@ function ComboPlayer({ play, onClose }) {
       const top = Math.min(...boxes.map((entry) => entry.y));
       box = { x: left, y: top, width: Math.max(...boxes.map((entry) => entry.x + entry.width)) - left, height: Math.max(...boxes.map((entry) => entry.y + entry.height)) - top };
     }
-    const firstHitTicks = (data.firstPart?.targetHits || []).map((hit) => Number(hit.tick));
+    const firstHitTicks = parts[0].hits.map((hit) => Number(hit.tick));
     const secondHitTick = Number(data.verdict?.secondHitTick);
     return {
       frames,
@@ -1063,6 +1281,7 @@ function ComboPlayer({ play, onClose }) {
       firstHitTicks,
       secondHitTick: Number.isFinite(secondHitTick) ? secondHitTick : null,
       freeTick: Number(data.verdict?.freeTick ?? 0),
+      linkStarts: parts.slice(1).map((part) => part.start),
     };
   }, [state.data]);
 
@@ -1077,25 +1296,29 @@ function ComboPlayer({ play, onClose }) {
   const frame = timeline?.frames[Math.min(tick, (timeline?.frames.length || 1) - 1)];
   const svg = useMemo(() => svgWithViewBox(frame?.svg, timeline?.box), [frame, timeline?.box]);
   const verdict = state.data?.verdict;
+  const chainIndex = timeline && Array.isArray(state.data?.chain) ? timeline.linkStarts.filter((value) => value <= tick).length : 0;
   const phase = !timeline
     ? ""
+    : chainIndex > 1
+      ? moveLabel(state.data.chain[chainIndex - 1])
     : tick < timeline.endTick
       ? `${combo.mode === "split" ? "split " : ""}${moveLabel(combo.first)}`
       : tick < timeline.startTick
-        ? transitionLabel(verdict?.transition || "link", verdict?.hold, verdict?.instant, verdict?.direction, verdict?.airJump ?? holder.airJump, verdict?.reverse ?? holder.reverse, verdict?.dodgeWait ?? holder.dodgeWait)
+        ? transitionLabel(verdict?.transition && verdict.transition !== "throw" ? verdict.transition : "link", verdict?.hold, verdict?.instant, verdict?.direction, verdict?.airJump ?? holder.airJump, (verdict?.backTap ?? holder.backTap) ? "tap" : verdict?.reverse ?? holder.reverse, verdict?.dodgeWait ?? holder.dodgeWait)
         : moveLabel(combo.second);
   const stunned = timeline && tick < timeline.freeTick;
   const markers = timeline ? [
     ...timeline.firstHitTicks.map((value) => [value, "bg-amber-400", "First hit"]),
     [timeline.endTick, "bg-slate-300", "First move ends"],
     [timeline.startTick, "bg-sky-400", "Second move starts"],
+    ...timeline.linkStarts.slice(1).map((value, index) => [value, "bg-sky-400", `Move ${index + 3} starts`]),
     [timeline.secondHitTick, "bg-emerald-400", "Second hit"],
     [timeline.freeTick, "bg-rose-400", "Target can act"],
   ].filter(([value]) => Number.isFinite(value)) : [];
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/85 p-3 backdrop-blur-sm sm:p-4" onClick={onClose}>
-      <div role="dialog" aria-modal="true" className={classes(panel, "flex max-h-full w-full max-w-4xl flex-col gap-3 overflow-y-auto p-4")} onClick={(event) => event.stopPropagation()}>
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/85 p-3 backdrop-blur-sm" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label="Combo replay" className="flex max-h-full w-full max-w-4xl flex-col gap-3 overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 p-3 shadow-sm app-scrollbar" onClick={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-2">
             <ComboSteps
@@ -1103,6 +1326,8 @@ function ComboPlayer({ play, onClose }) {
               mode={combo.mode}
               airDrift={holder.airDrift}
               jumpTick={holder.jumpTick}
+              approach={holder.approach}
+              momentum={holder.momentum}
               first={combo.first}
               heldDirection={verdict?.heldDirection ?? holder.heldDirection}
               transition={verdict?.transition || holder.transition}
@@ -1110,16 +1335,19 @@ function ComboPlayer({ play, onClose }) {
               instant={verdict?.instant ?? holder.instant}
               direction={verdict?.direction ?? holder.direction}
               airJump={verdict?.airJump ?? holder.airJump}
-              reverse={verdict?.reverse ?? holder.reverse}
+              reverse={(verdict?.backTap ?? holder.backTap) ? "tap" : verdict?.reverse ?? holder.reverse}
               dodgeWait={verdict?.dodgeWait ?? holder.dodgeWait}
               second={combo.second}
+              throwHeld={verdict?.throwHeld ?? holder.throwHeld}
               moveLabel={moveLabel}
+              chain={combo.chain}
+              links={verdict?.steps ?? holder.steps}
             />
             <span className="text-xs font-bold text-slate-400">
-              {holder.legend} · {holder.stance} stance · {stanceStats(holder)}{targetName ? ` · vs ${targetName}` : ""}
+              {holder.legend} · {stanceName(holder.stance)} stance · {stanceStats(holder)}{targetName ? ` · vs ${targetName}` : ""}{driftText(verdict?.driftSwitch !== undefined ? verdict : holder) ? ` · ${driftText(verdict?.driftSwitch !== undefined ? verdict : holder)}` : ""}{Number.isFinite(Number(holder.distance)) && holder.distance !== null ? ` · start ${holder.distance} units away` : ""}
             </span>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white" aria-label="Close">
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -1130,19 +1358,21 @@ function ComboPlayer({ play, onClose }) {
             </svg>
           )}
           {state.loading && (
-            <div className="absolute inset-0 grid place-items-center text-sm font-bold text-slate-400">
-              <span className="flex items-center gap-2">
-                <LoaderCircle className="h-4 w-4 animate-spin text-blue-400" />
-                Rendering the combo…
-              </span>
+            <div className="absolute inset-0 grid place-items-center">
+              <LoadingState inline label="Rendering the combo…" />
             </div>
           )}
-          {state.error && <div className="absolute inset-0 grid place-items-center p-6 text-center text-sm font-bold text-rose-200">{state.error}</div>}
+          {state.error && (
+            <div className="absolute inset-0 grid place-items-center p-3">
+              <ErrorState className="w-full max-w-md" message="Couldn't render this combo." detail={state.error} onRetry={() => setAttempt((value) => value + 1)} />
+            </div>
+          )}
           {svg && (
             <div className="absolute inset-0 [&>svg]:h-full [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: svg }} />
           )}
+          {svg && showBoxes && <BoxOverlay boxes={frame?.boxes} box={timeline?.box} />}
           {timeline && (
-            <div className="absolute left-3 top-3 flex flex-wrap gap-2 text-xs font-black">
+            <div className="absolute left-3 top-3 flex flex-wrap gap-2 text-xs font-bold">
               <span className="rounded-lg bg-slate-900/85 px-2 py-1 text-white">{phase}</span>
               <span className={classes("rounded-lg px-2 py-1", stunned ? "bg-rose-500/85 text-white" : "bg-emerald-500/85 text-slate-950")}>
                 {stunned ? "target stunned" : "target free"}
@@ -1174,35 +1404,40 @@ function ComboPlayer({ play, onClose }) {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-300">
-              <button onClick={() => setPlaying((value) => !value)} className="flex items-center gap-1 rounded-lg bg-blue-500 px-3 py-1.5 font-black text-white hover:bg-blue-400">
+              <button type="button" onClick={() => setPlaying((value) => !value)} className="flex items-center gap-1 rounded-lg bg-blue-500 px-3 py-1.5 text-white hover:bg-blue-400">
                 {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
                 {playing ? "Pause" : "Play"}
               </button>
-              <button onClick={() => { setTick(0); setPlaying(true); }} className="flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1.5 hover:bg-slate-700">
+              <button type="button" onClick={() => { setTick(0); setPlaying(true); }} className={smallButton}>
                 <SkipBack className="h-3.5 w-3.5" />
                 Restart
               </button>
-              <select value={speed} onChange={(event) => setSpeed(Number(event.target.value))} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5" aria-label="Speed">
-                {[1, 0.5, 0.25, 0.1].map((value) => <option key={value} value={value}>{value}×</option>)}
-              </select>
-              <span className="rounded-lg bg-slate-800 px-2 py-1.5 tabular-nums">Frame {tick}</span>
-              <label className="flex items-center gap-2">
-                Damage
-                <select value={damage} onChange={(event) => setDamage(Number(event.target.value))} className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1.5">
-                  {(weaponData.damageSteps || []).filter((value) => playRanges.some((range) => value >= range.from && value <= range.to)).map((value) => (
-                    <option key={value} value={value}>{value}%</option>
-                  ))}
-                </select>
-              </label>
+              <SelectInput
+                label="Speed"
+                value={String(speed)}
+                onChange={(value) => setSpeed(Number(value))}
+                options={[1, 0.5, 0.25, 0.1].map((value) => ({ value: String(value), label: `${value}×` }))}
+              />
+              <Pill className="py-1.5 tabular-nums">Frame {tick}</Pill>
+              <Toggle label="Hitboxes" checked={showBoxes} onChange={(checked) => { setShowBoxes(checked); writeShowBoxes(checked); }} />
+              <SelectInput
+                label="Damage"
+                value={String(damage)}
+                onChange={(value) => setDamage(Number(value))}
+                options={(weaponData.damageSteps || []).filter((value) => playRanges.some((range) => value >= range.from && value <= range.to)).map((value) => ({ value: String(value), label: `${value}%` }))}
+              />
               {Number.isFinite(verdict?.gap) && (
-                <span className="rounded-lg bg-emerald-500/15 px-2 py-1.5 text-emerald-200">
+                <Pill tone="emerald" className="whitespace-normal py-1.5">
                   Hits {verdict.gap} frame{verdict.gap === 1 ? "" : "s"} before the target can act
-                </span>
+                </Pill>
               )}
             </div>
             <div className="flex flex-wrap gap-3 text-[11px] font-bold text-slate-500">
               {[["bg-amber-400", "first hit"], ["bg-slate-300", "first move ends"], ["bg-sky-400", "second move starts"], ["bg-emerald-400", "second hit"], ["bg-rose-400", "target can act"]].map(([color, text]) => (
                 <span key={text} className="flex items-center gap-1"><span className={classes("inline-block h-2 w-2 rounded-full", color)} />{text}</span>
+              ))}
+              {showBoxes && [["border-rose-400 bg-rose-400/25", "hitbox"], ["border-cyan-400 bg-cyan-400/15", "attacker hurtbox"], ["border-yellow-400 bg-yellow-400/15", "target hurtbox"]].map(([color, text]) => (
+                <span key={text} className="flex items-center gap-1"><span className={classes("inline-block h-2.5 w-2.5 rounded-full border", color)} />{text}</span>
               ))}
             </div>
           </div>
@@ -1213,8 +1448,8 @@ function ComboPlayer({ play, onClose }) {
 }
 
 export default function ComboPage() {
-  const legends = useLegends();
-  const weapons = useWeaponStatus();
+  const { legends, error: legendsError, retry: retryLegends } = useLegends();
+  const { weapons, loaded: weaponsLoaded, error: weaponsError, retry: retryWeapons } = useWeaponStatus();
   const [tab, setTab] = useState(() => (new URLSearchParams(window.location.search).get("tab") === "legend" ? "legend" : "weapon"));
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -1225,62 +1460,61 @@ export default function ComboPage() {
   const [play, setPlay] = useState(null);
   const groundReady = weapons.filter((entry) => entry.defenses?.status === "ready").length;
   const airReady = weapons.filter((entry) => entry.defenses?.airStatus === "ready").length;
+  const nothingPublished = weaponsLoaded && !groundReady;
+  const checkText = [
+    "Every combo is simulated tick by tick with the game's hit, knockback, stun, jump and dash rules: the second attack has to land before the opponent can act again.",
+    "The opponent stands on Small Brawlhaven and doesn't steer while stunned. Weapon combos are checked against every opponent defense from 1 to 11 and every damage from 0 to 200%.",
+    "Legend combos use each stance's stats. Dexterity changes how soon an attack ends. More defense means less damage taken and slowing down sooner after a hit.",
+  ];
   return (
-    <div className="min-h-screen bg-slate-950 p-3 text-white sm:p-4">
-      <div className="mx-auto flex max-w-[100rem] flex-col gap-4">
-        <section className={classes(panel, "overflow-hidden")}>
-          <div className="grid gap-4 p-4 lg:grid-cols-[1fr_auto] lg:items-end">
-            <div>
-              <div className={eyebrow}>Combo Database</div>
-              <h1 className="mt-1 flex items-center gap-2 text-3xl font-black tracking-tight sm:text-4xl">
-                <Swords className="h-8 w-8 text-blue-300" />
-                True Combos
-              </h1>
-              <p className="mt-2 max-w-3xl text-sm text-slate-400">
-                Two-hit combos the opponent can't escape, checked frame by frame with the game's own rules.
-              </p>
-            </div>
-            <div className="grid grid-cols-3 gap-2 sm:min-w-96">
-              <SummaryTile label="Weapons" value={weapons.length || "–"} />
-              <SummaryTile label="Ground lists" value={weapons.length ? `${groundReady}/${weapons.length}` : "–"} />
-              <SummaryTile label="Jump lists" value={weapons.length ? `${airReady}/${weapons.length}` : "–"} />
-            </div>
+    <PageShell>
+      <PageHeader
+        title="True Combos"
+        image={<Swords className="mt-1 h-8 w-8 text-blue-300" />}
+        subtitle="Two-hit combos the opponent can't escape."
+        actions={(
+          <CountPills>
+            <CountPill label="Weapons" value={weapons.length || "–"} />
+            <CountPill label="Ground lists" value={weapons.length ? `${groundReady}/${weapons.length}` : "–"} />
+            <CountPill label="Jump lists" value={weapons.length ? `${airReady}/${weapons.length}` : "–"} />
+          </CountPills>
+        )}
+      >
+        <details className="group rounded-xl border border-slate-700 bg-slate-950/60 p-2">
+          <summary className="flex cursor-pointer select-none list-none items-center gap-2 text-sm font-bold text-slate-300 hover:text-blue-300">
+            <Info className="h-4 w-4 text-blue-300" />
+            How combos are checked
+            <ChevronDown className="h-4 w-4 transition group-open:rotate-180" />
+          </summary>
+          <div className="mt-2 grid gap-2 text-sm text-slate-400 md:grid-cols-3">
+            {checkText.map((text) => <p key={text}>{text}</p>)}
           </div>
-          <details className="group border-t border-slate-800 bg-gradient-to-r from-blue-500/10 via-transparent to-transparent px-4 py-3">
-            <summary className="flex cursor-pointer select-none list-none items-center gap-2 text-sm font-black text-slate-300 hover:text-blue-300">
-              <Info className="h-4 w-4 text-blue-300" />
-              How combos are checked
-              <ChevronDown className="h-4 w-4 transition group-open:rotate-180" />
-            </summary>
-            <div className="mt-2 grid gap-2 text-sm text-slate-400 md:grid-cols-3">
-              <p>Every combo is simulated tick by tick with the game's hit, knockback, stun, jump and dash rules: the second attack has to land before the opponent can act again.</p>
-              <p>The opponent stands on Small Brawlhaven and doesn't steer while stunned. Weapon combos are checked against every opponent defense from 1 to 11 and every damage from 0 to 200%.</p>
-              <p>Each legend stance has its own strength, dexterity and speed: dexterity changes how soon an attack ends, and a higher defense takes less damage and slows down faster after a hit.</p>
-            </div>
-          </details>
-        </section>
-        <div className="flex w-fit gap-1 rounded-2xl border border-slate-700 bg-slate-900 p-1">
-          {[
-            ["weapon", "Weapon combos"],
-            ["legend", "Legend combos"],
-          ].map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={classes(
-                "rounded-xl px-4 py-2 text-sm font-black transition",
-                tab === key ? "bg-blue-500 text-white" : "text-slate-400 hover:bg-slate-800 hover:text-white",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        {tab === "weapon"
-          ? <WeaponSection legends={legends} weapons={weapons} onPlay={setPlay} />
-          : <LegendSection legends={legends} weapons={weapons} onPlay={setPlay} />}
-      </div>
+        </details>
+      </PageHeader>
+      {weaponsError && !weapons.length && <ErrorState message="Couldn't load the weapon list." detail={weaponsError} onRetry={retryWeapons} />}
+      {!weaponsLoaded && !weaponsError && <LoadingState label="Loading combo lists…" />}
+      {nothingPublished && (
+        <EmptyState title="No combo lists are published yet">
+          Each weapon's list is worked out offline and shows up here once it's uploaded.
+        </EmptyState>
+      )}
+      {weaponsLoaded && !nothingPublished && (
+        <>
+          <Tabs
+            label="Combo lists"
+            value={tab}
+            onChange={setTab}
+            items={[
+              { value: "weapon", label: "Weapon combos" },
+              { value: "legend", label: "Legend combos" },
+            ]}
+          />
+          {tab === "weapon"
+            ? <WeaponSection legends={legends} weapons={weapons} onPlay={setPlay} />
+            : <LegendSection legends={legends} legendsError={legendsError} onRetryLegends={retryLegends} weapons={weapons} onPlay={setPlay} />}
+        </>
+      )}
       {play && <ComboPlayer play={play} onClose={() => setPlay(null)} />}
-    </div>
+    </PageShell>
   );
 }

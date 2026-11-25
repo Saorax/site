@@ -1,11 +1,17 @@
 ---
 import Layout from "../../layouts/Layout.astro";
-import $ from "jquery";
-import { parse } from 'node-html-parser';
-import { countryToAlpha2 } from "country-to-iso";
-import flag from 'country-code-emoji';
 import GameDatabase from '../../layouts/Game.jsx';
+import { LoadingState, PageHeader, PageShell } from "../../components/ui/index.js";
+import { RAW_METADATA, databasePageTitle, selectionFromParams } from '../../components/game/database/pages.js';
+import { toolText } from '../../data/head.js';
+const selection = selectionFromParams(Astro.url.searchParams);
+const page = selection.category === RAW_METADATA ? RAW_METADATA : selection.subcategory;
 ---
-<Layout title="Game Database">
-    <GameDatabase client:only="react" />
+<Layout title={databasePageTitle(selection)} description={toolText('/game/database')}>
+    <GameDatabase client:only="react">
+      <PageShell slot="fallback">
+        <PageHeader title={page} />
+        <LoadingState label="Loading…" />
+      </PageShell>
+    </GameDatabase>
 </Layout>

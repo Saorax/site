@@ -1,6 +1,6 @@
-import { host } from '../../../../stuff';
-import { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { LoadingSpinner } from './LoadingImage';
+import { fetchWithRetry } from '../../../ui';
 
 const viewBoxCache = {};
 const ANIMATION_FPS = 24;
@@ -32,46 +32,25 @@ export function SvgArrayFlipbook({ src, fps = ANIMATION_FPS, isLegend, className
   const rafRef = useRef(null);
 
   useEffect(() => {
-    let cancelled = false;
-    let retryTimer = null;
-    let retryAttempt = 0;
+    const controller = new AbortController();
     setError(false);
     setLoading(true);
     setFrames([]);
     setNormalizedFrames([]);
 
-    const loadFrames = async () => {
-      const requestSrc = retryAttempt > 0
-        ? `${src}${src.includes('?') ? '&' : '?'}imageRetry=${retryAttempt}`
-        : src;
-      try {
-        const response = await fetch(requestSrc, { cache: 'no-store' });
-        if (!response.ok) throw new Error(`Animation request failed with ${response.status}`);
-        const data = await response.json();
-        if (Array.isArray(data)) {
-          const arr = data.map(d => (typeof d === 'string' ? d : d.svg));
-          if (!cancelled) {
-            setFrames(arr);
-          }
-        } else {
-          throw new Error('Animation response did not contain frames');
-        }
-      } catch {
-        if (cancelled) return;
-        setError(false);
-        setLoading(true);
-        retryTimer = setTimeout(() => {
-          retryAttempt += 1;
-          loadFrames();
-        }, 2000);
-      }
-    };
+    fetchWithRetry(src, { signal: controller.signal, init: { cache: 'no-store' } })
+      .then((response) => response.json())
+      .then((data) => {
+        if (!Array.isArray(data) || data.length === 0) throw new Error('No frames in this animation.');
+        if (!controller.signal.aborted) setFrames(data.map((d) => (typeof d === 'string' ? d : d.svg)));
+      })
+      .catch((err) => {
+        if (err?.name === 'AbortError' || controller.signal.aborted) return;
+        setError(true);
+        setLoading(false);
+      });
 
-    loadFrames();
-    return () => {
-      cancelled = true;
-      if (retryTimer) clearTimeout(retryTimer);
-    };
+    return () => controller.abort();
   }, [src]);
 
  useEffect(() => {
@@ -188,11 +167,11 @@ export function SvgArrayFlipbook({ src, fps = ANIMATION_FPS, isLegend, className
       aria-label="Animated SVG"
     >
       {error ? (
-        <div className="flex items-center justify-center h-full text-red-600 dark:text-red-400">
-          Failed to load SVG
+        <div className="flex min-h-32 items-center justify-center text-sm text-slate-400">
+          Couldn't load this animation.
         </div>
       ) : loading || normalizedFrames.length === 0 ? (
-        <div className="relative flex min-h-32 w-full items-center justify-center rounded-xl bg-slate-900/80" aria-busy="true">
+        <div className="relative flex min-h-32 w-full items-center justify-center rounded-xl bg-slate-950/80" aria-busy="true">
           <LoadingSpinner />
         </div>
       ) : (
@@ -202,114 +181,6 @@ export function SvgArrayFlipbook({ src, fps = ANIMATION_FPS, isLegend, className
           tabIndex={-1}
         />
       )}
-    </div>
-  );
-}
-export function SvgTauntDiv({ data, type, langs }) {
-  return (
-    <div className="mt-4 flex" key={data}>
-      <div
-        className="w-full col-span-3 bg-gray-100 dark:bg-slate-800 rounded-lg p-2 flex items-center justify-center"
-      >
-        <SvgArrayFlipbook
-          src={`${host}/game/anim/char/3-0/Animation_Emote/a__EmoteAnimation/${data}/${type}`}
-          fps={ANIMATION_FPS}
-          isLegend={true}
-        />
-      </div>
-    </div>
-  );
-}
-export function SvgWeaponDiv({ data, langs }) {
-  return (
-    <div className="mt-4 flex" key={data.WeaponSkinID}>
-      <div
-        className="h-full rounded-lg items-center flex flex-col w-full bg-gray-100 dark:bg-slate-800"
-      >
-        <SvgArrayFlipbook
-          src={`${host}/game/anim/weapon/${data.WeaponSkinID}/UI_TooltipAnimations/a__TooltipAnimation/${data.BaseWeapon}Pose/all`}
-          fps={ANIMATION_FPS}
-          classNames={" h-full w-full"}
-          isLegend={false}
-        />
-      </div>
-    </div>
-  );
-}
-export function SvgCharDiv({ data, currentAnimation, langs }) {
-  const containerRef = useRef(null);
-  const leftRef = useRef(null);
-  const rightRef = useRef(null);
-  const resizeObserverRef = useRef(null);
-
-  useLayoutEffect(() => {
-    if (!containerRef.current || !leftRef.current || !rightRef.current) return;
-    const container = containerRef.current;
-    const left = leftRef.current;
-    const right = rightRef.current;
-    if (resizeObserverRef.current) {
-      resizeObserverRef.current.disconnect();
-    }
-    let resizeTimeout = null;
-    resizeObserverRef.current = new ResizeObserver(() => {
-      if (resizeTimeout) clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => {
-        const width = left.getBoundingClientRect().width;
-        if (width > 500) {
-          container.classList.remove('lg:flex-row');
-          container.classList.add('flex-col');
-          right.classList.remove('flex-col');
-          right.style.paddingLeft = '0px';
-          right.style.paddingTop = '0.5rem';
-        } else {
-          container.classList.remove('flex-col');
-          container.classList.add('lg:flex-row');
-          right.classList.add('flex-col');
-          right.style.paddingLeft = '0.5rem';
-          right.style.paddingTop = '0px';
-        }
-      }, 50);
-    });
-    resizeObserverRef.current.observe(left);
-    return () => {
-      if (resizeObserverRef.current) {
-        resizeObserverRef.current.disconnect();
-      }
-      if (resizeTimeout) clearTimeout(resizeTimeout);
-    };
-  }, [data]);
-
-  return (
-    <div className="mt-4 flex" ref={containerRef} key={data?.HeroID + '-' + data?.SkinInt}>
-      <div
-        ref={leftRef}
-        className="w-full col-span-3 bg-gray-100 dark:bg-slate-800 rounded-lg p-2 flex items-center justify-center"
-      >
-        <SvgArrayFlipbook
-          src={`${host}/game/anim/char/${data.heroData?.HeroID || data.HeroID}-${data.SkinInt || 0}/Animation_CharacterSelect/a__CharacterSelectAnimation/${currentAnimation.includes('Loop') ? currentAnimation.replace('Loop', 'Selected') : currentAnimation}${data.heroData?.HeroName || data.HeroName}/${currentAnimation.includes('Loop') ? 'loop' : 'all'}`}
-          fps={ANIMATION_FPS}
-          isLegend={true}
-        />
-      </div>
-      <div ref={rightRef} className="h-full w-full flex gap-2">
-        {data.weapons.map((weapon, index) => {
-          if (index >= 2) return null;
-          return (
-            <div
-              key={weapon.WeaponSkinID}
-              className="bg-gray-100 dark:bg-slate-800 rounded-lg p-2 items-center text-center justify-center w-full h-full"
-            >
-              <span className="pb-2 text-gray-900 dark:text-white">{langs.content[weapon.DisplayNameKey]}</span>
-              <SvgArrayFlipbook
-                src={`${host}/game/anim/weapon/${weapon.WeaponSkinID}/UI_TooltipAnimations/a__TooltipAnimation/${weapon.BaseWeapon}Pose/all`}
-                fps={ANIMATION_FPS}
-                classNames={"h-full w-full"}
-                isLegend={false}
-              />
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }

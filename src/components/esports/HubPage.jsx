@@ -1,195 +1,270 @@
-import React, { useState } from "react";
-import {
-  apiUrl, Avatar, Badge, Card, date, Empty, Loading, Medals, money, number, PageShell, PlayerChip, points,
-  REGIONS, regionName, SearchInput, Select, useApi, useDebounced,
-} from "./ui";
+import { useMemo, useState } from "react";
+import { AsideBox, CountPill, CountPills, EmptyState, PageHeader, PageShell, Section, SelectInput, Tabs, useApi, useQueryState } from "../ui";
+import SiteSearch from "../ui/SiteSearch";
+import { sectionByKey } from "../../data/sections";
+import { ToolCard, WhatsNew, sectionTones } from "../home/ToolCards";
+import { EventLine, Face, upcomingNote } from "../home/LiveTiles";
+import { esportsUrl as apiUrl, relativeDays, useWhatsOn } from "../home/live";
+import { date, number, OFFICIAL_REGIONS, PlayerChip, points, regionName } from "./ui";
+import { recordBoard, recordDetail, recordsUrl, recordValue } from "./RecordsPage";
+import { SeriesMemberRow, sortSeriesMembers } from "./Results";
+import LiveStreams from "./LiveStreams";
+
+const REGION_OPTIONS = [{ value: "ALL", label: "Global" }, ...OFFICIAL_REGIONS.map(([value, label]) => ({ value, label }))];
+const MODE_ITEMS = [{ value: "1", label: "1v1" }, { value: "2", label: "2v2" }];
+const linkButton = "rounded-lg bg-slate-800 px-3 py-1.5 text-sm font-bold text-slate-200 hover:bg-slate-700";
 
 export default function HubPage() {
   const overview = useApi(apiUrl("/overview"));
   const counts = overview.data?.counts;
+  const officialCount = (overview.data?.official ?? []).find((row) => row.classification === "official")?.tournaments;
+  const competitive = sectionByKey("competitive");
+  const tools = competitive.tools.filter((tool) => tool.href !== "/esports");
   return (
-    <PageShell
-      eyebrow="Brawlhalla esports"
-      title="Esports Database"
-      subtitle="Power rankings, tournament results and match history for every official and community tournament on start.gg and Challengermode."
-    >
-      <GlobalSearch />
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <Shortcut href="/pr" title="Power Rankings" text="Who's on top right now, by region and format." />
-        <Shortcut href="/esports/player" title="Players" text={counts ? `${number(counts.players)} players with full match histories.` : "Search every player."} />
-        <Shortcut href="/esports/tournaments" title="Tournaments" text={counts ? `${number(counts.tournaments)} tournaments and ${number(counts.sets)} matches.` : "Browse every tournament."} />
+    <PageShell>
+      <PageHeader
+        title="Esports"
+      >
+        <div className="max-w-4xl"><SiteSearch variant="page" scope="esports" limit={6} /></div>
+        {counts && (
+          <CountPills>
+            <CountPill label="Tournaments" value={number(counts.tournaments)} href="/esports/tournaments" />
+            {officialCount != null && <CountPill label="Official" value={number(officialCount)} href="/esports/tournaments?official=official" />}
+            <CountPill label="Events" value={number(counts.events)} />
+            <CountPill label="Sets" value={number(counts.sets)} />
+            <CountPill label="Players who entered an event" value={number(counts.players)} href="/esports/player" />
+            <CountPill label="Organizers" value={number(counts.organizers)} />
+          </CountPills>
+        )}
+      </PageHeader>
+
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {tools.map((tool) => <ToolCard key={tool.href} tool={tool} tone={sectionTones.competitive} />)}
       </div>
-      <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+
+      <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2 min-[112.5rem]:grid-cols-3">
         <TopPlayers />
-        <div className="grid gap-4">
-          <LiveTournaments />
-          <TournamentList title="Upcoming official tournaments" state="upcoming" />
-          <TournamentList title="Recent official results" state="complete" />
+        <div className="grid min-w-0 grid-cols-1 content-start gap-3 min-[112.5rem]:contents">
+          <WhatsOn />
+          <LatestResults />
         </div>
       </div>
+
+      <LiveStreams />
+
       <Leaders />
-      <div className="mt-8 flex flex-wrap gap-4 border-t border-slate-200 pt-4 text-sm font-bold text-slate-500 dark:border-slate-800">
-        <span>Tools:</span>
-        <a href="/esports/autoseed" className="hover:text-blue-500">Autoseed</a>
-        {import.meta.env.DEV && <a href="/esports/review" className="hover:text-blue-500">Classification review (admin)</a>}
+
+      <div className="grid items-start gap-3 lg:grid-cols-2">
+        <WhatsNew area="Competitive" limit={4} listClassName="grid gap-x-3 gap-y-0.5 xl:grid-cols-2" />
+        <AsideBox title="For tournament organizers">
+          <p className="max-w-prose text-sm text-slate-400">
+            <a href="/esports/autoseed" className="font-bold text-blue-300 hover:underline">Autoseed</a> reorders a start.gg bracket's seeding by power ranking and uploads it back. It needs a start.gg sign-in with organizer access.
+          </p>
+          {import.meta.env.DEV && <a href="/esports/review" className="mt-2 inline-block text-sm font-bold text-blue-300 hover:underline">Classification review (admin)</a>}
+        </AsideBox>
       </div>
     </PageShell>
   );
 }
 
-function Shortcut({ href, title, text }) {
+function Movement({ rank, previousRank }) {
+  if (previousRank === null || previousRank === undefined) return <span className="w-8 shrink-0 text-center text-[10px] font-bold text-sky-300" title="New in the rankings since the last update">NEW</span>;
+  const change = Number(previousRank) - Number(rank);
+  if (!change) return <span className="w-8 shrink-0 text-center text-xs text-slate-600" title="Same rank as the last update">–</span>;
   return (
-    <a href={href} className="group rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-blue-400 dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex items-center justify-between text-lg font-black text-slate-950 dark:text-white">
-        {title}<span className="text-blue-500 transition group-hover:translate-x-0.5">→</span>
-      </div>
-      <p className="mt-1 text-sm font-semibold text-slate-600 dark:text-slate-400">{text}</p>
-    </a>
-  );
-}
-
-function GlobalSearch() {
-  const [term, setTerm] = useState("");
-  const query = useDebounced(term.trim());
-  const players = useApi(query.length >= 2 ? apiUrl("/players", { search: query, perPage: 6 }) : null);
-  const tournaments = useApi(query.length >= 2 ? apiUrl("/tournaments", { search: query, perPage: 6 }) : null);
-  return (
-    <div className="relative">
-      <SearchInput value={term} onChange={setTerm} placeholder="Search players and tournaments" />
-      {query.length >= 2 && (
-        <div className="absolute inset-x-0 top-full z-20 mt-2 grid gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 shadow-xl dark:border-slate-700 dark:bg-slate-700 md:grid-cols-2">
-          <div className="bg-white p-3 dark:bg-slate-900">
-            <div className="mb-2 text-[11px] font-black uppercase tracking-wider text-slate-500">Players</div>
-            {players.loading && !players.data && <Loading />}
-            {(players.data?.items ?? []).map((player) => (
-              <div key={player.id} className="rounded-lg px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800">
-                <PlayerChip id={player.id} name={player.display_name} image={player.image} country={player.country} size="sm"
-                  detail={`${number(player.event_appearances)} events · last played ${date(player.latest_event_at)}`} />
-              </div>
-            ))}
-            {players.data && !players.data.items?.length && <Empty>No players found.</Empty>}
-          </div>
-          <div className="bg-white p-3 dark:bg-slate-900">
-            <div className="mb-2 text-[11px] font-black uppercase tracking-wider text-slate-500">Tournaments</div>
-            {tournaments.loading && !tournaments.data && <Loading />}
-            {(tournaments.data?.items ?? []).map((tournament) => <TournamentLine key={tournament.id} tournament={tournament} />)}
-            {tournaments.data && !tournaments.data.items?.length && <Empty>No tournaments found.</Empty>}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export function TournamentLine({ tournament, live = false }) {
-  return (
-    <a href={`/esports/tournament/${tournament.id}`} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800">
-      {tournament.image
-        ? <img src={tournament.image} alt="" loading="lazy" className="h-9 w-16 shrink-0 rounded-md bg-slate-200 object-cover dark:bg-slate-800" />
-        : <div className="h-9 w-16 shrink-0 rounded-md bg-slate-200 dark:bg-slate-800" />}
-      <div className="min-w-0">
-        <div className="truncate text-sm font-black text-slate-950 dark:text-white">{tournament.name}</div>
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
-          {date(tournament.starts_at)}
-          {live && <Badge tone="green">Live</Badge>}
-          {tournament.classification === "official" && <Badge tone="blue">Official</Badge>}
-        </div>
-      </div>
-    </a>
+    <span className={`w-8 shrink-0 text-center text-xs font-bold tabular-nums ${change > 0 ? "text-emerald-300" : "text-rose-300"}`} title={`Was #${previousRank}`}>
+      {change > 0 ? "▲" : "▼"}{Math.abs(change)}
+    </span>
   );
 }
 
 function TopPlayers() {
-  const [region, setRegion] = useState("NA");
-  const [mode, setMode] = useState("1");
-  const ranking = useApi(apiUrl("/rankings", { region, gameMode: mode, perPage: 10, page: 1 }));
+  const [regionParam, setRegion] = useQueryState("region", "NA");
+  const region = REGION_OPTIONS.some((option) => option.value === regionParam) ? regionParam : "NA";
+  const [mode, setMode] = useQueryState("mode", "1");
+  const ranking = useApi(apiUrl("/rankings", { region, gameMode: mode, regionAssignment: "latest", perPage: 10, page: 1 }));
+  const players = ranking.data?.players ?? [];
   return (
-    <Card
+    <Section
       title="Top 10 right now"
-      action={(
-        <div className="flex gap-2">
-          <Select value={region} onChange={setRegion} options={REGIONS} />
-          <Select value={mode} onChange={setMode} options={[["1", "1v1"], ["2", "2v2"]]} />
-        </div>
+      subtitle={ranking.data?.dataThrough ? `Results through ${date(ranking.data.dataThrough)}` : undefined}
+      headingAs="h2"
+      tone="amber"
+      actions={(
+        <>
+          <SelectInput label={<span className="sr-only">Region</span>} value={region} onChange={setRegion} options={REGION_OPTIONS} />
+          <Tabs variant="small" label="Format" value={mode} onChange={setMode} items={MODE_ITEMS} />
+        </>
       )}
-      padded={false}
+      bodyClassName="space-y-0! p-0!"
     >
-      {!ranking.data && ranking.loading && <Loading />}
-      {(ranking.data?.players ?? []).map((player) => (
-        <a key={player.playerId} href={`/esports/player/id/${player.playerId}`} className="flex items-center gap-3 border-b border-slate-100 px-4 py-2.5 last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50">
-          <span className="w-6 text-center text-lg font-black tabular-nums text-slate-900 dark:text-white">{player.rank}</span>
-          <Avatar src={player.image} name={player.name} size="sm" playerId={player.playerId} />
-          <span className="min-w-0 flex-1 truncate font-black text-slate-950 dark:text-white">{player.name}</span>
-          <span className="text-sm font-black tabular-nums text-slate-600 dark:text-slate-300">{points(player.points)}</span>
-        </a>
-      ))}
-      <a href={`/pr?region=${region}&mode=${mode}`} className="block border-t border-slate-200 px-4 py-2.5 text-sm font-black text-blue-600 hover:bg-slate-50 dark:border-slate-800 dark:text-blue-300 dark:hover:bg-slate-800/50">
+      {ranking.error && !ranking.loading && <div className="p-3"><EmptyState title="Couldn't load the rankings" action={<button type="button" onClick={ranking.retry} className={linkButton}>Retry</button>} /></div>}
+      {ranking.loading && !players.length && <div className="space-y-2 p-3">{Array.from({ length: 10 }, (_, index) => <div key={index} className="h-9 animate-pulse rounded-lg bg-slate-800/80" />)}</div>}
+      {!ranking.loading && !ranking.error && !players.length && <div className="p-3"><EmptyState title="No ranked players here yet" /></div>}
+      <ol className={ranking.loading ? "opacity-60" : ""}>
+        {players.map((player) => (
+          <li key={player.playerId}>
+            <a href={`/esports/player/id/${player.playerId}`} className="flex items-center gap-2 border-b border-slate-800 px-3 py-2 hover:bg-slate-800/50 sm:gap-3">
+              <span className="w-6 shrink-0 text-center text-lg font-bold tabular-nums text-white">{player.rank}</span>
+              <Movement rank={player.rank} previousRank={player.previousRank} />
+              <Face src={player.image} playerId={player.playerId} name={player.name} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-bold text-white">{player.name}</span>
+                <span className="block truncate text-xs text-slate-500">{number(player.eventCount)} ranked events{player.provisional ? " · provisional" : ""}</span>
+              </span>
+              <span className="shrink-0 text-sm font-bold tabular-nums text-slate-300" title="Ranking points">{points(player.points)}</span>
+            </a>
+          </li>
+        ))}
+      </ol>
+      <a href={`/pr?region=${region}&mode=${mode}`} className="block px-3 py-2.5 text-sm font-bold text-blue-300 hover:bg-slate-800/50">
         Full {regionName(region)} {mode === "2" ? "2v2" : "1v1"} rankings →
       </a>
-    </Card>
+    </Section>
   );
 }
 
-const LIVE_STALE_AFTER_MS = 2 * 24 * 60 * 60 * 1000;
-
-function LiveTournaments() {
-  const list = useApi(apiUrl("/tournaments", { official: "official", state: "active", perPage: 6 }));
-  const cutoff = Date.now() - LIVE_STALE_AFTER_MS;
-  const items = (list.data?.items ?? []).filter((tournament) => {
-    const last = tournament.ends_at ?? tournament.starts_at;
-    return !tournament.date_outlier && (!last || new Date(last).getTime() >= cutoff);
-  }).slice(0, 5);
-  if (!items.length) return null;
+function WhatsOn() {
+  const on = useWhatsOn();
+  const { live, upcoming, nextOfficial } = on;
   return (
-    <Card title="Live official tournaments" action={<a href="/esports/tournaments?official=official&state=active" className="text-sm font-black text-blue-600 dark:text-blue-300">All →</a>}>
-      <div className="-mx-2">{items.map((tournament) => <TournamentLine key={tournament.id} tournament={tournament} live />)}</div>
-    </Card>
+    <Section
+      title="What's on"
+      subtitle="Official and Tier 1 community events."
+      headingAs="h2"
+      tone="emerald"
+      actions={<a href="/esports/tournaments?state=upcoming" className={linkButton}>All →</a>}
+      bodyClassName="space-y-2!"
+    >
+      {on.loading && <div className="space-y-2">{[0, 1, 2].map((index) => <div key={index} className="h-11 animate-pulse rounded-lg bg-slate-800/80" />)}</div>}
+      {on.error && !on.loading && <EmptyState title="Couldn't load tournaments" action={<button type="button" onClick={on.retry} className={linkButton}>Retry</button>} />}
+      {!on.loading && !on.error && (
+        <>
+          {!on.officialLive && (
+            <p className="rounded-xl bg-slate-950/60 px-3 py-2 text-sm text-slate-300">
+              No official events live right now{nextOfficial ? <> · next: <a href={`/esports/tournament/${nextOfficial.id}`} className="font-bold text-white hover:underline">{nextOfficial.name}</a> {relativeDays(nextOfficial.starts_at)}</> : "."}
+            </p>
+          )}
+          <div className="-mx-2">
+            {live.slice(0, 5).map((tournament) => <EventLine key={`live-${tournament.id}`} tournament={tournament} live />)}
+            {upcoming.slice(0, Math.max(3, 6 - Math.min(live.length, 5))).map((tournament) => (
+              <EventLine key={`up-${tournament.id}`} tournament={tournament} note={upcomingNote(tournament)} />
+            ))}
+          </div>
+          {!live.length && !upcoming.length && <p className="text-sm text-slate-400">Nothing scheduled yet. Community events of every size are on the <a href="/esports/tournaments" className="font-bold text-blue-300 hover:underline">tournaments page</a>.</p>}
+        </>
+      )}
+    </Section>
   );
 }
 
-function TournamentList({ title, state }) {
-  const list = useApi(apiUrl("/tournaments", { official: "official", state, perPage: 6 }));
-  const items = (list.data?.items ?? []).filter((tournament) => !tournament.date_outlier).slice(0, 5);
+const REGION_WORDS = /\b(North America|South America|Southeast Asia|Middle East(?: & North Africa)?|Europe|Australia|Oceania|Japan|MENA|SEA|AUS|NA|EU|SA)\b/gi;
+
+export const seriesName = (name) => String(name || "")
+  .replace(/\s*-\s*(1v1|2v2)\s*$/i, "")
+  .replace(REGION_WORDS, "")
+  .replace(/\s*-\s*(?=\d{4}\b)/g, " ")
+  .replace(/\s*-\s*$/g, "")
+  .replace(/\s{2,}/g, " ")
+  .trim();
+
+function LatestResults() {
+  const events = useApi(apiUrl("/tournaments", { official: "official", state: "complete", group: "series", perPage: 4 }));
+  const groups = useMemo(() => {
+    const result = [];
+    for (const item of events.data?.items ?? []) {
+      if (item.date_outlier) continue;
+      const members = item.kind === "series" ? item.tournaments ?? [] : [item];
+      const key = item.series_name ?? seriesName(item.name);
+      const group = result.find((entry) => entry.key === key);
+      if (group) group.tournaments.push(...members);
+      else result.push({ key, name: item.series_name ?? item.name, tournaments: [...members], startsAt: item.starts_at });
+    }
+    return result.slice(0, 2).map((group) => ({ ...group, tournaments: sortSeriesMembers(group.tournaments) }));
+  }, [events.data]);
   return (
-    <Card title={title} action={<a href={`/esports/tournaments?official=official&state=${state}`} className="text-sm font-black text-blue-600 dark:text-blue-300">All →</a>}>
-      {!list.data && list.loading && <Loading />}
-      {list.data && !items.length && <Empty>Nothing scheduled yet.</Empty>}
-      <div className="-mx-2">{items.map((tournament) => <TournamentLine key={tournament.id} tournament={tournament} />)}</div>
-    </Card>
+    <Section
+      title="Latest official results"
+      headingAs="h2"
+      tone="blue"
+      actions={<a href="/esports/tournaments?official=official&state=complete" className={linkButton}>All →</a>}
+    >
+      {events.loading && !events.data && <div className="space-y-2">{[0, 1, 2].map((index) => <div key={index} className="h-11 animate-pulse rounded-lg bg-slate-800/80" />)}</div>}
+      {events.error && !events.loading && <EmptyState title="Couldn't load results" action={<button type="button" onClick={events.retry} className={linkButton}>Retry</button>} />}
+      {events.data && !groups.length && <EmptyState title="No official results yet" />}
+      {groups.map((group) => <ResultGroup key={group.key} group={group} />)}
+    </Section>
   );
 }
 
-const LEADER_BOARDS = [
-  ["earnings", "Top earnings", "money"],
-  ["gold", "Most tournament wins", "wins"],
-  ["official", "Most official tournaments", "official"],
-  ["tournaments", "Most tournaments played", "played"],
-];
+const GROUP_ROWS = 5;
+
+function ResultGroup({ group }) {
+  const [open, setOpen] = useState(false);
+  const rows = open ? group.tournaments : group.tournaments.slice(0, GROUP_ROWS);
+  return (
+    <div>
+      <div className="mb-1">
+        <h3 className="font-bold leading-tight text-white">{group.name}</h3>
+        <span className="text-xs text-slate-500">{date(group.startsAt)}</span>
+      </div>
+      <div className="rounded-xl border border-slate-800 bg-slate-950/60">
+        {rows.map((tournament) => <SeriesMemberRow key={tournament.id} tournament={tournament} prize={false} />)}
+      </div>
+      {group.tournaments.length > GROUP_ROWS && (
+        <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} className="mt-1 text-xs font-bold text-blue-300 hover:underline">
+          {open ? "Show fewer" : `Show all ${group.tournaments.length}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+const HUB_BOARDS = ["earnings", "gold", "official", "tournaments"].map(recordBoard);
 
 function Leaders() {
   const leaders = useApi(apiUrl("/leaders", { limit: 5 }));
-  if (!leaders.data) return null;
+  if (leaders.error && !leaders.loading) {
+    return <Section title="All-Time Records" headingAs="h2"><EmptyState title="Couldn't load the records" action={<button type="button" onClick={leaders.retry} className={linkButton}>Retry</button>} /></Section>;
+  }
   return (
-    <div className="mt-6">
-      <h2 className="mb-3 text-xl font-black text-slate-950 dark:text-white">All-time records</h2>
-      <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
-        {LEADER_BOARDS.map(([key, title, unit]) => (
-          <Card key={key} title={title} padded={false}>
-            {(leaders.data.categories?.[key] ?? []).map((player, index) => (
-              <div key={player.player_id} className="flex items-center gap-3 border-b border-slate-100 px-4 py-2.5 last:border-0 dark:border-slate-800">
-                <span className="w-5 text-center font-black tabular-nums text-slate-500">{index + 1}</span>
-                <div className="min-w-0 flex-1">
-                  <PlayerChip id={player.player_id} name={player.name} country={player.country} size="sm"
-                    detail={unit === "money" ? `${number(player.prize_records)} paid finishes` : <Medals gold={player.gold} silver={player.silver} bronze={player.bronze} />} />
+    <Section title="All-Time Records" headingAs="h2" actions={<a href={recordsUrl()} className={linkButton}>All records</a>}>
+      {!leaders.data && <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">{[0, 1, 2, 3].map((index) => <div key={index} className="h-56 animate-pulse rounded-xl bg-slate-800/80" />)}</div>}
+      {leaders.data && (
+        <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
+          {HUB_BOARDS.map((board) => {
+            const total = leaders.data.totals?.[board.key];
+            return (
+              <div key={board.key} className="flex h-full min-w-0 flex-col rounded-xl border border-slate-700 bg-slate-950/60">
+                <div className="border-b border-slate-800 px-3 py-2">
+                  <h3 className="font-bold text-white">{board.title}</h3>
+                  {board.note && <p className="text-xs text-slate-500">{board.note}</p>}
+                  {board.key === "earnings" && leaders.data.earningsNote && (
+                    <details className="text-xs text-slate-500">
+                      <summary className="cursor-pointer select-none hover:text-slate-300">Where these numbers come from</summary>
+                      <p className="mt-1 text-slate-400">{leaders.data.earningsNote}</p>
+                    </details>
+                  )}
                 </div>
-                {unit === "money"
-                  ? <span className="text-sm font-black tabular-nums text-emerald-600 dark:text-emerald-400">{money(player.value)}</span>
-                  : <span className="text-sm font-black tabular-nums text-slate-700 dark:text-slate-200">{number(player.value)} <span className="text-xs text-slate-400">{unit}</span></span>}
+                <ol className="flex-1">
+                  {(leaders.data.categories?.[board.key] ?? []).map((player, index) => (
+                    <li key={player.player_id} className="flex items-center gap-2 border-b border-slate-800/70 px-3 py-2">
+                      <span className="w-5 shrink-0 text-center text-sm font-bold tabular-nums text-slate-500">{player.place ?? index + 1}</span>
+                      <div className="min-w-0 flex-1">
+                        <PlayerChip id={player.player_id} name={player.name} country={player.country} size="sm" detail={recordDetail(board, player)} />
+                      </div>
+                      <span className={`shrink-0 text-sm font-bold tabular-nums ${board.key === "earnings" ? "text-emerald-300" : "text-slate-200"}`}>{recordValue(board, player.value)}</span>
+                    </li>
+                  ))}
+                </ol>
+                <a href={recordsUrl(board.key)} className="block px-3 py-2 text-sm font-bold text-blue-300 hover:bg-slate-800/50 hover:text-blue-200">
+                  {total ? `See all ${number(total)}` : "See all"} <span aria-hidden="true">→</span>
+                </a>
               </div>
-            ))}
-          </Card>
-        ))}
-      </div>
-    </div>
+            );
+          })}
+        </div>
+      )}
+    </Section>
   );
 }

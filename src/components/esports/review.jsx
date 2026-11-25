@@ -1,5 +1,6 @@
-import React, { useCallback, useDeferredValue, useEffect, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useRef, useState } from "react";
 import { host } from "../../stuff";
+import { Card, EmptyState, ErrorState, Heading, LoadingState, PageHeader, PageShell, Pagination, Pill, SearchInput, Section, SelectInput, cx } from "../ui";
 
 const classificationLabel = (value) =>
   value === true ? "Official" : "Community";
@@ -12,18 +13,21 @@ const responseError = async (response) => {
   return message || `Request failed (${response.status})`;
 };
 
+const field = "rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-blue-400";
+const buttonBase = "rounded-xl border px-3 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-40";
+const buttonTones = {
+  amber: "border-amber-400/30 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25",
+  blue: "border-blue-400/40 bg-blue-500/20 text-blue-100 hover:bg-blue-500/30",
+  slate: "border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700",
+};
+
 function ReviewButton({ children, disabled, onClick, tone = "slate" }) {
-  const tones = {
-    amber: "border-amber-400/40 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25",
-    cyan: "border-cyan-400/40 bg-cyan-500/15 text-cyan-100 hover:bg-cyan-500/25",
-    slate: "border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800",
-  };
   return (
     <button
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className={`rounded-lg border px-3 py-2 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${tones[tone]}`}
+      className={cx(buttonBase, buttonTones[tone] || buttonTones.slate)}
     >
       {children}
     </button>
@@ -46,6 +50,8 @@ export default function EsportsReview() {
   const [loading, setLoading] = useState(true);
   const [working, setWorking] = useState(null);
   const [error, setError] = useState(null);
+  const [organizerError, setOrganizerError] = useState(null);
+  const [identityError, setIdentityError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [registrationProvider, setRegistrationProvider] = useState("challengermode");
   const [registrationReference, setRegistrationReference] = useState("");
@@ -78,7 +84,7 @@ export default function EsportsReview() {
   const loadOrganizers = useCallback(async () => {
     const requestId = ++organizerRequest.current;
     setLoading(true);
-    setError(null);
+    setOrganizerError(null);
     try {
       const response = await fetch(
         `${host}/v2/esports/organizers?official=community&page=${organizerPage}&perPage=25${deferredOrganizerSearch ? `&search=${encodeURIComponent(deferredOrganizerSearch)}` : ""}`,
@@ -93,7 +99,7 @@ export default function EsportsReview() {
         totalPages: Math.max(1, Number(payload.totalPages ?? 1)),
       });
     } catch (requestError) {
-      if (requestId === organizerRequest.current) setError(requestError.message);
+      if (requestId === organizerRequest.current) setOrganizerError(requestError.message);
     } finally {
       if (requestId === organizerRequest.current) setLoading(false);
     }
@@ -110,7 +116,7 @@ export default function EsportsReview() {
   const loadIdentities = useCallback(async () => {
     const requestId = ++identityRequest.current;
     setIdentityLoading(true);
-    setError(null);
+    setIdentityError(null);
     try {
       const status = identityStatus === "all" ? "" : `&lookupStatus=${encodeURIComponent(identityStatus)}`;
       const search = deferredIdentitySearch ? `&search=${encodeURIComponent(deferredIdentitySearch)}` : "";
@@ -127,7 +133,7 @@ export default function EsportsReview() {
         totalPages: Math.max(1, Number(payload.totalPages ?? 1)),
       });
     } catch (requestError) {
-      if (requestId === identityRequest.current) setError(requestError.message);
+      if (requestId === identityRequest.current) setIdentityError(requestError.message);
     } finally {
       if (requestId === identityRequest.current) setIdentityLoading(false);
     }
@@ -461,384 +467,354 @@ export default function EsportsReview() {
     }
   };
 
+  const organizerPageChange = (page) => {
+    if (!loading && !working) setOrganizerPage(Math.min(organizerMeta.totalPages, Math.max(1, page)));
+  };
+  const identityPageChange = (page) => {
+    if (!identityLoading && !working) setIdentityPage(Math.min(identityMeta.totalPages, Math.max(1, page)));
+  };
+
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-        <header className="border-b border-slate-800 pb-6">
-          <p className="text-sm font-bold uppercase tracking-[0.2em] text-cyan-300">
-            Local warehouse administration
-          </p>
-          <h1 className="mt-2 text-3xl font-black text-white">Classification review</h1>
-          <p className="mt-3 max-w-3xl text-slate-400">
-            Review provider-scoped organizers or individual tournaments. Every change requires a reason, is audited, survives provider refreshes, and rebuilds affected rankings. Ranking exclusions such as Eternal Sports are kept separate.
-          </p>
-        </header>
+    <PageShell>
+      <PageHeader
+        eyebrow="Local warehouse administration"
+        title="Classification review"
+        subtitle="Classify organizers or single tournaments. Each change needs a reason, is logged, survives provider refreshes and rebuilds the rankings it affects. Ranking exclusions such as Eternal Sports are separate."
+      />
 
-        <section className="mt-6 grid gap-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 md:grid-cols-2">
-          <label className="grid gap-2 text-sm font-semibold text-slate-300">
-            Local ranking admin token
-            <input
-              type="password"
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
-              autoComplete="off"
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-cyan-400"
-            />
-            <span className="text-xs font-normal text-slate-500">
-              Kept only in this page&apos;s memory and sent directly to the local API.
-            </span>
-          </label>
-          <label className="grid gap-2 text-sm font-semibold text-slate-300">
-            Required audit reason
-            <textarea
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              rows={3}
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-cyan-400"
-              placeholder="How the organizer or tournament was verified"
-            />
-          </label>
-        </section>
+      <Section padded={false} className="max-w-6xl" bodyClassName="grid gap-3 p-3 md:grid-cols-2">
+        <label className="grid gap-2 text-sm font-semibold text-slate-300">
+          Local ranking admin token
+          <input
+            type="password"
+            value={token}
+            onChange={(event) => setToken(event.target.value)}
+            autoComplete="off"
+            className={field}
+          />
+          <span className="text-xs font-normal text-slate-500">
+            Kept only in this page&apos;s memory and sent directly to the local API.
+          </span>
+        </label>
+        <label className="grid gap-2 text-sm font-semibold text-slate-300">
+          Required audit reason
+          <textarea
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            rows={3}
+            className={field}
+            placeholder="How the organizer or tournament was verified"
+          />
+        </label>
+      </Section>
 
-        {notice && <div className="mt-4 rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">{notice}</div>}
-        {error && <div className="mt-4 rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-100">{error}</div>}
+      {notice && <div role="status" className="max-w-6xl rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-2 text-sm text-emerald-100">{notice}</div>}
+      {error && <ErrorState message={error} className="max-w-6xl" />}
 
-        <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-          <h2 className="text-xl font-black text-white">Register a missing tournament</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Use this when a readable invite-only, unlisted, or provider-capped tournament is absent from discovery. The API reads all tournament and result data directly from the selected provider; this form only supplies the exact lookup reference.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <select
-              value={registrationProvider}
-              onChange={(event) => setRegistrationProvider(event.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
-            >
-              <option value="challengermode">Challengermode</option>
-              <option value="startgg">start.gg</option>
-            </select>
-            <input
-              value={registrationReference}
-              onChange={(event) => setRegistrationReference(event.target.value)}
-              placeholder={registrationProvider === "challengermode" ? "Exact tournament UUID" : "Tournament slug or start.gg URL"}
-              className="min-w-64 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-cyan-400"
-            />
-            <ReviewButton
-              tone="cyan"
-              disabled={Boolean(working) || !registrationReference.trim() || !token.trim()}
-              onClick={registerTournament}
-            >
-              {working === "tournament-registration" ? "Reading provider..." : "Register and ingest"}
-            </ReviewButton>
-          </div>
-          <p className="mt-3 text-xs text-slate-500">
-            Challengermode expects the UUID from its tournament URL. start.gg accepts either a tournament slug or a full tournament URL. Credentials remain environment-only.
-          </p>
-        </section>
+      <Section
+        className="max-w-6xl"
+        title="Register a missing tournament"
+        subtitle="For invite-only, unlisted or capped tournaments the search missed. Give the link; the rest is read from start.gg or Challengermode."
+      >
+        <div className="flex flex-wrap gap-2">
+          <SelectInput
+            label="Provider"
+            value={registrationProvider}
+            onChange={setRegistrationProvider}
+            options={[
+              { value: "challengermode", label: "Challengermode" },
+              { value: "startgg", label: "start.gg" },
+            ]}
+          />
+          <input
+            value={registrationReference}
+            onChange={(event) => setRegistrationReference(event.target.value)}
+            placeholder={registrationProvider === "challengermode" ? "Exact tournament UUID" : "Tournament slug or start.gg URL"}
+            aria-label="Tournament reference"
+            className={cx(field, "min-w-0 flex-1 sm:min-w-64")}
+          />
+          <ReviewButton
+            tone="blue"
+            disabled={Boolean(working) || !registrationReference.trim() || !token.trim()}
+            onClick={registerTournament}
+          >
+            {working === "tournament-registration" ? "Reading provider…" : "Register and ingest"}
+          </ReviewButton>
+        </div>
+        <p className="max-w-prose text-xs text-slate-500">
+          Challengermode: the UUID from the tournament URL. start.gg: the tournament slug or full URL.
+        </p>
+      </Section>
 
-        <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-black text-white">Community organizers</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                {organizerMeta.total.toLocaleString()} provider-scoped organizers are classified Community unless promoted to Official.
-              </p>
-            </div>
-            <ReviewButton disabled={loading || Boolean(working)} onClick={loadOrganizers}>Refresh</ReviewButton>
-          </div>
-          <label className="mt-4 grid gap-2 text-sm font-semibold text-slate-300">
-            Search the complete review queue
-            <input
-              type="search"
-              value={organizerSearch}
-              onChange={(event) => setOrganizerSearch(event.target.value)}
-              placeholder="Organizer name or provider ID"
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-cyan-400"
-            />
-          </label>
-          <div className="mt-4 grid gap-3">
-            {organizers.map((organizer) => {
-              const key = `${organizer.provider}:${organizer.host_provider_id}`;
-              return (
-                <article key={organizer.id} className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-4 lg:flex-row lg:items-center">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-bold text-white">{organizer.host_name || organizer.host_provider_id}</div>
-                    <div className="mt-1 text-xs text-slate-500">{organizer.provider} · {organizer.host_provider_id}</div>
-                    <div className="mt-2 text-sm text-slate-400">{Number(organizer.tournaments).toLocaleString()} tournaments · {Number(organizer.events).toLocaleString()} events</div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <ReviewButton tone="amber" disabled={Boolean(working)} onClick={() => reviewOrganizer(organizer, true)}>{working === key ? "Saving..." : "Mark official"}</ReviewButton>
-                    <ReviewButton tone="cyan" disabled={Boolean(working)} onClick={() => reviewOrganizer(organizer, false)}>Mark community</ReviewButton>
-                  </div>
-                </article>
-              );
-            })}
-            {!loading && !organizers.length && <p className="py-6 text-center text-sm text-slate-500">No community organizers in this page.</p>}
-            {loading && <p className="py-6 text-center text-sm text-slate-500">Loading review queue...</p>}
-          </div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-4">
-            <span className="text-sm text-slate-500">
-              Page {organizerMeta.page.toLocaleString()} of {organizerMeta.totalPages.toLocaleString()}
-            </span>
-            <div className="flex gap-2">
-              <ReviewButton
-                disabled={loading || Boolean(working) || organizerPage <= 1}
-                onClick={() => setOrganizerPage((page) => Math.max(1, page - 1))}
-              >
-                Previous
-              </ReviewButton>
-              <ReviewButton
-                disabled={loading || Boolean(working) || organizerPage >= organizerMeta.totalPages}
-                onClick={() => setOrganizerPage((page) => Math.min(organizerMeta.totalPages, page + 1))}
-              >
-                Next
-              </ReviewButton>
-            </div>
-          </div>
-
-          <div className="mt-6 border-t border-slate-800 pt-5">
-            <h3 className="font-bold text-white">Review a specific organizer</h3>
-            <p className="mt-1 text-sm text-slate-500">
-              Use a provider-scoped organizer ID to revise an earlier decision or restore provider classification.
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <select
-                value={organizerProvider}
-                onChange={(event) => setOrganizerProvider(event.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
-              >
-                <option value="startgg">start.gg</option>
-                <option value="challengermode">Challengermode</option>
-              </select>
-              <input
-                value={organizerHostId}
-                onChange={(event) => setOrganizerHostId(event.target.value)}
-                placeholder="Provider organizer ID"
-                className="min-w-56 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-cyan-400"
-              />
-              <ReviewButton
-                tone="amber"
-                disabled={Boolean(working) || !organizerHostId.trim()}
-                onClick={() => reviewOrganizer({ provider: organizerProvider, host_provider_id: organizerHostId.trim() }, true)}
-              >
-                Official
-              </ReviewButton>
-              <ReviewButton
-                tone="cyan"
-                disabled={Boolean(working) || !organizerHostId.trim()}
-                onClick={() => reviewOrganizer({ provider: organizerProvider, host_provider_id: organizerHostId.trim() }, false)}
-              >
-                Community
-              </ReviewButton>
-              <ReviewButton
-                disabled={Boolean(working) || !organizerHostId.trim()}
-                onClick={() => reviewOrganizer({ provider: organizerProvider, host_provider_id: organizerHostId.trim() }, undefined, true)}
-              >
-                Restore provider
-              </ReviewButton>
-            </div>
-          </div>
-        </section>
-
-        <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-          <h2 className="text-xl font-black text-white">Individual tournament</h2>
-          <p className="mt-1 text-sm text-slate-500">Use the numeric warehouse ID shown in tournament URLs.</p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <input
-              inputMode="numeric"
-              value={tournamentId}
-              onChange={(event) => setTournamentId(event.target.value)}
-              placeholder="Tournament ID"
-              className="min-w-48 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-cyan-400"
-            />
-            <ReviewButton tone="amber" disabled={Boolean(working)} onClick={() => reviewTournament(true)}>Official</ReviewButton>
-            <ReviewButton tone="cyan" disabled={Boolean(working)} onClick={() => reviewTournament(false)}>Community</ReviewButton>
-            <ReviewButton disabled={Boolean(working)} onClick={() => reviewTournament(undefined, true)}>Restore provider</ReviewButton>
-            <ReviewButton disabled={Boolean(working)} onClick={() => loadAudit()}>Load audit</ReviewButton>
-          </div>
-          {!!audit.length && (
-            <ol className="mt-4 grid gap-2">
-              {audit.map((entry) => (
-                <li key={entry.id} className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-sm">
-                  <div className="font-semibold text-slate-200">{entry.reason}</div>
-                  <div className="mt-1 text-xs text-slate-500">{new Date(entry.created_at).toLocaleString()} · {entry.actor} · {classificationLabel(entry.before_values?.is_official)} → {classificationLabel(entry.after_values?.is_official)}</div>
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
-
-        <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-          <h2 className="text-xl font-black text-white">Event classification</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Correct one event field at a time. Restoring a field removes its manual override and uses normalized provider metadata.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <input
-              inputMode="numeric"
-              value={eventId}
-              onChange={(event) => setEventId(event.target.value)}
-              placeholder="Event ID"
-              className="min-w-48 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-cyan-400"
-            />
-            <ReviewButton disabled={Boolean(working)} onClick={loadEventReview}>Load event and audit</ReviewButton>
-          </div>
-          {eventDetails && (
-            <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300">
-              <div className="font-bold text-white">{eventDetails.name || `Event ${eventDetails.id}`}</div>
-              <div className="mt-1 text-slate-500">
-                Current: {eventDetails.region || "unknown region"} · {eventDetails.game_mode ? `${eventDetails.game_mode}v${eventDetails.game_mode}` : "unknown mode"} · {Number(eventDetails.multiplier ?? 1).toLocaleString()}×
-              </div>
-            </div>
-          )}
-          <div className="mt-4 grid gap-3 lg:grid-cols-3">
-            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-              <label className="grid gap-2 text-sm font-semibold text-slate-300">
-                Region code
-                <input value={eventRegion} onChange={(event) => setEventRegion(event.target.value)} placeholder="NA, EU, ALL..." className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white" />
-              </label>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <ReviewButton tone="amber" disabled={Boolean(working)} onClick={() => reviewEvent("region")}>Set region</ReviewButton>
-                <ReviewButton disabled={Boolean(working)} onClick={() => reviewEvent("region", true)}>Restore</ReviewButton>
-              </div>
-            </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-              <label className="grid gap-2 text-sm font-semibold text-slate-300">
-                Game mode
-                <select value={eventGameMode} onChange={(event) => setEventGameMode(event.target.value)} className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white">
-                  <option value="1">1v1</option>
-                  <option value="2">2v2</option>
-                </select>
-              </label>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <ReviewButton tone="amber" disabled={Boolean(working)} onClick={() => reviewEvent("gameMode")}>Set mode</ReviewButton>
-                <ReviewButton disabled={Boolean(working)} onClick={() => reviewEvent("gameMode", true)}>Restore</ReviewButton>
-              </div>
-            </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-4">
-              <label className="grid gap-2 text-sm font-semibold text-slate-300">
-                Multiplier
-                <input inputMode="decimal" value={eventMultiplier} onChange={(event) => setEventMultiplier(event.target.value)} placeholder="1.125" className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white" />
-              </label>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <ReviewButton tone="amber" disabled={Boolean(working)} onClick={() => reviewEvent("multiplier")}>Set multiplier</ReviewButton>
-                <ReviewButton disabled={Boolean(working)} onClick={() => reviewEvent("multiplier", true)}>Restore</ReviewButton>
-              </div>
-            </div>
-          </div>
-          {!!eventAudit.length && (
-            <ol className="mt-4 grid gap-2">
-              {eventAudit.map((entry) => (
-                <li key={entry.id} className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-sm">
-                  <div className="font-semibold text-slate-200">{entry.reason}</div>
-                  <div className="mt-1 text-xs text-slate-500">
-                    {new Date(entry.created_at).toLocaleString()} · {entry.actor} · {entry.before_values?.region || "?"}/{entry.before_values?.game_mode || "?"}/{Number(entry.before_values?.multiplier ?? 1).toLocaleString()}× → {entry.after_values?.region || "?"}/{entry.after_values?.game_mode || "?"}/{Number(entry.after_values?.multiplier ?? 1).toLocaleString()}×
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
-
-        <section className="mt-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-black text-white">Identity review</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                {identityMeta.total.toLocaleString()} provider-scoped identities match this queue. They are never merged by gamer tag alone.
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <select
-                value={identityStatus}
-                onChange={(event) => setIdentityStatus(event.target.value)}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"
-              >
-                <option value="conflict">Conflicts</option>
-                <option value="pending">Pending</option>
-                <option value="failed">Failed</option>
-                <option value="not_found">Not found</option>
-                <option value="unsupported">Unsupported</option>
-                <option value="all">All unresolved</option>
-              </select>
-              <ReviewButton disabled={identityLoading || Boolean(working)} onClick={loadIdentities}>Refresh</ReviewButton>
-            </div>
-          </div>
-          <label className="mt-4 grid gap-2 text-sm font-semibold text-slate-300">
-            Search identities
-            <input
-              type="search"
-              value={identitySearch}
-              onChange={(event) => setIdentitySearch(event.target.value)}
-              placeholder="Provider name, player ID, or Brawlhalla ID"
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white outline-none focus:border-cyan-400"
-            />
-          </label>
-          <div className="mt-4 grid gap-3">
-            {identities.map((identity) => (
-              <article key={identity.id} className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-950/60 p-4 lg:flex-row lg:items-center">
+      <Section
+        className="max-w-6xl"
+        title="Community organizers"
+        count={organizerMeta.total.toLocaleString()}
+        subtitle={`${organizerMeta.total.toLocaleString()} provider-scoped organizers are classified Community unless promoted to Official.`}
+        actions={<ReviewButton disabled={loading || Boolean(working)} onClick={loadOrganizers}>Refresh</ReviewButton>}
+      >
+        <SearchInput
+          value={organizerSearch}
+          onChange={setOrganizerSearch}
+          label="Search the complete review queue"
+          placeholder="Organizer name or provider ID"
+        />
+        {organizerError && <ErrorState message="Couldn't load the organizer queue." detail={organizerError} onRetry={loadOrganizers} />}
+        <div className="grid gap-3">
+          {organizers.map((organizer) => {
+            const key = `${organizer.provider}:${organizer.host_provider_id}`;
+            return (
+              <Card as="article" key={organizer.id} className="flex flex-col gap-3 lg:flex-row lg:items-center">
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-slate-800 px-2 py-0.5 text-xs font-bold text-slate-300">{identity.provider}</span>
-                    <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-bold text-amber-200">{identity.lookup_status}</span>
+                  <div className="truncate font-bold text-white">{organizer.host_name || organizer.host_provider_id}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                    <Pill>{organizer.provider}</Pill>
+                    <span className="break-all">{organizer.host_provider_id}</span>
                   </div>
-                  <div className="mt-2 font-bold text-white">{identity.provider_name || "Unnamed identity"}</div>
-                  <div className="mt-1 break-all font-mono text-xs text-slate-500">{identity.provider_player_id}</div>
-                  <div className="mt-2 text-sm text-slate-400">Canonical player {identity.player_id} · {Number(identity.entrant_appearances).toLocaleString()} appearances{identity.provider_brawlhalla_id ? ` · Brawlhalla ID ${identity.provider_brawlhalla_id}` : ""}</div>
+                  <div className="mt-2 text-sm text-slate-400">{Number(organizer.tournaments).toLocaleString()} tournaments · {Number(organizer.events).toLocaleString()} events</div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <a href={`/esports/player/id/${identity.player_id}`} className="rounded-lg border border-slate-700 px-3 py-2 text-sm font-bold text-slate-200 hover:bg-slate-800">Inspect player</a>
-                  <ReviewButton tone="amber" disabled={Boolean(working)} onClick={() => verifyIdentity(identity)}>{working === `identity:${identity.id}` ? "Saving..." : "Verify identity"}</ReviewButton>
+                  <ReviewButton tone="amber" disabled={Boolean(working)} onClick={() => reviewOrganizer(organizer, true)}>{working === key ? "Saving…" : "Mark official"}</ReviewButton>
+                  <ReviewButton tone="blue" disabled={Boolean(working)} onClick={() => reviewOrganizer(organizer, false)}>Mark community</ReviewButton>
                 </div>
-              </article>
+              </Card>
+            );
+          })}
+          {!loading && !organizerError && !organizers.length && <EmptyState bare title="No community organizers on this page." />}
+          {loading && <LoadingState bare label="Loading review queue…" />}
+        </div>
+        <Pagination page={organizerMeta.page} totalPages={organizerMeta.totalPages} onChange={organizerPageChange} className="border-t border-slate-800" />
+
+        <div className="border-t border-slate-800 pt-4">
+          <Heading as="h4">Review a specific organizer</Heading>
+          <p className="max-w-prose text-sm text-slate-500">
+            Change an earlier decision, or go back to the provider's classification, by organizer ID.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <SelectInput
+              label="Provider"
+              value={organizerProvider}
+              onChange={setOrganizerProvider}
+              options={[
+                { value: "startgg", label: "start.gg" },
+                { value: "challengermode", label: "Challengermode" },
+              ]}
+            />
+            <input
+              value={organizerHostId}
+              onChange={(event) => setOrganizerHostId(event.target.value)}
+              placeholder="Provider organizer ID"
+              aria-label="Provider organizer ID"
+              className={cx(field, "min-w-0 flex-1 sm:min-w-56")}
+            />
+            <ReviewButton
+              tone="amber"
+              disabled={Boolean(working) || !organizerHostId.trim()}
+              onClick={() => reviewOrganizer({ provider: organizerProvider, host_provider_id: organizerHostId.trim() }, true)}
+            >
+              Official
+            </ReviewButton>
+            <ReviewButton
+              tone="blue"
+              disabled={Boolean(working) || !organizerHostId.trim()}
+              onClick={() => reviewOrganizer({ provider: organizerProvider, host_provider_id: organizerHostId.trim() }, false)}
+            >
+              Community
+            </ReviewButton>
+            <ReviewButton
+              disabled={Boolean(working) || !organizerHostId.trim()}
+              onClick={() => reviewOrganizer({ provider: organizerProvider, host_provider_id: organizerHostId.trim() }, undefined, true)}
+            >
+              Restore provider
+            </ReviewButton>
+          </div>
+        </div>
+      </Section>
+
+      <Section className="max-w-6xl" title="Individual tournament" subtitle="Use the numeric warehouse ID shown in tournament URLs.">
+        <div className="flex flex-wrap gap-2">
+          <input
+            inputMode="numeric"
+            value={tournamentId}
+            onChange={(event) => setTournamentId(event.target.value)}
+            placeholder="Tournament ID"
+            aria-label="Tournament ID"
+            className={cx(field, "min-w-0 flex-1 sm:min-w-48")}
+          />
+          <ReviewButton tone="amber" disabled={Boolean(working)} onClick={() => reviewTournament(true)}>Official</ReviewButton>
+          <ReviewButton tone="blue" disabled={Boolean(working)} onClick={() => reviewTournament(false)}>Community</ReviewButton>
+          <ReviewButton disabled={Boolean(working)} onClick={() => reviewTournament(undefined, true)}>Restore provider</ReviewButton>
+          <ReviewButton disabled={Boolean(working)} onClick={() => loadAudit()}>Load audit</ReviewButton>
+        </div>
+        {!!audit.length && (
+          <ol className="grid gap-2">
+            {audit.map((entry) => (
+              <Card as="li" key={entry.id} className="text-sm">
+                <div className="font-semibold text-slate-200">{entry.reason}</div>
+                <div className="mt-1 text-xs text-slate-500">{new Date(entry.created_at).toLocaleString()} · {entry.actor} · {classificationLabel(entry.before_values?.is_official)} → {classificationLabel(entry.after_values?.is_official)}</div>
+              </Card>
             ))}
-            {!identityLoading && !identities.length && <p className="py-6 text-center text-sm text-slate-500">No identities match this review status.</p>}
-            {identityLoading && <p className="py-6 text-center text-sm text-slate-500">Loading identity queue...</p>}
-          </div>
+          </ol>
+        )}
+      </Section>
 
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-4">
-            <span className="text-sm text-slate-500">
-              Page {identityMeta.page.toLocaleString()} of {identityMeta.totalPages.toLocaleString()}
-            </span>
-            <div className="flex gap-2">
-              <ReviewButton
-                disabled={identityLoading || Boolean(working) || identityPage <= 1}
-                onClick={() => setIdentityPage((page) => Math.max(1, page - 1))}
-              >
-                Previous
-              </ReviewButton>
-              <ReviewButton
-                disabled={identityLoading || Boolean(working) || identityPage >= identityMeta.totalPages}
-                onClick={() => setIdentityPage((page) => Math.min(identityMeta.totalPages, page + 1))}
-              >
-                Next
-              </ReviewButton>
+      <Section
+        className="max-w-6xl"
+        title="Event classification"
+        subtitle="Fix one event field at a time. Restore drops the override and goes back to the provider value."
+      >
+        <div className="flex flex-wrap gap-2">
+          <input
+            inputMode="numeric"
+            value={eventId}
+            onChange={(event) => setEventId(event.target.value)}
+            placeholder="Event ID"
+            aria-label="Event ID"
+            className={cx(field, "min-w-0 flex-1 sm:min-w-48")}
+          />
+          <ReviewButton disabled={Boolean(working)} onClick={loadEventReview}>Load event and audit</ReviewButton>
+        </div>
+        {eventDetails && (
+          <Card className="text-sm text-slate-300">
+            <div className="font-bold text-white">{eventDetails.name || `Event ${eventDetails.id}`}</div>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-slate-500">
+              <span>Current:</span>
+              <Pill>{eventDetails.region || "unknown region"}</Pill>
+              <Pill>{eventDetails.game_mode ? `${eventDetails.game_mode}v${eventDetails.game_mode}` : "unknown mode"}</Pill>
+              <Pill>{Number(eventDetails.multiplier ?? 1).toLocaleString()}×</Pill>
             </div>
-          </div>
-
-          <div className="mt-6 border-t border-slate-800 pt-5">
-            <h3 className="font-bold text-white">Manual canonical merge</h3>
-            <p className="mt-1 text-sm text-slate-500">Move all provider identities from a duplicate source player into a verified target. Unmerge restores the retired source using its audit record.</p>
+          </Card>
+        )}
+        <div className="grid gap-3 lg:grid-cols-3">
+          <Card>
+            <label className="grid gap-2 text-sm font-semibold text-slate-300">
+              Region code
+              <input value={eventRegion} onChange={(event) => setEventRegion(event.target.value)} placeholder="NA, EU, ALL…" className={field} />
+            </label>
             <div className="mt-3 flex flex-wrap gap-2">
-              <input inputMode="numeric" value={sourcePlayerId} onChange={(event) => setSourcePlayerId(event.target.value)} placeholder="Source player ID" className="min-w-44 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white" />
-              <input inputMode="numeric" value={targetPlayerId} onChange={(event) => setTargetPlayerId(event.target.value)} placeholder="Target player ID" className="min-w-44 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white" />
-              <ReviewButton tone="amber" disabled={Boolean(working)} onClick={mergePlayers}>Merge</ReviewButton>
-              <ReviewButton disabled={Boolean(working)} onClick={unmergePlayer}>Unmerge source</ReviewButton>
-              <ReviewButton disabled={Boolean(working)} onClick={loadIdentityAudit}>Load identity audit</ReviewButton>
+              <ReviewButton tone="amber" disabled={Boolean(working)} onClick={() => reviewEvent("region")}>Set region</ReviewButton>
+              <ReviewButton disabled={Boolean(working)} onClick={() => reviewEvent("region", true)}>Restore</ReviewButton>
             </div>
-            {!!identityAudit.length && (
-              <ol className="mt-4 grid gap-2">
-                {identityAudit.slice(0, 50).map((entry) => (
-                  <li key={entry.id} className="rounded-lg border border-slate-800 bg-slate-950/60 p-3 text-sm">
-                    <div className="font-semibold text-slate-200">{entry.action}: {entry.reason}</div>
-                    <div className="mt-1 text-xs text-slate-500">{new Date(entry.created_at).toLocaleString()} · source {entry.source_player_id ?? "—"} · target {entry.target_player_id ?? "—"} · identity {entry.identity_id ?? "—"}</div>
-                  </li>
-                ))}
-              </ol>
-            )}
+          </Card>
+          <Card>
+            <SelectInput
+              inline={false}
+              label="Game mode"
+              value={eventGameMode}
+              onChange={setEventGameMode}
+              className="font-semibold"
+              options={[
+                { value: "1", label: "1v1" },
+                { value: "2", label: "2v2" },
+              ]}
+            />
+            <div className="mt-3 flex flex-wrap gap-2">
+              <ReviewButton tone="amber" disabled={Boolean(working)} onClick={() => reviewEvent("gameMode")}>Set mode</ReviewButton>
+              <ReviewButton disabled={Boolean(working)} onClick={() => reviewEvent("gameMode", true)}>Restore</ReviewButton>
+            </div>
+          </Card>
+          <Card>
+            <label className="grid gap-2 text-sm font-semibold text-slate-300">
+              Multiplier
+              <input inputMode="decimal" value={eventMultiplier} onChange={(event) => setEventMultiplier(event.target.value)} placeholder="1.125" className={field} />
+            </label>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <ReviewButton tone="amber" disabled={Boolean(working)} onClick={() => reviewEvent("multiplier")}>Set multiplier</ReviewButton>
+              <ReviewButton disabled={Boolean(working)} onClick={() => reviewEvent("multiplier", true)}>Restore</ReviewButton>
+            </div>
+          </Card>
+        </div>
+        {!!eventAudit.length && (
+          <ol className="grid gap-2">
+            {eventAudit.map((entry) => (
+              <Card as="li" key={entry.id} className="text-sm">
+                <div className="font-semibold text-slate-200">{entry.reason}</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {new Date(entry.created_at).toLocaleString()} · {entry.actor} · {entry.before_values?.region || "?"}/{entry.before_values?.game_mode || "?"}/{Number(entry.before_values?.multiplier ?? 1).toLocaleString()}× → {entry.after_values?.region || "?"}/{entry.after_values?.game_mode || "?"}/{Number(entry.after_values?.multiplier ?? 1).toLocaleString()}×
+                </div>
+              </Card>
+            ))}
+          </ol>
+        )}
+      </Section>
+
+      <Section
+        className="max-w-6xl"
+        title="Identity review"
+        count={identityMeta.total.toLocaleString()}
+        subtitle={`${identityMeta.total.toLocaleString()} provider-scoped identities match this queue. They are never merged by gamer tag alone.`}
+        actions={(
+          <>
+            <SelectInput
+              label="Status"
+              value={identityStatus}
+              onChange={setIdentityStatus}
+              options={[
+                { value: "conflict", label: "Conflicts" },
+                { value: "pending", label: "Pending" },
+                { value: "failed", label: "Failed" },
+                { value: "not_found", label: "Not Found" },
+                { value: "unsupported", label: "Unsupported" },
+                { value: "all", label: "All unresolved" },
+              ]}
+            />
+            <ReviewButton disabled={identityLoading || Boolean(working)} onClick={loadIdentities}>Refresh</ReviewButton>
+          </>
+        )}
+      >
+        <SearchInput
+          value={identitySearch}
+          onChange={setIdentitySearch}
+          shortcut={false}
+          label="Search identities"
+          placeholder="Provider name, player ID, or Brawlhalla ID"
+        />
+        {identityError && <ErrorState message="Couldn't load the identity queue." detail={identityError} onRetry={loadIdentities} />}
+        <div className="grid gap-3">
+          {identities.map((identity) => (
+            <Card as="article" key={identity.id} className="flex flex-col gap-3 lg:flex-row lg:items-center">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Pill>{identity.provider}</Pill>
+                  <Pill tone="amber">{identity.lookup_status}</Pill>
+                </div>
+                <div className="mt-2 font-bold text-white">{identity.provider_name || "Unnamed identity"}</div>
+                <div className="mt-1 break-all font-mono text-xs text-slate-500">{identity.provider_player_id}</div>
+                <div className="mt-2 text-sm text-slate-400">Canonical player {identity.player_id} · {Number(identity.entrant_appearances).toLocaleString()} appearances{identity.provider_brawlhalla_id ? ` · Brawlhalla ID ${identity.provider_brawlhalla_id}` : ""}</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <a href={`/esports/player/id/${identity.player_id}`} className={cx(buttonBase, buttonTones.slate)}>Inspect player</a>
+                <ReviewButton tone="amber" disabled={Boolean(working)} onClick={() => verifyIdentity(identity)}>{working === `identity:${identity.id}` ? "Saving…" : "Verify identity"}</ReviewButton>
+              </div>
+            </Card>
+          ))}
+          {!identityLoading && !identityError && !identities.length && <EmptyState bare title="No identities match this review status." />}
+          {identityLoading && <LoadingState bare label="Loading identity queue…" />}
+        </div>
+        <Pagination page={identityMeta.page} totalPages={identityMeta.totalPages} onChange={identityPageChange} className="border-t border-slate-800" />
+
+        <div className="border-t border-slate-800 pt-4">
+          <Heading as="h4">Manual canonical merge</Heading>
+          <p className="max-w-prose text-sm text-slate-500">Move every identity from a duplicate player into the right one. Unmerge brings the duplicate back from its log entry.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <input inputMode="numeric" value={sourcePlayerId} onChange={(event) => setSourcePlayerId(event.target.value)} placeholder="Source player ID" aria-label="Source player ID" className={cx(field, "min-w-0 flex-1 sm:min-w-44")} />
+            <input inputMode="numeric" value={targetPlayerId} onChange={(event) => setTargetPlayerId(event.target.value)} placeholder="Target player ID" aria-label="Target player ID" className={cx(field, "min-w-0 flex-1 sm:min-w-44")} />
+            <ReviewButton tone="amber" disabled={Boolean(working)} onClick={mergePlayers}>Merge</ReviewButton>
+            <ReviewButton disabled={Boolean(working)} onClick={unmergePlayer}>Unmerge source</ReviewButton>
+            <ReviewButton disabled={Boolean(working)} onClick={loadIdentityAudit}>Load identity audit</ReviewButton>
           </div>
-        </section>
-      </div>
-    </main>
+          {!!identityAudit.length && (
+            <ol className="mt-3 grid gap-2">
+              {identityAudit.slice(0, 50).map((entry) => (
+                <Card as="li" key={entry.id} className="text-sm">
+                  <div className="font-semibold text-slate-200">{entry.action}: {entry.reason}</div>
+                  <div className="mt-1 text-xs text-slate-500">{new Date(entry.created_at).toLocaleString()} · source {entry.source_player_id ?? "—"} · target {entry.target_player_id ?? "—"} · identity {entry.identity_id ?? "—"}</div>
+                </Card>
+              ))}
+            </ol>
+          )}
+        </div>
+      </Section>
+    </PageShell>
   );
 }

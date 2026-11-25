@@ -1,4 +1,5 @@
-import { forwardRef, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { FullOnly, RawData, Spinner, formatPatchDate, isPatchNumber } from '../../../ui';
 
 const loadedImageSources = new Set();
 
@@ -10,16 +11,57 @@ function isGeneratedImageSource(src) {
   return typeof src === 'string' && /\/game\/anim(?:[a-z-]*\/|\/)/i.test(src);
 }
 
+const STILL_DELAY = 450;
+
+let sharedObserver = null;
+const inViewCallbacks = new Map();
+
+function watchInView(node, onVisible) {
+  if (!sharedObserver) {
+    sharedObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const callback = inViewCallbacks.get(entry.target);
+        if (!callback) continue;
+        inViewCallbacks.delete(entry.target);
+        sharedObserver.unobserve(entry.target);
+        callback();
+      }
+    }, { root: null, rootMargin: '600px 0px' });
+  }
+  inViewCallbacks.set(node, onVisible);
+  sharedObserver.observe(node);
+  return () => {
+    if (inViewCallbacks.delete(node)) sharedObserver.unobserve(node);
+  };
+}
+
+export function stillFrameFor(src) {
+  if (typeof src !== 'string') return null;
+  const match = src.match(/^(.*\/game\/)anim\/(char|weapon|spawnbot)\/([^/?#]+)\/([^/?#]+)\/([^/?#]+)\/([^/?#]+)\/(?:loop|all)$/);
+  if (!match) return null;
+  const [, base, type, id, anim1, anim2, file] = match;
+  if (anim1 === 'Animation_Emote') return null;
+  return `${base}anim-svg/${type}/${id}/${anim1}/${anim2}/${file}/0`;
+}
+
 export function LoadingSpinner({ small = false }) {
   return (
-    <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80">
-      <div className={`${small ? 'h-6 w-6' : 'h-8 w-8'} rounded-full bg-slate-500/40 animate-pulse`} />
+    <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80">
+      <Spinner className={small ? 'h-5 w-5' : 'h-7 w-7'} />
     </div>
   );
 }
 
-export function ImageWithLoader({ src, alt = '', className = '', imgClassName = 'max-h-full max-w-full object-contain', small = false, onLoad, onError, eager = false, retryOnError = false, retryDelay = 2000, ...props }) {
+export const IMAGE_RETRY_LIMIT = 3;
+
+export function retryDelayFor(attempt, baseDelay = 2000) {
+  return baseDelay * 2 ** Math.max(0, attempt);
+}
+
+export function ImageWithLoader({ src, still, alt = '', className = '', imgClassName = 'max-h-full max-w-full object-contain', small = false, onLoad, onError, eager = false, retryOnError = false, retryDelay = 2000, retryLimit = IMAGE_RETRY_LIMIT, ...props }) {
   const sources = sourcesList(src);
+  const stillSrc = still === false ? null : still || stillFrameFor(sources[0]);
   const shouldRetry = retryOnError || sources.some(isGeneratedImageSource);
   const wrapperRef = useRef(null);
   const retryTimerRef = useRef(null);
@@ -30,14 +72,27 @@ export function ImageWithLoader({ src, alt = '', className = '', imgClassName = 
     ? `${activeSrc}${activeSrc.includes('?') ? '&' : '?'}imageRetry=${retryAttempt}`
     : activeSrc;
   const [loaded, setLoaded] = useState(() => !!activeSrc && loadedImageSources.has(activeSrc));
-  const [inView, setInView] = useState(eager);
+  const [failed, setFailed] = useState(false);
+  const [inView, setInView] = useState(() => eager || (!!activeSrc && loadedImageSources.has(activeSrc)));
+  const [showStill, setShowStill] = useState(() => !!stillSrc && loadedImageSources.has(stillSrc));
+  const [stillLoaded, setStillLoaded] = useState(() => !!stillSrc && loadedImageSources.has(stillSrc));
+
+  useEffect(() => {
+    if (!stillSrc || loaded || failed || !inView || showStill) return undefined;
+    const timer = setTimeout(() => setShowStill(true), STILL_DELAY);
+    return () => clearTimeout(timer);
+  }, [stillSrc, loaded, failed, inView, showStill]);
 
   useEffect(() => {
     const nextSrc = sources[0];
     if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     setSourceIndex(0);
     setRetryAttempt(0);
+    setFailed(false);
     setLoaded(!!nextSrc && loadedImageSources.has(nextSrc));
+    const stillCached = !!stillSrc && loadedImageSources.has(stillSrc);
+    setShowStill(stillCached);
+    setStillLoaded(stillCached);
   }, [sources.join('|')]);
 
   useEffect(() => () => {
@@ -54,24 +109,39 @@ export function ImageWithLoader({ src, alt = '', className = '', imgClassName = 
       setInView(true);
       return;
     }
-    const observer = new IntersectionObserver(
-      ([entry]) => setInView(entry.isIntersecting),
-      { root: null, rootMargin: '350px 0px' }
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [eager]);
+    if (inView) return undefined;
+    return watchInView(node, () => setInView(true));
+  }, [eager, inView]);
+
+  const stillVisible = !!stillSrc && showStill && !loaded && !failed && inView;
 
   return (
     <div ref={wrapperRef} className={`relative flex items-center justify-center overflow-hidden ${className}`}>
-      {activeSrc && inView && !loaded && <LoadingSpinner small={small} />}
-      {activeSrc && inView ? (
+      {stillVisible && (
+        <img
+          src={stillSrc}
+          alt=""
+          aria-hidden="true"
+          decoding="async"
+          className={`absolute inset-0 m-auto ${imgClassName} transition-opacity duration-200 ${stillLoaded ? 'opacity-100' : 'opacity-0'}`}
+          onLoad={() => {
+            loadedImageSources.add(stillSrc);
+            setStillLoaded(true);
+          }}
+          onError={() => setShowStill(false)}
+        />
+      )}
+      {activeSrc && inView && !loaded && !failed && !(stillVisible && stillLoaded) && <LoadingSpinner small={small} />}
+      {failed && !onError ? (
+        <span className="px-1 text-center text-[11px] leading-tight text-slate-500">No preview</span>
+      ) : activeSrc && inView ? (
         <img
           key={requestSrc}
           src={requestSrc}
           alt={alt}
-          className={`${imgClassName} transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+          className={`relative ${imgClassName} transition-opacity duration-200 ${loaded ? 'opacity-100' : 'opacity-0'}`}
           loading="lazy"
+          decoding="async"
           {...props}
           onLoad={(event) => {
             loadedImageSources.add(activeSrc);
@@ -84,17 +154,18 @@ export function ImageWithLoader({ src, alt = '', className = '', imgClassName = 
               setLoaded(false);
               return;
             }
-            if (shouldRetry) {
+            if (shouldRetry && retryAttempt < retryLimit) {
               if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
               setLoaded(false);
               retryTimerRef.current = setTimeout(() => {
                 setRetryAttempt((current) => current + 1);
-              }, retryDelay);
+              }, retryDelayFor(retryAttempt, retryDelay));
               return;
             }
             setLoaded(true);
             onError?.(event);
-            if (!onError) event.currentTarget.style.display = 'none';
+            if (shouldRetry) setFailed(true);
+            else if (!onError) event.currentTarget.style.display = 'none';
           }}
         />
       ) : null}
@@ -105,21 +176,24 @@ export function ImageWithLoader({ src, alt = '', className = '', imgClassName = 
 export function AddedBadge({ item, className = '', style, showDate = true, showPatchLabel = true }) {
   const added = item?.added || item?.resolved?.added;
   if (!added) return null;
-  const date = added.date ? new Date(`${added.date}T00:00:00Z`).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }) : null;
-  const patch = added.patch ? `${showPatchLabel ? 'Patch ' : ''}${added.patch}` : `${showPatchLabel ? 'Patch ' : ''}unknown`;
+  const date = formatPatchDate(added.date);
+  const realPatch = isPatchNumber(added.patch);
+  if (!realPatch && !date) return null;
+  const patch = realPatch ? `${showPatchLabel ? 'Patch ' : ''}${String(added.patch).trim()}` : `Added ${date}`;
   return (
     <span
-      className={`inline-flex w-fit items-center gap-1 whitespace-nowrap rounded-lg bg-blue-500/10 px-2 py-0.5 text-[10px] font-bold leading-tight text-blue-700 dark:bg-blue-400/10 dark:text-blue-300 sm:gap-1.5 sm:px-2.5 sm:py-1 sm:text-[11px] ${className}`}
+      className={`inline-flex w-fit flex-col items-center whitespace-nowrap rounded-lg px-2 py-0.5 text-[10px] font-bold leading-tight bg-blue-400/10 text-blue-300 sm:px-2.5 sm:py-1 sm:text-[11px] ${className}`}
       style={style}
     >
       <span>{patch}</span>
-      {showDate && date && <span className="text-[9px] opacity-80 sm:text-[10px]">{date}</span>}
+      {showDate && realPatch && date && <span className="text-[9px] font-semibold opacity-80 sm:text-[10px]">{date}</span>}
     </span>
   );
 }
 
 export function getAddedPatch(item) {
-  return String(item?.added?.patch || item?.resolved?.added?.patch || '').trim();
+  const patch = String(item?.added?.patch || item?.resolved?.added?.patch || '').trim();
+  return isPatchNumber(patch) ? patch : '';
 }
 
 function patchParts(patch) {
@@ -173,43 +247,26 @@ export function getPatchFilterCounts(items) {
   return counts;
 }
 
-export function PatchFilterSelect({ value, onChange, groups, counts = {}, className = '' }) {
-  if (!groups?.length) return null;
-  return (
-    <select
-      value={value || ''}
-      onChange={(event) => onChange(event.target.value)}
-      className={className || 'bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-2.5 py-2 text-gray-900 dark:text-white text-xs font-semibold focus:ring-2 focus:ring-blue-500 cursor-pointer sm:px-3 sm:text-sm'}
-    >
-      <option value="">Patch Version</option>
-      {groups.map((group) => (
-        <optgroup key={group.major} label={`Patch ${group.major}`}>
-          <option value={patchFilterValue(group.major)}>
-            Patch {group.major}{counts[patchFilterValue(group.major)] !== undefined ? ` (${counts[patchFilterValue(group.major)]})` : ''}
-          </option>
-          {group.patches.map((patch) => (
-            <option key={patch} value={patch}>
-              {patch}{counts[patch] !== undefined ? ` (${counts[patch]})` : ''}
-            </option>
-          ))}
-        </optgroup>
+export function PatchOptions({ groups, counts = {} }) {
+  return (groups || []).map((group) => (
+    <optgroup key={group.major} label={`Patch ${group.major}`}>
+      <option value={patchFilterValue(group.major)}>
+        All {group.major}.x{counts[patchFilterValue(group.major)] !== undefined ? ` (${counts[patchFilterValue(group.major)]})` : ''}
+      </option>
+      {group.patches.map((patch) => (
+        <option key={patch} value={patch}>
+          {patch}{counts[patch] !== undefined ? ` (${counts[patch]})` : ''}
+        </option>
       ))}
-    </select>
-  );
+    </optgroup>
+  ));
 }
 
-export const AppScroller = forwardRef(function AppScroller({ className = '', ...props }, ref) {
-  return <div ref={ref} className={`${className} app-scrollbar`} {...props} />;
-});
-
-export function RawDataDetails({ data, title = 'Raw Data' }) {
+export function RawDataDetails({ data, title = 'Raw Data', filename }) {
   if (!data) return null;
   return (
-    <details className="xl:col-span-2 rounded-lg bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3">
-      <summary className="cursor-pointer select-none text-lg font-bold text-gray-900 dark:text-white">{title}</summary>
-      <pre className="mt-3 max-h-[70vh] overflow-auto app-scrollbar rounded-lg bg-gray-100 dark:bg-slate-950 p-4 text-xs text-gray-900 dark:text-gray-100 whitespace-pre-wrap">
-        {JSON.stringify(data, null, 2)}
-      </pre>
-    </details>
+    <FullOnly>
+      <RawData data={data} title={title} filename={filename} className="xl:col-span-2" />
+    </FullOnly>
   );
 }

@@ -1,11 +1,19 @@
 ---
 import Layout from "../../layouts/Layout.astro";
-import $ from "jquery";
-import { parse } from 'node-html-parser';
-import { countryToAlpha2 } from "country-to-iso";
-import flag from 'country-code-emoji';
 import History from '../../components/game/history.jsx';
+import { host } from '../../stuff';
+import { cachedJson, shortDate, toolText } from '../../data/head.js';
+const requested = Astro.url.searchParams.get('patch') || '';
+const list = requested ? await cachedJson(`${host}/game/history/all`, { ttl: 10 * 60 * 1000 }) : null;
+const entry = Array.isArray(list) ? list.find((item) => String(item.manifest) === requested) ?? null : null;
+const hotfix = entry && entry.patchOccurrenceTotal > 1 && entry.patchOccurrence < entry.patchOccurrenceTotal
+  ? ` hotfix ${entry.patchOccurrenceTotal - entry.patchOccurrence}`
+  : '';
+const title = entry?.patch ? `Patch ${entry.patch}${hotfix} · Brawlhalla patch notes` : 'Brawlhalla patch notes';
+const description = entry
+  ? [shortDate(entry.date), entry.title || toolText('/game/patch')].filter(Boolean).join(' · ')
+  : toolText('/game/patch');
 ---
-<Layout title="Brawlhalla Patches">
+<Layout title={title} description={description}>
     <History client:load />
 </Layout>

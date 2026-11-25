@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { host } from "../../stuff";
 import groups from "./moveGroups.json";
 import { highlight } from "./highlight.js";
+import { Card, EmptyState, ErrorState, LoadingState, PageHeader, PageShell, SearchInput, Section, Tabs, matchesWords } from "../ui";
 
 const STORE = "bifrost-move-editor";
 const LOCKED = new Set(["PowerName", "PowerID", "OrderID"]);
@@ -38,11 +39,11 @@ function withPart(value, index, count, n) {
 function Field({ col, label, help, game, value, onChange, onReset }) {
   const changed = value !== undefined && value !== game;
   return (
-    <label className="grid gap-1 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+    <label className="grid gap-1 rounded-xl border border-slate-700 bg-slate-950/60 p-3">
       <span className="flex items-center justify-between gap-2">
-        <span className="text-sm font-black">{label || col}</span>
+        <span className="text-sm font-bold text-white">{label || col}</span>
         {changed && (
-          <button type="button" onClick={onReset} className="rounded-lg px-2 text-xs font-black text-blue-500 hover:bg-blue-500/10">Reset</button>
+          <button type="button" onClick={onReset} className="rounded-lg px-2 text-xs font-bold text-blue-300 hover:bg-blue-500/10">Reset</button>
         )}
       </span>
       <input
@@ -50,9 +51,9 @@ function Field({ col, label, help, game, value, onChange, onReset }) {
         value={changed ? value : game ?? ""}
         disabled={LOCKED.has(col)}
         onChange={(e) => onChange(e.target.value)}
-        className={`w-full rounded-lg border px-2 py-1.5 font-mono text-sm outline-none focus:border-blue-500 dark:bg-slate-950 ${changed ? "border-blue-500 text-blue-600 dark:text-blue-300" : "border-slate-300 dark:border-slate-700"}`}
+        className={`w-full rounded-lg border bg-slate-950 px-2 py-1.5 font-mono text-sm text-white outline-none focus:border-blue-400 disabled:opacity-60 ${changed ? "border-blue-400 text-blue-200" : "border-slate-700"}`}
       />
-      <span className="flex flex-wrap justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+      <span className="flex flex-wrap justify-between gap-2 text-xs text-slate-400">
         <span>{help}</span>
         {changed && <span className="font-mono">game: {game === "" ? "(empty)" : game}</span>}
       </span>
@@ -106,11 +107,11 @@ function Hitboxes({ row, edits, onEdit }) {
   }, [drag]);
 
   return (
-    <div className="grid gap-3 lg:grid-cols-[1fr_16rem]">
+    <div className="grid gap-3 lg:grid-cols-[1fr_16rem] 2xl:grid-cols-[minmax(0,calc(100dvh_-_8rem))_16rem]">
       <svg
         ref={svg}
         viewBox={view}
-        className="aspect-square w-full touch-none select-none rounded-2xl border border-slate-200 bg-slate-950 dark:border-slate-800"
+        className="aspect-square w-full touch-none select-none rounded-xl border border-slate-700 bg-slate-950"
       >
         {Array.from({ length: Math.floor(span / 50) * 2 + 1 }, (_, k) => {
           const v = (k - Math.floor(span / 50)) * 50;
@@ -133,10 +134,10 @@ function Hitboxes({ row, edits, onEdit }) {
         ))}
       </svg>
       <div className="grid content-start gap-2 text-sm">
-        <p className="text-slate-600 dark:text-slate-300">Drag a dot to move a hit, drag the white square to resize it. One grid square is 50 game units. Negative Y is up.</p>
+        <p className="text-slate-300">Drag a dot to move a hit, drag the white square to resize it. One grid square is 50 game units. Negative Y is up.</p>
         {hits.map((h, i) => (
-          <div key={i} className="rounded-xl border border-slate-200 p-2 font-mono text-xs dark:border-slate-800">
-            <span className="font-black" style={{ color: colors[i % colors.length] }}>hit {i + 1}</span> x {Math.round(h.x)}, y {Math.round(h.y)}, size {Math.round(h.rx)} × {Math.round(h.ry)}
+          <div key={i} className="rounded-xl border border-slate-700 bg-slate-950/60 p-2 font-mono text-xs">
+            <span className="font-bold" style={{ color: colors[i % colors.length] }}>hit {i + 1}</span> x {Math.round(h.x)}, y {Math.round(h.y)}, size {Math.round(h.rx)} × {Math.round(h.ry)}
           </div>
         ))}
         <p className="text-xs text-slate-500">Capsule hitboxes ("49&25") keep their second number when you drag.</p>
@@ -156,6 +157,7 @@ export default function MoveEditor() {
   const [colSearch, setColSearch] = useState("");
   const [mod, setMod] = useState({ id: "my-moves", name: "My moves", version: "1.0" });
   const [copied, setCopied] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const ready = useRef(false);
 
   useEffect(() => {
@@ -163,6 +165,7 @@ export default function MoveEditor() {
     setEdits(saved.edits);
     if (saved.mod) setMod(saved.mod);
     ready.current = true;
+    setError(null);
     fetch(`${host}/game/powers`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`The move list didn't load (${r.status})`))))
       .then((data) => {
@@ -171,7 +174,7 @@ export default function MoveEditor() {
         setName(data.powers.some(([n]) => n === first) ? first : data.powers[0]?.[0]);
       })
       .catch((e) => setError(e.message));
-  }, []);
+  }, [attempt]);
 
   useEffect(() => {
     if (!ready.current) return;
@@ -188,11 +191,13 @@ export default function MoveEditor() {
       .catch((e) => setError(e.message));
   }, [name]);
 
-  const shown = useMemo(() => {
+  const labels = useMemo(() => new Map((index?.powers || []).map(([n, , label]) => [n, label || n])), [index]);
+  const matching = useMemo(() => {
     if (!index) return [];
-    const q = search.trim().toLowerCase();
-    return index.powers.filter(([n]) => !q || n.toLowerCase().includes(q)).slice(0, 300);
+    return index.powers.filter(([n, , label, legend]) => matchesWords(search, [n, label, legend]));
   }, [index, search]);
+  const shown = matching.slice(0, 300);
+  const label = name ? labels.get(name) || name : "";
 
   const row = name ? rows[name] : null;
   const mine = (name && edits[name]) || {};
@@ -248,115 +253,118 @@ export default function MoveEditor() {
       onChange={(v) => edit(col, v)} onReset={() => reset(col)} />
   );
 
+  const retry = () => { setError(null); setAttempt((value) => value + 1); };
+
   if (error && !index) {
-    return <div className="mx-auto max-w-3xl p-6"><p className="rounded-2xl border border-rose-300 bg-rose-50 p-4 font-bold text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">{error}. Try again in a minute.</p></div>;
+    return (
+      <PageShell>
+        <PageHeader title="Move Editor" />
+        <ErrorState message="The move list didn't load. Try again in a minute." detail={error} onRetry={retry} />
+      </PageShell>
+    );
   }
 
-  return (
-    <div className="mx-auto grid max-w-[120rem] gap-4 px-3 py-4 sm:px-4 lg:grid-cols-[18rem_minmax(0,1fr)] lg:px-6">
-      <aside className="grid content-start gap-2 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-hidden">
-        <div>
-          <h1 className="text-2xl font-black">Move Editor</h1>
-          <p className="text-sm text-slate-600 dark:text-slate-300">Edit any move and download it as a Bifrost mod.{index?.version ? ` Game data from patch ${index.version}.` : ""}</p>
-        </div>
-        <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Find a move (e.g. SwordNeutral)"
-          className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900" />
-        <div className="app-scrollbar grid max-h-[50vh] content-start gap-0.5 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-slate-900 lg:max-h-none lg:min-h-0">
-          {!index && <p className="p-3 text-sm text-slate-500">Loading moves...</p>}
-          {shown.map(([n]) => (
-            <button key={n} type="button" onClick={() => setName(n)}
-              className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1 text-left font-mono text-xs ${n === name ? "bg-blue-500 text-white" : "hover:bg-slate-100 dark:hover:bg-slate-800"}`}>
-              <span className="truncate">{n}</span>
-              {edits[n] && <span className={`h-2 w-2 shrink-0 rounded-full ${n === name ? "bg-white" : "bg-blue-500"}`} />}
-            </button>
-          ))}
-          {index && shown.length === 300 && <p className="p-2 text-xs text-slate-500">Showing the first 300. Type more to narrow it down.</p>}
-        </div>
-      </aside>
-
-      <main className="grid min-w-0 content-start gap-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-black uppercase tracking-wider text-slate-500">Move</p>
-            <h2 className="truncate font-mono text-2xl font-black">{name || "..."}</h2>
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {TABS.map((t, i) => (
-              <button key={t} type="button" onClick={() => setTab(i)}
-                className={`rounded-xl px-3 py-1.5 text-sm font-black ${tab === i ? "bg-blue-500 text-white" : "border border-slate-300 hover:border-blue-400 dark:border-slate-700"}`}>
-                {t}{i === 3 && changedMoves.length > 0 ? ` (${changedMoves.length})` : ""}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {!row && tab !== 3 && <p className="text-sm text-slate-500">Loading {name}...</p>}
-
-        {row && tab === 0 && groups.map((g) => (
-          <section key={g.name} className="grid gap-2">
-            <h3 className="text-xs font-black uppercase tracking-wider text-slate-500">{g.name}</h3>
-            <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">{g.cols.map((c) => field(c.col, c.label, c.help))}</div>
-          </section>
+  const moveList = ({ close }) => (
+    <>
+      <SearchInput value={search} onChange={setSearch} placeholder="Move, legend or power name" className="flex-none" />
+      <div className="grid content-start gap-0.5 rounded-2xl border border-slate-700 bg-slate-900/80 p-1">
+        {!index && <LoadingState inline label="Loading moves" className="p-3" />}
+        {index && !shown.length && <p className="p-3 text-sm text-slate-400">No moves match</p>}
+        {shown.map(([n, , moveLabel]) => (
+          <button key={n} type="button" onClick={() => { setName(n); close(); }}
+            className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1 text-left text-xs ${n === name ? "bg-blue-500 text-white" : "text-slate-200 hover:bg-slate-800"}`}>
+            <span className="min-w-0">
+              <span className="block truncate font-semibold">{moveLabel || n}</span>
+              {moveLabel && moveLabel !== n && <span className={`block truncate font-mono text-[11px] ${n === name ? "text-blue-100" : "text-slate-500"}`}>{n}</span>}
+            </span>
+            {edits[n] && <span className={`h-2 w-2 shrink-0 rounded-full ${n === name ? "bg-white" : "bg-blue-400"}`} />}
+          </button>
         ))}
+        {index && matching.length > shown.length && <p className="p-2 text-xs text-slate-500">Showing 300 of {matching.length.toLocaleString()}. Type more to narrow it down.</p>}
+      </div>
+    </>
+  );
 
-        {row && tab === 1 && <Hitboxes row={row} edits={mine} onEdit={edit} />}
+  return (
+    <PageShell title="Move Editor" subtitle={label || undefined} sidebarLabel="Moves" sidebar={moveList}>
+      <PageHeader
+        eyebrow="Move Editor"
+        title={<span className="break-words">{label || "…"}</span>}
+        meta={<span className="block max-w-prose">{name && label !== name && <><code className="break-all font-mono text-slate-300">{name}</code>{" · "}</>}{index?.version ? `Game data from patch ${index.version}` : null}</span>}
+      >
+        <Tabs
+          label="Editor views"
+          value={tab}
+          onChange={(value) => setTab(Number(value))}
+          items={TABS.map((t, i) => ({ value: i, label: t, count: i === 3 && changedMoves.length > 0 ? changedMoves.length : undefined }))}
+        />
+      </PageHeader>
 
-        {row && tab === 2 && (
-          <div className="grid gap-2">
-            <input type="search" value={colSearch} onChange={(e) => setColSearch(e.target.value)} placeholder={`Find one of ${index?.columns.length ?? 184} columns`}
-              className="max-w-sm rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-900" />
-            <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
-              {(index?.columns ?? Object.keys(row)).filter((c) => !colSearch || c.toLowerCase().includes(colSearch.toLowerCase())).map((c) => field(c, c, ""))}
-            </div>
+      {!row && tab !== 3 && <LoadingState label={`Loading ${name || "move"}`} />}
+
+      {row && tab === 0 && groups.map((g) => (
+        <Section key={g.name} title={g.name}>
+          <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3 min-[137.5rem]:grid-cols-4">{g.cols.map((c) => field(c.col, c.label, c.help))}</div>
+        </Section>
+      ))}
+
+      {row && tab === 1 && <Section title="Hitboxes"><Hitboxes row={row} edits={mine} onEdit={edit} /></Section>}
+
+      {row && tab === 2 && (
+        <Section title="All columns" count={index?.columns.length}>
+          <div className="max-w-sm"><SearchInput value={colSearch} onChange={setColSearch} shortcut={false} placeholder={`Find one of ${index?.columns.length ?? 184} columns`} /></div>
+          <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3 min-[137.5rem]:grid-cols-4">
+            {(index?.columns ?? Object.keys(row)).filter((c) => !colSearch || c.toLowerCase().includes(colSearch.toLowerCase())).map((c) => field(c, c, ""))}
           </div>
-        )}
+        </Section>
+      )}
 
-        {tab === 3 && (
-          <div className="grid gap-2">
-            {changedMoves.length === 0 && <p className="text-sm text-slate-500">No changes yet. Pick a move and change a value.</p>}
+      {tab === 3 && (
+        changedMoves.length === 0 ? <EmptyState title="No changes yet">Pick a move and change a value.</EmptyState> : (
+          <Section title="My changes" count={changedMoves.length}>
             {changedMoves.map((n) => (
-              <div key={n} className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+              <Card key={n} className="max-w-4xl">
                 <div className="flex items-center justify-between gap-2">
-                  <button type="button" onClick={() => { setName(n); setTab(0); }} className="font-mono text-sm font-black text-blue-500 hover:underline">{n}</button>
-                  <button type="button" onClick={() => setEdits((old) => { const next = { ...old }; delete next[n]; return next; })} className="rounded-lg px-2 text-xs font-black text-rose-500 hover:bg-rose-500/10">Undo all</button>
+                  <button type="button" onClick={() => { setName(n); setTab(0); }} className="min-w-0 text-left text-sm font-bold text-blue-300 hover:underline">{labels.get(n) || n}{labels.get(n) && labels.get(n) !== n && <span className="ml-2 font-mono text-xs font-normal text-slate-500">{n}</span>}</button>
+                  <button type="button" onClick={() => setEdits((old) => { const next = { ...old }; delete next[n]; return next; })} className="rounded-lg px-2 text-xs font-bold text-rose-300 hover:bg-rose-500/10">Undo all</button>
                 </div>
                 <div className="mt-1 grid gap-1">
                   {Object.entries(edits[n]).map(([c, v]) => (
                     <div key={c} className="flex flex-wrap items-center gap-2 font-mono text-xs">
                       <span className="text-slate-500">{c}</span>
                       {rows[n] && <span className="text-slate-400 line-through">{rows[n][c] || "(empty)"}</span>}
-                      <span className="text-blue-500">{v}</span>
-                      <button type="button" onClick={() => reset(c, n)} className="text-slate-400 hover:text-rose-500">undo</button>
+                      <span className="text-blue-300">{v}</span>
+                      <button type="button" onClick={() => reset(c, n)} className="text-slate-400 hover:text-rose-300">undo</button>
                     </div>
                   ))}
                 </div>
-              </div>
+              </Card>
             ))}
-          </div>
-        )}
+          </Section>
+        )
+      )}
 
-        <section className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h3 className="text-xl font-black">Your mod</h3>
-              <p className="text-sm text-slate-600 dark:text-slate-300">Put this file in <code>mods\{mod.id || "my-moves"}\mod.json</code> next to Brawlhalla.exe and restart Bifrost. Move changes are gameplay mods: they work offline and in custom rooms where everyone has them.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={copy} disabled={changedMoves.length === 0} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-black hover:border-blue-400 disabled:opacity-40 dark:border-slate-700">{copied ? "Copied" : "Copy"}</button>
-              <button type="button" onClick={download} disabled={changedMoves.length === 0} className="rounded-xl bg-blue-500 px-3 py-2 text-sm font-black text-white hover:bg-blue-600 disabled:opacity-40">Download mod.json</button>
-            </div>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-3">
-            {[["id", "Mod id"], ["name", "Name"], ["version", "Version"]].map(([k, l]) => (
-              <label key={k} className="grid gap-1 text-xs font-black uppercase tracking-wider text-slate-500">{l}
-                <input type="text" value={mod[k]} onChange={(e) => setMod({ ...mod, [k]: k === "id" ? e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, "-") : e.target.value })}
-                  className="rounded-lg border border-slate-300 px-2 py-1.5 font-mono text-sm normal-case tracking-normal text-slate-950 outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
-              </label>
-            ))}
-          </div>
-          <pre className="app-scrollbar max-h-80 overflow-auto rounded-xl bg-slate-950 p-4 text-[13px] leading-relaxed text-slate-200 ring-1 ring-slate-800"><code dangerouslySetInnerHTML={{ __html: highlight(modJson) }} /></pre>
-        </section>
-      </main>
-    </div>
+      <Section
+        title="Your mod"
+        subtitle={<>Put this file in <code>mods\{mod.id || "my-moves"}\mod.json</code> next to Brawlhalla.exe and restart Bifrost. Move changes are gameplay mods: they work offline and in custom rooms where everyone has them.</>}
+        actions={(
+          <>
+            <button type="button" onClick={copy} disabled={changedMoves.length === 0} className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-bold text-slate-300 hover:border-slate-500 disabled:opacity-40">{copied ? "Copied" : "Copy"}</button>
+            <button type="button" onClick={download} disabled={changedMoves.length === 0} className="rounded-xl border border-blue-400 bg-blue-500 px-3 py-2 text-sm font-bold text-white hover:bg-blue-400 disabled:opacity-40">Download mod.json</button>
+          </>
+        )}
+      >
+        <div className="grid max-w-3xl gap-2 sm:grid-cols-3">
+          {[["id", "Mod id"], ["name", "Name"], ["version", "Version"]].map(([k, l]) => (
+            <label key={k} className="grid gap-1">
+              <span className="text-xs font-bold uppercase tracking-wide text-slate-400">{l}</span>
+              <input type="text" value={mod[k]} onChange={(e) => setMod({ ...mod, [k]: k === "id" ? e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, "-") : e.target.value })}
+                className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-sm text-white outline-none focus:border-blue-400" />
+            </label>
+          ))}
+        </div>
+        <pre className="app-scrollbar max-h-80 overflow-auto rounded-xl bg-slate-950 p-3 text-[13px] leading-relaxed text-slate-200 ring-1 ring-slate-800"><code dangerouslySetInnerHTML={{ __html: highlight(modJson) }} /></pre>
+      </Section>
+    </PageShell>
   );
 }

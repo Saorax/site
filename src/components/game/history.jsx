@@ -1,35 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
+import { X } from 'lucide-react';
 import { host } from '../../stuff';
 import { commonPowerFieldMessage, summarizeCommonPowerFields } from './powerHistorySummary';
+import PatchNotes, { patchContents, usePatchNotes } from './patchNotes';
+import { AsideBox, FactList, LinkList, OnThisPage } from '../ui';
 
 const sectionColors = {
   added: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200',
   changed: 'border-amber-500/40 bg-amber-500/10 text-amber-200',
   removed: 'border-rose-500/40 bg-rose-500/10 text-rose-200',
 };
-
-const minimalFiles = new Set([
-  'Game/powerTypes.csv',
-  'Game/HeroTypes.xml',
-  'Game/GeoTypes.xml',
-  'Game/RegionTypes.xml',
-  'Game/costumeTypes.csv',
-  'Game/DodgeTypes.xml',
-  'Game/LevelSetTypes.xml',
-  'Game/GameModeTypes.xml',
-  'Game/hurtboxTypes.csv',
-  'Game/RuneTypes.xml',
-  'Game/SkirmishTypes.xml',
-  'Game/SkirmishRewardTypes.xml',
-  'Game/SkirmishFactionTypes.xml',
-  'Game/storeTypes.csv',
-  'Game/StatTypes.xml',
-  'Init/LevelTypes.xml',
-  'Init/ControllerTypes.xml',
-]);
-
-const minimalDynamicPattern = /^Dynamic\/LevelDesc_/i;
-const legendGroupedFiles = new Set(['Game/HeroTypes.xml', 'Game/RuneTypes.xml']);
 
 function formatDate(timestamp) {
   if (!timestamp) return 'Unknown date';
@@ -68,177 +48,9 @@ function readPatchParams() {
   return { patch: params.get('patch') || '', from: params.get('from') || '', view: params.get('view') || '' };
 }
 
-function isMinimalFile(file) {
-  const path = filePath(file);
-  return minimalFiles.has(path) || minimalDynamicPattern.test(path);
-}
-
-const weaponPowerPrefixes = [
-  { prefix: 'Greatsword', weapon: 'Greatsword', label: 'Greatsword', icon: 'Greatsword' },
-  { prefix: 'RocketLance', weapon: 'RocketLance', label: 'Rocket Lance', icon: 'RocketLance' },
-  { prefix: 'Lance', weapon: 'RocketLance', label: 'Rocket Lance', icon: 'RocketLance' },
-  { prefix: 'Cannon', weapon: 'Cannon', label: 'Cannon', icon: 'Cannon' },
-  { prefix: 'Chakram', weapon: 'Chakram', label: 'Chakram', icon: 'Chakram' },
-  { prefix: 'Gauntlet', weapon: 'Fists', label: 'Gauntlets', icon: 'Fists' },
-  { prefix: 'Fists', weapon: 'Fists', label: 'Gauntlets', icon: 'Fists' },
-  { prefix: 'Scythe', weapon: 'Scythe', label: 'Scythe', icon: 'Scythe' },
-  { prefix: 'Pistol', weapon: 'Pistol', label: 'Blasters', icon: 'Pistol' },
-  { prefix: 'Blasters', weapon: 'Pistol', label: 'Blasters', icon: 'Pistol' },
-  { prefix: 'Hammer', weapon: 'Hammer', label: 'Hammer', icon: 'Hammer' },
-  { prefix: 'Spear', weapon: 'Spear', label: 'Spear', icon: 'Spear' },
-  { prefix: 'Katar', weapon: 'Katar', label: 'Katars', icon: 'Katar' },
-  { prefix: 'Sword', weapon: 'Sword', label: 'Sword', icon: 'Sword' },
-  { prefix: 'Boots', weapon: 'Boots', label: 'Battle Boots', icon: 'Boots' },
-  { prefix: 'Orb', weapon: 'Orb', label: 'Orb', icon: 'Orb' },
-  { prefix: 'Bow', weapon: 'Bow', label: 'Bow', icon: 'Bow' },
-  { prefix: 'Axe', weapon: 'Axe', label: 'Axe', icon: 'Axe' },
-  { prefix: 'Base', weapon: 'Unarmed', label: 'Unarmed', icon: 'Fists' },
-  { prefix: 'Unarmed', weapon: 'Unarmed', label: 'Unarmed', icon: 'Fists' },
-];
-
-const powerMovePatterns = [
-  ['SmashDown', 'dSig'],
-  ['SmashNeutral', 'nSig'],
-  ['SmashSide', 'sSig'],
-  ['SmashUp', 'nSig'],
-  ['AirUpHeavy', 'Recovery'],
-  ['AirDown', 'dAir'],
-  ['AirNeutral', 'nAir'],
-  ['AirSide', 'sAir'],
-  ['GroundPound', 'Ground Pound'],
-  ['Recovery', 'Recovery'],
-  ['Down', 'dLight'],
-  ['Neutral', 'nLight'],
-  ['Side', 'sLight'],
-  ['Up', 'nLight'],
-  ['Air', 'nAir'],
-];
-
-const moveNames = {
-  nSig: 'Neutral Signature',
-  sSig: 'Side Signature',
-  dSig: 'Down Signature',
-  nLight: 'Neutral Light',
-  sLight: 'Side Light',
-  dLight: 'Down Light',
-  nAir: 'Neutral Air',
-  sAir: 'Side Air',
-  dAir: 'Down Air',
-  Recovery: 'Recovery',
-  'Ground Pound': 'Ground Pound',
-};
-
-function withLegendNames(text, heroMap = {}) {
-  const codes = Object.keys(heroMap)
-    .filter((code) => /^\w+$/.test(code) && heroMap[code]?.name && heroMap[code].name !== code)
-    .sort((a, b) => b.length - a.length);
-  if (!text || !codes.length) return text;
-  const pattern = new RegExp(`\\b(${codes.join('|')})\\b`, 'g');
-  return text.replace(pattern, (code) => heroMap[code].name);
-}
-
 function cleanPowerValue(value) {
   const text = String(value ?? '').trim();
   return text && text !== '---' && text !== '----' && text !== '--' ? text : '';
-}
-
-function powerSource(record) {
-  return record?.after || record?.data || record?.before || {};
-}
-
-function signatureSourcePower(source, powerName) {
-  return cleanPowerValue(source?.OriginPower) || powerName;
-}
-
-const powerContinuationFields = [
-  'ComboName',
-  'ComboOverrideIfHit',
-  'ComboOverrideIfRelease',
-  'ComboOverrideIfWall',
-  'ComboOverrideIfButton',
-  'OriginOverrideIfInMode',
-  'ComboOverrideIfDir',
-  'ComboOverrideIfInterrupt',
-  'BGPowerOnFire',
-  'ExhaustedVersion',
-  'GCVersion',
-  'MomentumVersion',
-];
-
-function powerHasContinuation(source) {
-  return powerContinuationFields.some((field) => cleanPowerValue(source?.[field]));
-}
-
-function powerPartNumber(remainder, token) {
-  const match = remainder.match(new RegExp(`${token}(\\d*)`, 'i'));
-  if (!match) return 1;
-  return match[1] ? Number(match[1]) + 1 : 2;
-}
-
-function powerVariantLabel(remainder, source) {
-  const continues = powerHasContinuation(source);
-  const isCombo = /Combo\d*/i.test(remainder);
-  const isHit = /Hit(?:Ground)?\d*/i.test(remainder);
-  const isMiss = /Miss/i.test(remainder);
-  const wall = /BG/i.test(remainder);
-
-  if (!continues && (isCombo || isHit || isMiss || cleanPowerValue(source?.OriginPower))) {
-    return wall ? 'final - wall variant' : 'final';
-  }
-  if (isHit) {
-    const part = powerPartNumber(remainder, 'Hit(?:Ground)?');
-    return wall ? `on-hit part ${part} - wall variant` : `on-hit part ${part}`;
-  }
-  if (isMiss) return wall ? 'miss - wall variant' : 'miss';
-  if (isCombo) {
-    const part = powerPartNumber(remainder, 'Combo');
-    return wall ? `part ${part} - wall variant` : `part ${part}`;
-  }
-  if (wall) return 'wall variant';
-  return continues ? 'part 1' : 'final';
-}
-
-function parsePowerRecord(record, heroMap = {}) {
-  const source = powerSource(record);
-  const powerName = cleanPowerValue(source.PowerName || record?.name || record?.id);
-  if (!powerName || /^(Template|Taunt|Gadget|Item|Bomb|Mine|SpikeBall|Horn|Sidekick)/i.test(powerName)) return null;
-  const weapon = weaponPowerPrefixes.find((entry) => powerName.startsWith(entry.prefix));
-  if (!weapon) return null;
-
-  const remainder = powerName.slice(weapon.prefix.length);
-  const move = powerMovePatterns.find(([token]) => remainder.includes(token));
-  if (!move) return null;
-
-  const signaturePower = signatureSourcePower(source, powerName);
-  const heroData = heroMap.__powers?.[signaturePower];
-  const hero = heroData ? heroData.code : Object.keys(heroMap)
-    .filter((code) => code !== '__powers')
-    .sort((a, b) => b.length - a.length)
-    .find((code) => remainder.endsWith(code));
-  const suffixHeroData = hero && !heroData ? heroMap[hero] : null;
-  return {
-    powerName,
-    weapon,
-    hero: heroData || suffixHeroData || null,
-    kind: heroData || suffixHeroData ? 'signature' : 'base',
-    move: move[1],
-    variant: powerVariantLabel(remainder, source),
-    description: cleanPowerValue(source.DevNotes),
-    source,
-  };
-}
-
-function minimalRecords(file, records, type) {
-  if (filePath(file) !== 'Game/powerTypes.csv') return records || [];
-  return (records || []).filter((record) => !!parsePowerRecord(record));
-}
-
-function typedRecords(file) {
-  return [
-    ...(file.added || []).map((record) => ({ type: 'added', record })),
-    ...(file.changed || []).map((record) => ({ type: 'changed', record })),
-    ...(file.removed || []).map((record) => ({ type: 'removed', record })),
-  ];
 }
 
 function valuePreview(value) {
@@ -336,31 +148,6 @@ function hex(value, fallback = '#e2e8f0') {
   if (text.startsWith('#')) return text;
   if (/^0x/i.test(text)) return `#${text.slice(2)}`;
   return text;
-}
-
-function mapNameFromFile(file) {
-  return String(file?.file || '').replace(/^LevelDesc_/i, '').replace(/\.xml$/i, '');
-}
-
-function buildLevelMap(data) {
-  const levels = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
-  return levels.reduce((acc, level) => {
-    const name = cleanPowerValue(level?.LevelName);
-    if (!name) return acc;
-    acc[name] = {
-      name,
-      displayName: cleanPowerValue(level?.DisplayName) || name,
-      thumbnail: cleanPowerValue(level?.ThumbnailPNGFile),
-    };
-    return acc;
-  }, {});
-}
-
-function mapImageUrl(file, levelMap = {}) {
-  const mapName = mapNameFromFile(file);
-  const info = levelMap[mapName];
-  const thumbnail = cleanPowerValue(info?.thumbnail) || `${mapName.toLowerCase()}.jpg`;
-  return thumbnail && thumbnail !== '--.jpg' ? `${host}/game/images/images/thumbnails/${thumbnail}` : '';
 }
 
 function normalizeRosterIcon(name) {
@@ -735,122 +522,6 @@ function CountPill({ label, value, tone = 'slate' }) {
   );
 }
 
-function RecordCard({ type, record, file, lang, heroMap, storeAssetMap, titleOverride = '', hideImage = false }) {
-  const [open, setOpen] = useState(false);
-  const isChange = type === 'changed';
-  const image = hideImage ? '' : recordImage(file, record, heroMap, storeAssetMap);
-  const title = titleOverride || recordTitle(record, lang);
-  const databaseUrl = type === 'added' ? databaseRecordUrl(file, record, storeAssetMap) : '';
-  const splitCommaFields = filePath(file) !== 'Game/powerTypes.csv';
-  return (
-    <div className={`rounded-xl border p-3 ${sectionColors[type] || sectionColors.changed}`}>
-      <div className="flex w-full items-start justify-between gap-3 text-left">
-        <button type="button" onClick={() => setOpen((value) => !value)} className="flex min-w-0 flex-1 items-start gap-3 text-left">
-          {image && (
-            <img
-              src={image}
-              alt=""
-              loading="lazy"
-              className="h-14 w-14 shrink-0 rounded-lg bg-slate-950/70 object-contain"
-              onError={(event) => { event.currentTarget.style.display = 'none'; }}
-            />
-          )}
-          <div className="min-w-0">
-          <div className="break-words text-sm font-bold text-white">{title}</div>
-          {record.id && !record.compactPropertyChange && <div className="mt-0.5 text-xs opacity-75">ID {record.id}</div>}
-          {record.compactPropertyChange && record.affectedCount > 0 && (
-            <div className="mt-1 text-xs text-slate-300">
-              {record.affectedCount} affected record{record.affectedCount === 1 ? '' : 's'}
-              {!!record.sample?.length && <span className="text-slate-500">: {record.sample.join(', ')}</span>}
-            </div>
-          )}
-          {isChange && <div className="mt-1 text-xs opacity-75">{record.fields?.length || 0} field change{record.fields?.length === 1 ? '' : 's'}</div>}
-          </div>
-        </button>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {databaseUrl && <a href={databaseUrl} target="_blank" rel="noreferrer" className="rounded-lg bg-blue-500/20 px-2 py-1 text-xs font-bold text-blue-100 hover:bg-blue-500/30">Database</a>}
-          <button type="button" onClick={() => setOpen((value) => !value)} className="rounded-lg bg-black/20 px-2 py-1 text-xs">{open ? 'Hide' : 'View'}</button>
-        </div>
-      </div>
-      {open && (
-        <div className="mt-3 space-y-2">
-          {isChange ? (
-            record.fields?.map((field) => {
-              const listDiff = splitCommaFields ? fieldListDiff(field) : null;
-              const propertyAdded = field.propertyAdded || (isEmptyFieldValue(field.before) && !isEmptyFieldValue(field.after));
-              const propertyRemoved = field.propertyRemoved || (!isEmptyFieldValue(field.before) && isEmptyFieldValue(field.after));
-              return (
-              <div key={field.field} className="rounded-lg border border-white/10 bg-black/20 p-2">
-                <div className="text-xs font-bold tracking-wide text-slate-300">{record.compactPropertyChange ? field.field : displayFieldName(field.field)}</div>
-                {listDiff ? (
-                  <FullListDiff field={field} diff={listDiff} />
-                ) : field.propertyChangeVariants?.length ? (
-                  <PropertyChangeVariants field={field} />
-                ) : field.objectChanges?.length ? (
-                  <ObjectChangeList changes={field.objectChanges} />
-                ) : (
-                  <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-                    <div className="rounded bg-rose-950/50 p-2 text-xs">
-                      <div className="font-bold text-rose-200">Before</div>
-                      <pre className={`mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words app-scrollbar ${propertyRemoved ? 'font-bold text-rose-200' : ''}`}>{valuePreview(field.before)}</pre>
-                    </div>
-                    <div className="rounded bg-emerald-950/50 p-2 text-xs">
-                      <div className="font-bold text-emerald-200">After</div>
-                      <pre className={`mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words app-scrollbar ${propertyAdded ? 'font-bold text-emerald-200' : ''}`}>{valuePreview(field.after)}</pre>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-            })
-          ) : (
-            <pre className="max-h-72 overflow-auto rounded-lg bg-black/25 p-3 text-xs whitespace-pre-wrap break-words app-scrollbar">
-              {JSON.stringify(record.data || record, null, 2)}
-            </pre>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const plainNumber = (value) => (typeof value === 'number' || (typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value.trim())) ? Number(value) : null);
-
-function PowerFieldDiff({ field }) {
-  const propertyAdded = field.propertyAdded || (isEmptyFieldValue(field.before) && !isEmptyFieldValue(field.after));
-  const propertyRemoved = field.propertyRemoved || (!isEmptyFieldValue(field.before) && isEmptyFieldValue(field.after));
-  const before = plainNumber(field.before);
-  const after = plainNumber(field.after);
-  if (before !== null && after !== null) {
-    const effect = classifyPowerField(field);
-    const delta = Math.round((after - before) * 1000) / 1000;
-    const tone = effect === 'buff' ? 'text-emerald-200' : effect === 'nerf' ? 'text-rose-200' : 'text-amber-100';
-    return (
-      <div className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg border border-white/10 bg-black/20 px-2 py-1.5 text-xs">
-        <span className="font-bold uppercase tracking-wide text-slate-300">{displayFieldName(field.field)}</span>
-        <span className={`font-mono font-bold ${tone}`}>
-          {before} {'->'} {after} <span className="opacity-75">({delta > 0 ? '+' : ''}{delta})</span>
-        </span>
-      </div>
-    );
-  }
-  return (
-    <div className="rounded-lg border border-white/10 bg-black/20 p-2">
-      <div className="text-xs font-bold uppercase tracking-wide text-slate-300">{displayFieldName(field.field)}</div>
-      <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
-        <div className="rounded bg-rose-950/50 p-2 text-xs">
-          <div className="font-bold text-rose-200">Before</div>
-          <pre className={`mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words app-scrollbar ${propertyRemoved ? 'font-bold text-rose-200' : ''}`}>{valuePreview(field.before)}</pre>
-        </div>
-        <div className="rounded bg-emerald-950/50 p-2 text-xs">
-          <div className="font-bold text-emerald-200">After</div>
-          <pre className={`mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words app-scrollbar ${propertyAdded ? 'font-bold text-emerald-200' : ''}`}>{valuePreview(field.after)}</pre>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function HighlightedPatchPropertyData({ value, details, side }) {
   const highlighted = new Set(details
     .filter((detail) => side === 'before' ? detail.action !== 'added' : detail.action !== 'removed')
@@ -872,7 +543,7 @@ function PatchCommonPowerFieldData({ field }) {
   const structuralChange = field.details.some((detail) => detail.action === 'added' || detail.action === 'removed');
   if (!structuralChange) {
     return (
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 rounded-lg border border-white/10 bg-black/20 px-3 py-2">
         {field.details.map((detail) => (
           <div key={`${detail.action}-${detail.path}`} className="font-mono">
             <span className="text-slate-200">{[field.field, detail.path].filter(Boolean).join('.')}: </span>
@@ -910,23 +581,13 @@ function CommonPowerFieldSummary({ fields }) {
   return (
     <div className="grid gap-2">
       {fields.map((field) => (
-        <div key={field.field} className="rounded-xl border border-blue-400/30 bg-blue-500/10 p-3 text-sm font-bold text-blue-100">
+        <div key={field.field} className="rounded-xl border border-blue-400/30 bg-blue-500/10 p-2 text-sm font-bold text-blue-100">
           <div>{commonPowerFieldMessage(field)}</div>
           <PatchCommonPowerFieldData field={field} />
         </div>
       ))}
     </div>
   );
-}
-
-function numericSignal(value) {
-  if (value === undefined || value === null) return null;
-  const text = String(value).trim();
-  if (!text || text === '--' || text === '---' || text === '----') return null;
-  if (/^(true|false)$/i.test(text)) return text.toLowerCase() === 'true' ? 1 : 0;
-  const numbers = text.match(/-?\d+(?:\.\d+)?/g)?.map(Number).filter(Number.isFinite) || [];
-  if (!numbers.length) return null;
-  return numbers.reduce((total, number) => total + number, 0) / numbers.length;
 }
 
 const powerBuffIncreaseFields = [
@@ -991,154 +652,6 @@ function isVisualPowerField(field) {
     && !matchesAny(name, [...powerBuffIncreaseFields, ...powerNerfIncreaseFields, ...powerBooleanBuffFields, ...powerBooleanNerfFields]);
 }
 
-function classifyPowerField(field) {
-  const before = numericSignal(field.before);
-  const after = numericSignal(field.after);
-  if (before === null || after === null || before === after) return null;
-  const increased = after > before;
-  if (matchesAny(field.field, powerBuffIncreaseFields)) return increased ? 'buff' : 'nerf';
-  if (matchesAny(field.field, powerNerfIncreaseFields)) return increased ? 'nerf' : 'buff';
-  if (matchesAny(field.field, powerBooleanBuffFields)) return increased ? 'buff' : 'nerf';
-  if (matchesAny(field.field, powerBooleanNerfFields)) return increased ? 'nerf' : 'buff';
-  return null;
-}
-
-function classifyPowerChange(entry) {
-  if (entry.type !== 'changed') return null;
-  const fieldResults = (entry.record.fields || []).map(classifyPowerField).filter(Boolean);
-  const buffCount = fieldResults.filter((result) => result === 'buff').length;
-  const nerfCount = fieldResults.filter((result) => result === 'nerf').length;
-  if (buffCount > 0 && nerfCount > 0) return { label: 'Mixed', className: 'border-sky-300/40 bg-sky-500/20 text-sky-100' };
-  if (buffCount > 0) return { label: 'Buff', className: 'border-emerald-300/40 bg-emerald-500/20 text-emerald-100' };
-  if (nerfCount > 0) return { label: 'Nerf', className: 'border-rose-300/40 bg-rose-500/20 text-rose-100' };
-  const fields = entry.record.fields || [];
-  if (fields.length && fields.every(isVisualPowerField)) return { label: 'Visual', className: 'border-slate-400/40 bg-slate-500/20 text-slate-100' };
-  return { label: 'Adjustment', className: 'border-amber-300/40 bg-amber-500/20 text-amber-100' };
-}
-
-function powerClassificationCounts(entries) {
-  return (entries || []).reduce((counts, entry) => {
-    const classification = classifyPowerChange(entry);
-    if (!classification) return counts;
-    const key = classification.label.toLowerCase();
-    counts[key] = (counts[key] || 0) + 1;
-    return counts;
-  }, { buff: 0, nerf: 0, mixed: 0, adjustment: 0, visual: 0 });
-}
-
-function formatPowerClassificationCounts(entries) {
-  const counts = powerClassificationCounts(entries);
-  return [
-    counts.buff ? `${counts.buff} buff${counts.buff === 1 ? '' : 's'}` : '',
-    counts.nerf ? `${counts.nerf} nerf${counts.nerf === 1 ? '' : 's'}` : '',
-    counts.mixed ? `${counts.mixed} mixed` : '',
-    counts.adjustment ? `${counts.adjustment} adjustment${counts.adjustment === 1 ? '' : 's'}` : '',
-    counts.visual ? `${counts.visual} visual` : '',
-  ].filter(Boolean).join(' • ');
-}
-
-function PowerClassificationPills({ entries }) {
-  const counts = powerClassificationCounts(entries);
-  return (
-    <div className="flex flex-wrap gap-2">
-      {counts.buff > 0 && <CountPill label="Buffs" value={counts.buff} tone="emerald" />}
-      {counts.nerf > 0 && <CountPill label="Nerfs" value={counts.nerf} tone="rose" />}
-      {counts.mixed > 0 && <CountPill label="Mixed" value={counts.mixed} tone="blue" />}
-      {counts.adjustment > 0 && <CountPill label="Adjustments" value={counts.adjustment} tone="amber" />}
-      {counts.visual > 0 && <CountPill label="Visual" value={counts.visual} />}
-    </div>
-  );
-}
-
-function PowerChangeCard({ entry, heroMap }) {
-  const tone = entry.type === 'added'
-    ? sectionColors.added
-    : entry.type === 'removed'
-      ? sectionColors.removed
-      : sectionColors.changed;
-  const typeText = entry.type[0].toUpperCase() + entry.type.slice(1);
-  const fields = entry.record.fields || [];
-  const gameplayFields = fields.filter((field) => !isVisualPowerField(field));
-  const visualFields = fields.filter(isVisualPowerField);
-  const classification = classifyPowerChange(entry);
-  const title = [
-    entry.parsed.kind === 'signature' ? entry.parsed.hero?.name : '',
-    entry.parsed.weapon.label,
-    moveNames[entry.parsed.move] || entry.parsed.move,
-  ].filter(Boolean).join(' ');
-  return (
-    <div className={`rounded-xl border p-3 ${tone}`}>
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-lg bg-black/25 px-2 py-1 text-xs font-bold">{typeText}</span>
-            {classification && <span className={`rounded-lg border px-2 py-1 text-xs font-bold ${classification.className}`}>{classification.label}</span>}
-            <span className="rounded-lg bg-black/25 px-2 py-1 text-xs font-bold">{entry.parsed.variant}</span>
-          </div>
-          <div className="mt-2 break-words text-sm font-bold text-white">{title}</div>
-          <div className="mt-0.5 break-all font-mono text-[11px] opacity-60">{entry.parsed.powerName}{entry.record.id ? ` · ID ${entry.record.id}` : ''}</div>
-        </div>
-      </div>
-      {entry.parsed.description && (
-        <div className="mt-2 rounded-lg border border-white/10 bg-black/20 p-2 text-xs leading-relaxed text-slate-100">
-          {withLegendNames(entry.parsed.description, heroMap)}
-        </div>
-      )}
-      {gameplayFields.length > 0 && (
-        <div className="mt-2 space-y-2">
-          {gameplayFields.map((field) => <PowerFieldDiff key={field.field} field={field} />)}
-        </div>
-      )}
-      {visualFields.length > 0 && (
-        <details className="mt-2 rounded-lg border border-white/10 bg-black/10">
-          <summary className="cursor-pointer px-2 py-1.5 text-xs font-bold text-slate-300">Visual changes ({visualFields.length})</summary>
-          <div className="space-y-2 p-2 pt-0">
-            {visualFields.map((field) => <PowerFieldDiff key={field.field} field={field} />)}
-          </div>
-        </details>
-      )}
-    </div>
-  );
-}
-
-function groupBasePowerEntries(entries) {
-  const weaponGroups = new Map();
-  for (const entry of entries) {
-    const parsed = entry.parsed;
-    const weaponKey = parsed.weapon.weapon;
-    if (!weaponGroups.has(weaponKey)) {
-      weaponGroups.set(weaponKey, { weapon: parsed.weapon, entries: [] });
-    }
-    weaponGroups.get(weaponKey).entries.push(entry);
-  }
-  return [...weaponGroups.values()]
-    .sort((a, b) => a.weapon.label.localeCompare(b.weapon.label));
-}
-
-function groupSignaturePowerEntries(entries) {
-  const legendGroups = new Map();
-  for (const entry of entries) {
-    const parsed = entry.parsed;
-    const legendKey = parsed.hero?.code || parsed.hero?.name || 'unknown';
-    if (!legendGroups.has(legendKey)) {
-      legendGroups.set(legendKey, { hero: parsed.hero, count: 0, weapons: new Map() });
-    }
-    const legendGroup = legendGroups.get(legendKey);
-    const weaponKey = parsed.weapon.weapon;
-    if (!legendGroup.weapons.has(weaponKey)) {
-      legendGroup.weapons.set(weaponKey, { weapon: parsed.weapon, entries: [] });
-    }
-    legendGroup.count += 1;
-    legendGroup.weapons.get(weaponKey).entries.push(entry);
-  }
-  return [...legendGroups.values()]
-    .sort((a, b) => (a.hero?.name || 'Unknown Legend').localeCompare(b.hero?.name || 'Unknown Legend'))
-    .map((group) => ({
-      ...group,
-      weapons: [...group.weapons.values()].sort((a, b) => a.weapon.label.localeCompare(b.weapon.label)),
-    }));
-}
-
 function CollapsibleDiffBlock({ title, subtitle, image, children, className = '', imageClassName = 'h-9 w-9' }) {
   const [open, setOpen] = useState(true);
   return (
@@ -1161,60 +674,6 @@ function CollapsibleDiffBlock({ title, subtitle, image, children, className = ''
   );
 }
 
-function fallbackHero(code) {
-  const clean = cleanPowerValue(code);
-  return clean ? { code: clean, name: clean, image: '' } : null;
-}
-
-function heroFromRecord(record, heroMap = {}) {
-  const source = record?.after || record?.data || record?.before || {};
-  const code = cleanPowerValue(source.HeroName || source.OwnerHero || source.ReplacementHeroName);
-  return heroMap[code] || fallbackHero(code);
-}
-
-function legendChangeGroups(files, heroMap = {}) {
-  const groups = new Map();
-  const ensure = (hero) => {
-    const resolved = hero || fallbackHero('Unknown Legend');
-    const key = resolved?.code || resolved?.name || 'Unknown Legend';
-    if (!groups.has(key)) {
-      groups.set(key, {
-        hero: resolved,
-        heroRecords: [],
-        stanceRecords: [],
-        signatureEntries: [],
-      });
-    }
-    return groups.get(key);
-  };
-
-  for (const file of files || []) {
-    const path = filePath(file);
-    if (path === 'Game/HeroTypes.xml') {
-      for (const entry of typedRecords(file)) {
-        ensure(heroFromRecord(entry.record, heroMap)).heroRecords.push({ ...entry, file });
-      }
-    }
-    if (path === 'Game/RuneTypes.xml') {
-      for (const entry of typedRecords(file)) {
-        ensure(heroFromRecord(entry.record, heroMap)).stanceRecords.push({ ...entry, file });
-      }
-    }
-    if (path === 'Game/powerTypes.csv') {
-      for (const entry of typedRecords(file)) {
-        const parsed = parsePowerRecord(entry.record, heroMap);
-        if (parsed?.kind === 'signature') {
-          ensure(parsed.hero).signatureEntries.push({ ...entry, parsed });
-        }
-      }
-    }
-  }
-
-  return [...groups.values()]
-    .filter((group) => group.heroRecords.length || group.stanceRecords.length || group.signatureEntries.length)
-    .sort((a, b) => (a.hero?.name || '').localeCompare(b.hero?.name || ''));
-}
-
 function stablePatchValue(value) {
   if (value === undefined) return 'undefined';
   if (Array.isArray(value)) return `[${value.map(stablePatchValue).join(',')}]`;
@@ -1222,74 +681,6 @@ function stablePatchValue(value) {
     return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stablePatchValue(value[key])}`).join(',')}}`;
   }
   return JSON.stringify(value);
-}
-
-function sharedLegendRecordGroups(groups) {
-  const buckets = new Map();
-  for (const group of groups) {
-    for (const recordType of ['heroRecords', 'stanceRecords']) {
-      for (const entry of group[recordType] || []) {
-        if (entry.type !== 'changed' || !entry.record?.fields?.length) continue;
-        const fields = [...entry.record.fields].sort((a, b) => String(a.field).localeCompare(String(b.field)));
-        const key = `${recordType}|${filePath(entry.file)}|${stablePatchValue(fields)}`;
-        if (!buckets.has(key)) buckets.set(key, { recordType, entries: [], heroes: [] });
-        const bucket = buckets.get(key);
-        bucket.entries.push(entry);
-        bucket.heroes.push(group.hero);
-      }
-    }
-  }
-
-  const shared = [...buckets.values()].filter((bucket) => {
-    const legends = new Set(bucket.heroes.map((hero) => hero?.code || hero?.name).filter(Boolean));
-    return legends.size > 1;
-  });
-  const consumed = new Set(shared.flatMap((bucket) => bucket.entries));
-  return {
-    shared,
-    groups: groups.map((group) => ({
-      ...group,
-      heroRecords: group.heroRecords.filter((entry) => !consumed.has(entry)),
-      stanceRecords: group.stanceRecords.filter((entry) => !consumed.has(entry)),
-    })),
-  };
-}
-
-function SharedLegendChanges({ changes, lang, heroMap, storeAssetMap }) {
-  if (!changes.length) return null;
-  return (
-    <section>
-      <h4 className="mb-2 text-sm font-bold uppercase tracking-wide text-blue-200">Shared Legend Data</h4>
-      <div className="space-y-2">
-        {changes.map((change, index) => {
-          const entry = change.entries[0];
-          const heroes = [...new Map(change.heroes.map((hero) => [hero?.code || hero?.name, hero])).values()].filter(Boolean);
-          return (
-            <CollapsibleDiffBlock
-              key={`${change.recordType}-${filePath(entry.file)}-${index}`}
-              title={`${heroes.length} Legends`}
-              subtitle={heroes.map((hero) => hero.name).join(', ')}
-              className="bg-slate-950/60"
-            >
-              <div className="mb-3 flex flex-wrap gap-2">
-                {heroes.map((hero) => hero.image && <img key={hero.code || hero.name} src={hero.image} alt="" className="h-10 w-10 rounded-lg bg-slate-950 object-contain" />)}
-              </div>
-              <RecordCard
-                type={entry.type}
-                record={entry.record}
-                file={entry.file}
-                lang={lang}
-                heroMap={heroMap}
-                storeAssetMap={storeAssetMap}
-                titleOverride={change.recordType === 'stanceRecords' ? 'Shared Stance Change' : 'Shared Legend Property Change'}
-                hideImage
-              />
-            </CollapsibleDiffBlock>
-          );
-        })}
-      </div>
-    </section>
-  );
 }
 
 function identicalChangedRecordGroups(records) {
@@ -1303,9 +694,9 @@ function identicalChangedRecordGroups(records) {
   return [...groups.values()];
 }
 
-function ChangedRecordGroup({ records, file, lang, heroMap, storeAssetMap }) {
+function ChangedRecordGroup({ records, file, lang, heroMap, storeAssetMap, hideVisual }) {
   if (records.length === 1) {
-    return <RecordCard type="changed" record={records[0]} file={file} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />;
+    return <RecordCard type="changed" record={records[0]} file={file} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} hideVisual={hideVisual} />;
   }
   const names = records.map((record) => recordTitle(record, lang)).filter(Boolean);
   return (
@@ -1324,262 +715,286 @@ function ChangedRecordGroup({ records, file, lang, heroMap, storeAssetMap }) {
         storeAssetMap={storeAssetMap}
         titleOverride="Shared Property Change"
         hideImage
+        hideVisual={hideVisual}
       />
     </CollapsibleDiffBlock>
   );
 }
 
-function LegendChangeSection({ groups, lang, heroMap, storeAssetMap }) {
-  const [open, setOpen] = useState(true);
-  if (!groups.length) return null;
-  const signatureEntries = groups.flatMap((group) => group.signatureEntries || []);
-  const sharedRecords = sharedLegendRecordGroups(groups);
-  const sharedSignatures = summarizeCommonPowerFields(signatureEntries);
-  const remainingSignatures = new Map();
-  for (const entry of sharedSignatures.entries) {
-    const key = entry.parsed?.hero?.code || entry.parsed?.hero?.name || 'Unknown Legend';
-    if (!remainingSignatures.has(key)) remainingSignatures.set(key, []);
-    remainingSignatures.get(key).push(entry);
-  }
-  const visibleGroups = sharedRecords.groups.map((group) => ({
-    ...group,
-    signatureEntries: remainingSignatures.get(group.hero?.code || group.hero?.name || 'Unknown Legend') || [],
-  })).filter((group) => group.heroRecords.length || group.stanceRecords.length || group.signatureEntries.length);
+const fieldGlossary = {
+  BaseDamage: 'Damage per hit window. A "t" value is spread across every hit in that window.',
+  FixedImpulse: 'Fixed force: knockback that does not depend on the target\'s damage.',
+  VariableImpulse: 'Variable force: knockback that grows with the target\'s damage.',
+  MinimumImpulse: 'Lowest force the attack can apply.',
+  CastTime: 'Timing per hit window, written startup:active@animation frame. The first number is the startup.',
+  FixedRecoverTime: 'Recover time that is always applied after the attack (duration@animation frame).',
+  RecoverTime: 'Recover time that scales with Dexterity.',
+  FixedMinChargeTime: 'Shortest time a signature has to be charged.',
+  FixedStunTime: 'Stun applied to the target on hit.',
+  AoERadiusX: 'Hitbox width per hit window. & separates several hitboxes, ~ changes the value during the window.',
+  AoERadiusY: 'Hitbox height per hit window. & separates several hitboxes, ~ changes the value during the window.',
+  CenterOffsetX: 'Horizontal position of each hitbox.',
+  CenterOffsetY: 'Vertical position of each hitbox.',
+  CooldownTime: 'Time before the attack can be used again.',
+  OnHitCooldownTime: 'Cooldown after the attack hits.',
+  GCancelTime: 'When the attack can be gravity cancelled.',
+  ImpulseOffsetX: 'Horizontal adjustment to the knockback direction.',
+  ImpulseOffsetY: 'Vertical adjustment to the knockback direction.',
+  ImpulseToPoint: 'Pulls the target toward a point instead of sending in a direction.',
+  FireImpulseX: 'Horizontal movement given to the attacker. ~ changes it during the window, ! leaves it unset.',
+  FireImpulseY: 'Vertical movement given to the attacker.',
+  AccelMult: 'Acceleration the attacker keeps during the attack.',
+  BackwardAccelMult: 'Backward acceleration during the attack.',
+  SpeedLimit: 'Max speed during the attack.',
+  SpeedLimitBackward: 'Max backward speed during the attack.',
+  ComboName: 'The power that continues this one.',
+  DevNotes: 'Developer notes describing the power.',
+  OriginPower: 'The first power of the attack this part belongs to.',
+  LevelTypes: 'Maps in this map pool.',
+  GoldCost: 'Price in Gold.',
+  IdolCost: 'Price in Mammoth Coins.',
+  IdolSaleCost: 'Sale price in Mammoth Coins.',
+  Popularity: 'Store sort weight. Players never see it.',
+  Tags: 'Internal store tags.',
+  Label: 'The banner on the store tile, such as New or Sale.',
+  Weight: 'Defense stat.',
+  Strength: 'Strength stat.',
+  Dexterity: 'Dexterity stat.',
+  Speed: 'Speed stat.',
+  Cooldown: 'Dodge cooldown in the air.',
+  CooldownGround: 'Dodge cooldown on the ground.',
+  TopKill: 'Distance to the top blast zone.',
+  BottomKill: 'Distance to the bottom blast zone.',
+  LeftKill: 'Distance to the left blast zone.',
+  RightKill: 'Distance to the right blast zone.',
+  RosterHeroes: 'Legends in the free rotation.',
+  ColorExclusionList: 'Colors that cannot be picked on this map.',
+  NavNode: 'Bot pathing points.',
+  MissionTags: 'Tags used by missions. Players never see them.',
+};
+
+function slug(value) {
+  return String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+function recordAnchor(file, record) {
+  return `rec-${slug(filePath(file))}-${slug(record?.id ?? record?.name)}`;
+}
+
+function FieldName({ field, raw = false }) {
+  const help = fieldGlossary[field];
   return (
-    <section className="rounded-2xl border border-slate-700 bg-slate-900/80 p-4 shadow-sm">
-      <button type="button" onClick={() => setOpen((value) => !value)} className="flex w-full flex-wrap items-center justify-between gap-3 text-left">
-        <div>
-          <h3 className="text-lg font-bold text-white">Legend Changes</h3>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {groups.slice(0, 16).map((group) => group.hero?.image && (
-              <img
-                key={group.hero?.code || group.hero?.name}
-                src={group.hero.image}
-                className="h-10 w-10 rounded-lg bg-slate-950 object-contain"
-                alt=""
-                onError={(event) => { event.currentTarget.style.display = 'none'; }}
-              />
-            ))}
-          </div>
-        </div>
-        <div className="flex flex-col items-start gap-2 sm:items-end">
-          <CountPill label="Legends" value={groups.length} tone="blue" />
-          <PowerClassificationPills entries={signatureEntries} />
-        </div>
-      </button>
-      {open && <div className="mt-4 space-y-3">
-        <SharedLegendChanges changes={sharedRecords.shared} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />
-        <CommonPowerFieldSummary fields={sharedSignatures.commonFields} />
-        {visibleGroups.map((group) => {
-          const signatureSummary = summarizeCommonPowerFields(group.signatureEntries);
-          const signatureWeapons = groupSignaturePowerEntries(signatureSummary.entries).flatMap((legendGroup) => legendGroup.weapons);
-          const total = group.heroRecords.length + group.stanceRecords.length + group.signatureEntries.length;
-          const powerSummary = formatPowerClassificationCounts(group.signatureEntries);
-          return (
-            <CollapsibleDiffBlock
-              key={group.hero?.code || group.hero?.name}
-              title={group.hero?.name || 'Unknown Legend'}
-              subtitle={`${total} legend change${total === 1 ? '' : 's'}${powerSummary ? ` • ${powerSummary}` : ''}`}
-              image={group.hero?.image}
-              className="bg-slate-950/60"
-            >
-              <div className="space-y-4">
-                {group.heroRecords.length > 0 && (
-                  <section>
-                    <h4 className="mb-2 text-sm font-bold uppercase tracking-wide text-blue-200">Legend Data</h4>
-                    <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
-                      {group.heroRecords.map((entry, index) => (
-                        <RecordCard key={`hero-${entry.type}-${entry.record.id}-${index}`} type={entry.type} record={entry.record} file={entry.file} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />
-                      ))}
-                    </div>
-                  </section>
-                )}
-                {group.stanceRecords.length > 0 && (
-                  <section>
-                    <h4 className="mb-2 text-sm font-bold uppercase tracking-wide text-blue-200">Stances</h4>
-                    <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
-                      {group.stanceRecords.map((entry, index) => (
-                        <RecordCard key={`stance-${entry.type}-${entry.record.id}-${index}`} type={entry.type} record={entry.record} file={entry.file} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />
-                      ))}
-                    </div>
-                  </section>
-                )}
-                <CommonPowerFieldSummary fields={signatureSummary.commonFields} />
-                {signatureWeapons.length > 0 && (
-                  <section>
-                    <h4 className="mb-2 text-sm font-bold uppercase tracking-wide text-blue-200">Signatures</h4>
-                    <div className="space-y-3">
-                      {signatureWeapons.map((weaponGroup) => (
-                        <CollapsibleDiffBlock
-                          key={weaponGroup.weapon.weapon}
-                          title={weaponGroup.weapon.label}
-                          subtitle={`${weaponGroup.entries.length} signature power change${weaponGroup.entries.length === 1 ? '' : 's'}${formatPowerClassificationCounts(weaponGroup.entries) ? ` • ${formatPowerClassificationCounts(weaponGroup.entries)}` : ''}`}
-                          image={`${host}/game/getGfx/UI_Icons/a_WeaponIcon_${weaponGroup.weapon.icon}/1`}
-                          className="bg-slate-950/70"
-                        >
-                          <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
-                            {weaponGroup.entries.map((entry) => (
-                              <PowerChangeCard key={`${entry.type}-${entry.record.id}-${entry.parsed.powerName}`} entry={entry} heroMap={heroMap} />
-                            ))}
-                          </div>
-                        </CollapsibleDiffBlock>
-                      ))}
-                    </div>
-                  </section>
-                )}
-              </div>
-            </CollapsibleDiffBlock>
-          );
-        })}
-      </div>}
-    </section>
+    <span title={help || undefined} className={help ? 'cursor-help' : ''}>
+      {raw ? field : displayFieldName(field)}
+      {help && <span className="ml-1 text-slate-500">?</span>}
+    </span>
   );
 }
 
-function MapChangeSection({ files, lang, levelMap, heroMap, storeAssetMap }) {
-  const [open, setOpen] = useState(true);
-  if (!files.length) return null;
-  const renderRecords = (file, type, records) => (
-    records?.length > 0 && (
-      <section>
-        <h4 className={`mb-2 text-sm font-bold uppercase tracking-wide ${
-          type === 'added' ? 'text-emerald-200' : type === 'removed' ? 'text-rose-200' : 'text-amber-200'
-        }`}>
-          {type[0].toUpperCase() + type.slice(1)}
-        </h4>
-        <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
-          {records.map((record, index) => (
-            <RecordCard key={`${type}-${record.id}-${index}`} type={type} record={record} file={file} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />
-          ))}
-        </div>
-      </section>
-    )
-  );
+function WindowDiff({ field }) {
+  const before = String(field.before ?? '').split(',');
+  const after = String(field.after ?? '').split(',');
+  const count = Math.max(before.length, after.length);
+  const cells = (values, other, tone) => Array.from({ length: count }, (_, index) => {
+    const changed = (values[index] ?? '') !== (other[index] ?? '');
+    return (
+      <td key={index} className={`whitespace-nowrap px-2 py-0.5 ${changed ? `${tone} font-bold` : 'text-slate-500'}`}>
+        {values[index] ?? ''}
+      </td>
+    );
+  });
   return (
-    <section className="rounded-2xl border border-slate-700 bg-slate-900/80 p-4 shadow-sm">
-      <button type="button" onClick={() => setOpen((value) => !value)} className="flex w-full flex-col gap-3 text-left sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 flex-1">
-          <h3 className="text-lg font-bold text-white">Map Data</h3>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {files.map((file) => (
-              <img
-                key={`${file.section}/${file.file}`}
-                src={mapImageUrl(file, levelMap)}
-                className="h-12 w-20 rounded-lg bg-slate-950 object-cover sm:h-14 sm:w-24"
-                alt=""
-                onError={(event) => { event.currentTarget.style.display = 'none'; }}
-              />
-            ))}
-          </div>
-        </div>
-        <div className="shrink-0">
-          <CountPill label="Maps" value={files.length} tone="blue" />
-        </div>
-      </button>
-      {open && <div className="mt-4 space-y-3">
-        {files.map((file) => {
-          const mapName = mapNameFromFile(file);
-          const info = levelMap[mapName];
-          const changedCount = (file.added?.length || 0) + (file.changed?.length || 0) + (file.removed?.length || 0);
-          return (
-            <CollapsibleDiffBlock
-              key={`${file.section}/${file.file}`}
-              title={info?.displayName || mapName}
-              subtitle={`${changedCount} map data change${changedCount === 1 ? '' : 's'}`}
-              image={mapImageUrl(file, levelMap)}
-              imageClassName="h-24 w-40 sm:h-28 sm:w-48"
-              className="bg-slate-950/60"
-            >
-              <div className="space-y-4">
-                {renderRecords(file, 'added', file.added || [])}
-                {renderRecords(file, 'changed', file.changed || [])}
-                {renderRecords(file, 'removed', file.removed || [])}
-              </div>
-            </CollapsibleDiffBlock>
-          );
-        })}
-      </div>}
-    </section>
+    <div className="mt-2 overflow-x-auto rounded bg-black/20 p-1 app-scrollbar">
+      <table className="font-mono text-xs">
+        <thead>
+          <tr className="text-slate-500">
+            <th className="px-2 text-left font-normal">hit window</th>
+            {Array.from({ length: count }, (_, index) => <th key={index} className="px-2 font-normal">{index + 1}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td className="px-2 text-rose-200">before</td>{cells(before, after, 'bg-rose-950/60 text-rose-200')}</tr>
+          <tr><td className="px-2 text-emerald-200">after</td>{cells(after, before, 'bg-emerald-950/60 text-emerald-200')}</tr>
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-function PowerFileDiff({ file, heroMap }) {
-  const [open, setOpen] = useState(false);
-  const records = [
-    ...(file.added || []).map((record) => ({ type: 'added', record })),
-    ...(file.changed || []).map((record) => ({ type: 'changed', record })),
-    ...(file.removed || []).map((record) => ({ type: 'removed', record })),
-  ].map((entry) => ({ ...entry, parsed: parsePowerRecord(entry.record, heroMap) }))
-    .filter((entry) => !!entry.parsed);
-  const rawBaseEntries = records.filter((entry) => entry.parsed.kind === 'base');
-  const baseSummary = summarizeCommonPowerFields(rawBaseEntries);
-  const baseGroups = groupBasePowerEntries(baseSummary.entries);
-  if (rawBaseEntries.length === 0) return null;
-  const baseEntries = baseGroups.flatMap((group) => group.entries);
+function RecordHistory({ file, record }) {
+  const [state, setState] = useState({ loading: true, error: '', data: null });
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${host}/game/history/record/${encodeURIComponent(file.section)}/${encodeURIComponent(file.file)}/${encodeURIComponent(record.id)}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`Record history request failed: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => { if (!cancelled) setState({ loading: false, error: '', data }); })
+      .catch((error) => {
+        console.error(error);
+        if (!cancelled) setState({ loading: false, error: "Couldn't load this record's history.", data: null });
+      });
+    return () => { cancelled = true; };
+  }, [file.section, file.file, record.id]);
+  if (state.loading) return <div className="mt-2 text-xs text-slate-400">Looking through older patches…</div>;
+  if (state.error) return <div className="mt-2 text-xs text-rose-200">{state.error}</div>;
+  const changes = state.data?.changes || [];
   return (
-    <div className="rounded-2xl border border-slate-700 bg-slate-900/80 shadow-sm">
-      <button type="button" onClick={() => setOpen((value) => !value)} className="flex w-full flex-col gap-3 p-4 text-left sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h3 className="text-lg font-bold text-white">Weapon Changes</h3>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {baseGroups.map((group) => (
-              <img
-                key={group.weapon.weapon}
-                src={`${host}/game/getGfx/UI_Icons/a_WeaponIcon_${group.weapon.icon}/1`}
-                className="h-10 w-10 rounded-lg bg-slate-950 object-contain"
-                alt=""
-                onError={(event) => { event.currentTarget.style.display = 'none'; }}
-              />
-            ))}
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <CountPill label="Base Weapons" value={baseGroups.length} tone="blue" />
-          <CountPill label="Powers" value={rawBaseEntries.length} tone="amber" />
-          <PowerClassificationPills entries={baseEntries} />
-        </div>
-      </button>
-      {open && (
-        <div className="space-y-4 border-t border-slate-700 p-4">
-          <CommonPowerFieldSummary fields={baseSummary.commonFields} />
-          {baseGroups.map((weaponGroup) => (
-            <CollapsibleDiffBlock
-              key={weaponGroup.weapon.weapon}
-              title={weaponGroup.weapon.label}
-              subtitle={`${weaponGroup.entries.length} power change${weaponGroup.entries.length === 1 ? '' : 's'}${formatPowerClassificationCounts(weaponGroup.entries) ? ` • ${formatPowerClassificationCounts(weaponGroup.entries)}` : ''}`}
-              image={`${host}/game/getGfx/UI_Icons/a_WeaponIcon_${weaponGroup.weapon.icon}/1`}
-              className="bg-slate-950/60"
-            >
-              <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
-                {weaponGroup.entries.map((entry) => (
-                  <PowerChangeCard key={`${entry.type}-${entry.record.id}-${entry.parsed.powerName}`} entry={entry} heroMap={heroMap} />
+    <div className="mt-2 rounded-lg border border-white/10 bg-black/20 p-2 text-xs">
+      <div className="mb-1 font-bold text-slate-200">History</div>
+      {!changes.length && <div className="text-slate-400">No earlier changes found.</div>}
+      <ol className="space-y-1">
+        {changes.map((change, index) => (
+          <li key={`${change.manifest}-${index}`}>
+            <span className="font-bold text-slate-100">Patch {change.patch}</span>
+            <span className="text-slate-500"> · {formatDate(change.date)}</span>
+            <span className={change.type === 'added' ? ' text-emerald-200' : change.type === 'removed' ? ' text-rose-200' : ' text-amber-200'}> · {change.type}</span>
+            {change.fields?.length > 0 && (
+              <div className="ml-3 font-mono text-[11px] text-slate-400">
+                {change.fields.slice(0, 8).map((entry) => (
+                  <div key={entry.field} className="break-all">{entry.field}: {valuePreview(entry.before).slice(0, 80)} → {valuePreview(entry.after).slice(0, 80)}</div>
                 ))}
+                {change.fields.length > 8 && <div>+{change.fields.length - 8} more fields</div>}
               </div>
-            </CollapsibleDiffBlock>
-          ))}
+            )}
+          </li>
+        ))}
+      </ol>
+      {state.data && !state.data.complete && <div className="mt-1 text-slate-500">Showing the most recent changes only.</div>}
+    </div>
+  );
+}
+
+function RecordCard({ type, record, file, lang, heroMap, storeAssetMap, titleOverride = '', hideImage = false, hideVisual = false }) {
+  const anchor = recordAnchor(file, record);
+  const [open, setOpen] = useState(() => typeof window !== 'undefined' && window.location.hash === `#${anchor}`);
+  const [showHistory, setShowHistory] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const isChange = type === 'changed';
+  const isPowers = filePath(file) === 'Game/powerTypes.csv';
+  const image = hideImage ? '' : recordImage(file, record, heroMap, storeAssetMap);
+  const title = titleOverride || recordTitle(record, lang);
+  const databaseUrl = type !== 'removed' ? databaseRecordUrl(file, { ...record, data: record.data || record.after }, storeAssetMap) : '';
+  const fields = (record.fields || []).filter((field) => !(hideVisual && isPowers && isVisualPowerField(field)));
+  const hiddenFields = (record.fields?.length || 0) - fields.length;
+  const canTrace = record.id && !record.compactPropertyChange && record.id !== 'file';
+  const copyLink = () => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('view', 'full');
+    url.hash = anchor;
+    navigator.clipboard?.writeText(url.toString()).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  };
+  useEffect(() => {
+    if (open && typeof window !== 'undefined' && window.location.hash === `#${anchor}`) {
+      document.getElementById(anchor)?.scrollIntoView({ block: 'center' });
+    }
+  }, []);
+  if (isChange && !fields.length && hiddenFields) return null;
+  return (
+    <div id={anchor} className={`scroll-mt-32 rounded-xl border p-2 ${sectionColors[type] || sectionColors.changed}`}>
+      <div className="flex w-full items-start justify-between gap-3 text-left">
+        <button type="button" onClick={() => setOpen((value) => !value)} className="flex min-w-0 flex-1 items-start gap-3 text-left">
+          {image && (
+            <img
+              src={image}
+              alt=""
+              loading="lazy"
+              className="h-14 w-14 shrink-0 rounded-lg bg-slate-950/70 object-contain"
+              onError={(event) => { event.currentTarget.style.display = 'none'; }}
+            />
+          )}
+          <div className="min-w-0">
+            <div className="break-words text-sm font-bold text-white">{title}</div>
+            {record.id && !record.compactPropertyChange && <div className="mt-0.5 text-xs opacity-75">ID {record.id}</div>}
+            {record.compactPropertyChange && record.affectedCount > 0 && (
+              <div className="mt-1 text-xs text-slate-300">
+                {record.affectedCount} affected record{record.affectedCount === 1 ? '' : 's'}
+                {!!record.sample?.length && <span className="text-slate-500">: {record.sample.join(', ')}</span>}
+              </div>
+            )}
+            {isChange && (
+              <div className="mt-1 text-xs opacity-75">
+                {fields.length} field change{fields.length === 1 ? '' : 's'}{hiddenFields ? ` · ${hiddenFields} visual hidden` : ''}
+              </div>
+            )}
+          </div>
+        </button>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          {databaseUrl && <a href={databaseUrl} target="_blank" rel="noreferrer" className="rounded-lg bg-blue-500/20 px-2 py-1 text-xs font-bold text-blue-100 hover:bg-blue-500/30">Database</a>}
+          {canTrace && <button type="button" onClick={() => setShowHistory((value) => !value)} className="rounded-lg bg-black/20 px-2 py-1 text-xs">{showHistory ? 'Hide history' : 'History'}</button>}
+          <button type="button" onClick={copyLink} className="rounded-lg bg-black/20 px-2 py-1 text-xs" title="Copy a link to this record">{copied ? 'Copied' : 'Link'}</button>
+          <button type="button" onClick={() => setOpen((value) => !value)} className="rounded-lg bg-black/20 px-2 py-1 text-xs">{open ? 'Hide' : 'View'}</button>
+        </div>
+      </div>
+      {showHistory && canTrace && <RecordHistory file={file} record={record} />}
+      {open && (
+        <div className="mt-3 space-y-2">
+          {isChange ? (
+            fields.map((field) => {
+              const listDiff = !isPowers ? fieldListDiff(field) : null;
+              const windowed = isPowers && typeof field.before === 'string' && typeof field.after === 'string' && (field.before.includes(',') || field.after.includes(','));
+              const propertyAdded = field.propertyAdded || (isEmptyFieldValue(field.before) && !isEmptyFieldValue(field.after));
+              const propertyRemoved = field.propertyRemoved || (!isEmptyFieldValue(field.before) && isEmptyFieldValue(field.after));
+              return (
+                <div key={field.field} className="rounded-lg border border-white/10 bg-black/20 p-2">
+                  <div className="text-xs font-bold tracking-wide text-slate-300">
+                    <FieldName field={field.field} raw={record.compactPropertyChange} />
+                  </div>
+                  {listDiff ? (
+                    <FullListDiff field={field} diff={listDiff} />
+                  ) : windowed ? (
+                    <WindowDiff field={field} />
+                  ) : field.propertyChangeVariants?.length ? (
+                    <PropertyChangeVariants field={field} />
+                  ) : field.objectChanges?.length ? (
+                    <ObjectChangeList changes={field.objectChanges} />
+                  ) : (
+                    <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+                      <div className="rounded bg-rose-950/50 p-2 text-xs">
+                        <div className="font-bold text-rose-200">Before</div>
+                        <pre className={`mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words app-scrollbar ${propertyRemoved ? 'font-bold text-rose-200' : ''}`}>{valuePreview(field.before)}</pre>
+                      </div>
+                      <div className="rounded bg-emerald-950/50 p-2 text-xs">
+                        <div className="font-bold text-emerald-200">After</div>
+                        <pre className={`mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words app-scrollbar ${propertyAdded ? 'font-bold text-emerald-200' : ''}`}>{valuePreview(field.after)}</pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          ) : (
+            <pre className="max-h-72 overflow-auto rounded-lg bg-black/25 p-3 text-xs whitespace-pre-wrap break-words app-scrollbar">
+              {JSON.stringify(record.data || record, null, 2)}
+            </pre>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function FileDiff({ file, mode = 'minimal', lang, heroMap, storeAssetMap }) {
-  const [open, setOpen] = useState(false);
-  if (mode === 'minimal' && filePath(file) === 'Game/powerTypes.csv') {
-    return <PowerFileDiff file={file} heroMap={heroMap} />;
-  }
-  const added = mode === 'minimal' ? minimalRecords(file, file.added, 'added') : file.added || [];
-  const rawChanged = mode === 'minimal' ? minimalRecords(file, file.changed, 'changed') : file.changed || [];
+function FileDiff({ file, lang, heroMap, storeAssetMap, typeFilter = '', hideVisual = false }) {
+  const [open, setOpen] = useState(() => typeof window !== 'undefined' && window.location.hash.startsWith(`#rec-${slug(filePath(file))}-`));
+  const show = (type) => !typeFilter || typeFilter === type;
+  const added = show('added') ? file.added || [] : [];
+  const rawChanged = show('changed') ? file.changed || [] : [];
   const changedSummary = filePath(file) === 'Game/powerTypes.csv'
     ? summarizeCommonPowerFields(rawChanged.map((record) => ({ type: 'changed', record })))
     : { entries: rawChanged.map((record) => ({ type: 'changed', record })), commonFields: [] };
   const changed = changedSummary.entries.map((entry) => entry.record);
   const changedGroups = identicalChangedRecordGroups(changed);
-  const removed = mode === 'minimal' ? minimalRecords(file, file.removed, 'removed') : file.removed || [];
+  const removed = show('removed') ? file.removed || [] : [];
   const total = added.length + removed.length + rawChanged.length;
+  if (!total && !file.fileAdded && !file.fileRemoved) return null;
   return (
     <div className="rounded-2xl border border-slate-700 bg-slate-900/80 shadow-sm">
-      <button type="button" onClick={() => setOpen((value) => !value)} className="flex w-full flex-col gap-3 p-4 text-left sm:flex-row sm:items-center sm:justify-between">
+      <button type="button" onClick={() => setOpen((value) => !value)} className="flex w-full flex-col gap-3 p-3 text-left sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="break-words text-lg font-bold text-white">{file.label || file.file}</h3>
@@ -1593,16 +1008,15 @@ function FileDiff({ file, mode = 'minimal', lang, heroMap, storeAssetMap }) {
           <CountPill label="Added" value={added.length} tone="emerald" />
           <CountPill label="Changed" value={rawChanged.length} tone="amber" />
           <CountPill label="Removed" value={removed.length} tone="rose" />
-          <CountPill label="Total" value={total} tone="blue" />
         </div>
       </button>
       {open && (
-        <div className="space-y-4 border-t border-slate-700 p-4">
+        <div className="space-y-3 border-t border-slate-700 p-3">
           <CommonPowerFieldSummary fields={changedSummary.commonFields} />
           {added.length > 0 && (
             <section>
               <h4 className="mb-2 text-sm font-bold uppercase tracking-wide text-emerald-200">Added</h4>
-              <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2 xl:grid-cols-2 min-[137.5rem]:grid-cols-3">
                 {added.map((record, index) => <RecordCard key={`${record.id}-${index}`} type="added" record={record} file={file} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />)}
               </div>
             </section>
@@ -1610,15 +1024,15 @@ function FileDiff({ file, mode = 'minimal', lang, heroMap, storeAssetMap }) {
           {changed.length > 0 && (
             <section>
               <h4 className="mb-2 text-sm font-bold uppercase tracking-wide text-amber-200">Changed</h4>
-              <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
-                {changedGroups.map((records, index) => <ChangedRecordGroup key={`${records[0]?.id || index}-${index}`} records={records} file={file} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />)}
+              <div className="grid grid-cols-1 gap-2 xl:grid-cols-2 min-[137.5rem]:grid-cols-3">
+                {changedGroups.map((records, index) => <ChangedRecordGroup key={`${records[0]?.id || index}-${index}`} records={records} file={file} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} hideVisual={hideVisual} />)}
               </div>
             </section>
           )}
           {removed.length > 0 && (
             <section>
               <h4 className="mb-2 text-sm font-bold uppercase tracking-wide text-rose-200">Removed</h4>
-              <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2 xl:grid-cols-2 min-[137.5rem]:grid-cols-3">
                 {removed.map((record, index) => <RecordCard key={`${record.id}-${index}`} type="removed" record={record} file={file} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />)}
               </div>
             </section>
@@ -1627,6 +1041,72 @@ function FileDiff({ file, mode = 'minimal', lang, heroMap, storeAssetMap }) {
       )}
     </div>
   );
+}
+
+const tierInfo = {
+  gameplay: { title: 'Gameplay data', description: 'Attacks, legends, stats, maps, modes and mechanics.' },
+  content: { title: 'Content data', description: 'Cosmetics, store, events, missions and other content.' },
+  engine: { title: 'Animation and engine data', description: 'Bones, sprites, file lists and other art or engine data. Never changes gameplay.' },
+};
+
+function TierGroup({ tier, files, children }) {
+  const [open, setOpen] = useState(tier !== 'engine');
+  if (!files.length) return null;
+  const total = files.reduce((sum, file) => sum + (file.added?.length || 0) + (file.changed?.length || 0) + (file.removed?.length || 0), 0);
+  return (
+    <section className="space-y-3">
+      <button type="button" onClick={() => setOpen((value) => !value)} className="flex w-full items-end justify-between gap-3 border-b border-slate-800 pb-2 text-left">
+        <div>
+          <h3 className="text-base font-bold uppercase tracking-wide text-slate-200">{tierInfo[tier].title}</h3>
+          <p className="max-w-prose text-xs text-slate-400">{tierInfo[tier].description}</p>
+        </div>
+        <span className="shrink-0 text-xs text-slate-400">{files.length} file{files.length === 1 ? '' : 's'} · {total} change{total === 1 ? '' : 's'} · {open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open && children}
+    </section>
+  );
+}
+
+function fileTier(file) {
+  if (file.tier) return file.tier;
+  if (file.section === 'Engine' || /^(BoneTypes|BoneSources|AnimTypes|TileTypes)\.xml$/.test(file.file) || /SpriteData\.csv$/i.test(file.file)) return 'engine';
+  if (/^(powerTypes\.csv|HeroTypes\.xml|RuneTypes\.xml|StatTypes\.xml|DodgeTypes\.xml|hurtboxTypes\.csv|GameModeTypes\.xml|LevelSetTypes\.xml|LevelTypes\.xml)$/.test(file.file) || /^LevelDesc_/.test(file.file)) return 'gameplay';
+  return 'content';
+}
+
+function readLastSeen() {
+  try {
+    return window.localStorage.getItem('patch-history-last-seen') || '';
+  } catch {
+    return '';
+  }
+}
+
+function writeLastSeen(manifest) {
+  try {
+    window.localStorage.setItem('patch-history-last-seen', manifest);
+  } catch {}
+}
+
+function wholePatchSelection(group, patches) {
+  const newest = group.manifests[0];
+  if (group.manifests.length === 1) return { manifest: String(newest.manifest), from: '' };
+  const release = group.manifests[group.manifests.length - 1];
+  const releaseIndex = patches.findIndex((patch) => String(patch.manifest) === String(release.manifest));
+  const before = patches[releaseIndex + 1];
+  return { manifest: String(newest.manifest), from: before ? String(before.manifest) : '' };
+}
+
+function downloadJson(data, name) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export default function History() {
@@ -1641,15 +1121,19 @@ export default function History() {
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [hideVisual, setHideVisual] = useState(false);
   const [viewMode, setViewMode] = useState('minimal');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [lang, setLang] = useState({});
   const [heroMap, setHeroMap] = useState({});
-  const [levelMap, setLevelMap] = useState({});
   const [storeAssetMap, setStoreAssetMap] = useState({});
+  const [lastSeen, setLastSeen] = useState('');
+  const notesState = usePatchNotes(viewMode === 'minimal' ? selectedPatch : null, compareFrom);
 
   useEffect(() => {
     setError('');
+    setLastSeen(readLastSeen());
     fetch(`${host}/game/history/all`)
       .then((res) => {
         if (!res.ok) throw new Error(`Patch list request failed: ${res.status}`);
@@ -1659,15 +1143,23 @@ export default function History() {
         const list = Array.isArray(data) ? data : [];
         setPatches(list);
         const params = readPatchParams();
-        const linked = list.find((patch) => String(patch.manifest) === params.patch);
-        const selected = linked || list[0];
-        if (selected?.manifest) setSelectedPatch(String(selected.manifest));
-        if (linked && params.from) setCompareFrom(params.from);
         if (params.view === 'full') setViewMode('full');
+        const linked = list.find((patch) => String(patch.manifest) === params.patch);
+        if (linked) {
+          setSelectedPatch(String(linked.manifest));
+          if (params.from) setCompareFrom(params.from);
+          return;
+        }
+        const first = patchGroups(list)[0];
+        if (first) {
+          const selection = wholePatchSelection(first, list);
+          setSelectedPatch(selection.manifest);
+          setCompareFrom(selection.from);
+        }
       })
       .catch((err) => {
         console.error(err);
-        setError('Failed to load patch list.');
+        setError("Couldn't load the patch list.");
       });
   }, [listRequest]);
 
@@ -1688,16 +1180,6 @@ export default function History() {
       .catch((err) => {
         console.error(err);
         setHeroMap({});
-      });
-  }, []);
-
-  useEffect(() => {
-    fetch(`${host}/game/metadata/Init/LevelTypes.xml`)
-      .then((res) => res.json())
-      .then((data) => setLevelMap(buildLevelMap(data)))
-      .catch((err) => {
-        console.error(err);
-        setLevelMap({});
       });
   }, []);
 
@@ -1726,7 +1208,7 @@ export default function History() {
   }, []);
 
   useEffect(() => {
-    if (!selectedPatch) return;
+    if (!selectedPatch || viewMode !== 'full') return;
     setLoading(true);
     setError('');
     setHistoryData(null);
@@ -1744,10 +1226,10 @@ export default function History() {
       })
       .catch((err) => {
         console.error(err);
-        setError('Failed to load this patch history.');
+        setError("Couldn't load this patch.");
       })
       .finally(() => setLoading(false));
-  }, [selectedPatch, compareFrom, historyRequest]);
+  }, [selectedPatch, compareFrom, historyRequest, viewMode]);
 
   useEffect(() => {
     if (!selectedPatch || typeof window === 'undefined') return;
@@ -1755,7 +1237,7 @@ export default function History() {
     params.set('patch', selectedPatch);
     if (compareFrom) params.set('from', compareFrom); else params.delete('from');
     if (viewMode === 'full') params.set('view', 'full'); else params.delete('view');
-    window.history.replaceState(null, '', `${window.location.pathname}?${params}`);
+    window.history.replaceState(null, '', `${window.location.pathname}?${params}${window.location.hash}`);
   }, [selectedPatch, compareFrom, viewMode]);
 
   const groups = useMemo(() => patchGroups(patches), [patches]);
@@ -1766,11 +1248,21 @@ export default function History() {
     const index = patches.findIndex((patch) => String(patch.manifest) === String(selectedPatch));
     return index < 0 ? [] : patches.slice(index + 1);
   }, [patches, selectedPatch]);
+  const activeGroup = groups.find((group) => group.manifests.some((patch) => String(patch.manifest) === String(selectedPatch)));
+  const activeWhole = activeGroup ? wholePatchSelection(activeGroup, patches) : null;
+  const isWholePatch = !!activeGroup && activeGroup.manifests.length > 1 && activeWhole.manifest === String(selectedPatch) && activeWhole.from === compareFrom;
+  const selectedPatchInfo = patches.find((patch) => String(patch.manifest) === String(selectedPatch));
+  const releaseInfo = activeGroup ? activeGroup.manifests[activeGroup.manifests.length - 1] : null;
+  const official = selectedPatchInfo?.official || releaseInfo?.official || notesState.notes?.official || null;
+
+  useEffect(() => {
+    if (!groups.length || !activeGroup || typeof window === 'undefined') return;
+    if (activeGroup === groups[0]) writeLastSeen(String(groups[0].manifests[0].manifest));
+  }, [groups, activeGroup]);
 
   const filteredFiles = useMemo(() => {
     const text = query.trim().toLowerCase();
     return (historyData?.files || []).filter((file) => {
-      if (viewMode === 'minimal' && !isMinimalFile(file)) return false;
       if (category && file.label !== category) return false;
       if (!text) return true;
       return [
@@ -1783,94 +1275,91 @@ export default function History() {
         ...(file.removed || []).map((record) => `${record.name} ${record.id}`),
       ].join(' ').toLowerCase().includes(text);
     });
-  }, [historyData, query, category, viewMode]);
+  }, [historyData, query, category]);
 
-  const renderedFiles = useMemo(() => filteredFiles.filter((file) => {
-    if (viewMode !== 'minimal') return true;
-    if (minimalDynamicPattern.test(filePath(file))) return false;
-    return !legendGroupedFiles.has(filePath(file));
-  }), [filteredFiles, viewMode]);
+  const tierFiles = useMemo(() => ({
+    gameplay: filteredFiles.filter((file) => fileTier(file) === 'gameplay'),
+    content: filteredFiles.filter((file) => fileTier(file) === 'content'),
+    engine: filteredFiles.filter((file) => fileTier(file) === 'engine'),
+  }), [filteredFiles]);
 
-  const groupedLegendChanges = useMemo(
-    () => (viewMode === 'minimal' ? legendChangeGroups(filteredFiles, heroMap) : []),
-    [filteredFiles, heroMap, viewMode],
-  );
+  const tierTotals = useMemo(() => Object.fromEntries(['gameplay', 'content', 'engine'].map((tier) => [tier, (historyData?.files || [])
+    .filter((file) => fileTier(file) === tier)
+    .reduce((sum, file) => sum + (file.added?.length || 0) + (file.changed?.length || 0) + (file.removed?.length || 0), 0)])), [historyData]);
 
-  const groupedMapFiles = useMemo(
-    () => (viewMode === 'minimal' ? filteredFiles.filter((file) => minimalDynamicPattern.test(filePath(file))) : []),
-    [filteredFiles, viewMode],
-  );
+  const selectGroup = (group) => {
+    const selection = wholePatchSelection(group, patches);
+    setSelectedPatch(selection.manifest);
+    setCompareFrom(selection.from);
+    setCategory('');
+    setQuery('');
+    setIsSidebarOpen(false);
+  };
+  const selectManifest = (patch) => {
+    setSelectedPatch(String(patch.manifest));
+    setCompareFrom('');
+    setCategory('');
+    setQuery('');
+    setIsSidebarOpen(false);
+  };
 
-  const weaponFiles = useMemo(
-    () => (viewMode === 'minimal' ? renderedFiles.filter((file) => filePath(file) === 'Game/powerTypes.csv') : []),
-    [renderedFiles, viewMode],
-  );
-
-  const skinFiles = useMemo(
-    () => (viewMode === 'minimal' ? renderedFiles.filter((file) => filePath(file) === 'Game/costumeTypes.csv') : []),
-    [renderedFiles, viewMode],
-  );
-
-  const storeItemFiles = useMemo(
-    () => (viewMode === 'minimal' ? renderedFiles.filter((file) => filePath(file) === 'Game/storeTypes.csv') : []),
-    [renderedFiles, viewMode],
-  );
-
-  const otherRenderedFiles = useMemo(
-    () => (viewMode === 'minimal'
-      ? renderedFiles.filter((file) => ![
-        'Game/powerTypes.csv',
-        'Game/costumeTypes.csv',
-        'Game/storeTypes.csv',
-      ].includes(filePath(file)))
-      : renderedFiles),
-    [renderedFiles, viewMode],
-  );
-
-  const selectedPatchInfo = patches.find((patch) => String(patch.manifest) === String(selectedPatch));
+  const imageFor = (path, data) => {
+    const [section, ...rest] = String(path).split('/');
+    return recordImage({ section, file: rest.join('/') }, { data }, heroMap, storeAssetMap);
+  };
+  const storeImageFor = (data) => addedStorePreviewItem({ data }, heroMap, storeAssetMap, lang);
+  const databaseUrlFor = (path, data) => {
+    const [section, ...rest] = String(path).split('/');
+    return databaseRecordUrl({ section, file: rest.join('/') }, { data }, storeAssetMap);
+  };
 
   const sidebar = (
-    <aside className="flex h-full flex-col gap-3 bg-slate-950 p-3">
+    <aside className="flex h-full flex-col gap-2 bg-slate-950 p-2">
       <div>
         <h1 className="text-xl font-bold text-white">Patch History</h1>
-        <p className="mt-1 text-xs text-slate-400">Manifest-by-manifest game data changes.</p>
       </div>
       <div className="flex-1 overflow-y-auto app-scrollbar pr-1">
         <div className="space-y-2">
-          {groups.map((group) => {
+          {groups.map((group, groupIndex) => {
             const release = group.manifests[group.manifests.length - 1];
             const groupActive = group.manifests.some((patch) => String(patch.manifest) === String(selectedPatch));
-            const select = (patch) => {
-              setSelectedPatch(String(patch.manifest));
-              setCompareFrom('');
-              setCategory('');
-              setQuery('');
-              setIsSidebarOpen(false);
-            };
             const allEmpty = group.manifests.every(isEmptyManifest);
+            const visibleHotfixes = group.manifests.filter((patch, index) => index !== group.manifests.length - 1 && (viewMode === 'full' || !isEmptyManifest(patch)));
+            const lastSeenIndex = lastSeen ? patches.findIndex((patch) => String(patch.manifest) === lastSeen) : -1;
+            const newestIndex = patches.findIndex((patch) => String(patch.manifest) === String(group.manifests[0].manifest));
+            const isNew = lastSeenIndex > 0 && newestIndex < lastSeenIndex;
+            const title = release.title || group.manifests.find((patch) => patch.title)?.title || '';
             return (
               <div
                 key={`${group.patch}-${release.manifest}`}
                 className={`rounded-xl border transition ${groupActive ? 'border-blue-400 bg-blue-500/15' : 'border-slate-800 bg-slate-900 hover:border-slate-600'} ${allEmpty && !groupActive ? 'opacity-50' : ''}`}
               >
-                <button type="button" className="w-full p-3 text-left" onClick={() => select(release)}>
+                <button type="button" className="w-full p-3 text-left" onClick={() => selectGroup(group)}>
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-base font-bold text-white">Patch {group.patch}</span>
-                    {group.manifests.length > 1 && <span className="rounded-full bg-slate-700 px-2 py-0.5 text-[10px] text-slate-200">{group.manifests.length - 1} hotfix{group.manifests.length === 2 ? '' : 'es'}</span>}
+                    <span className="flex items-center gap-2 text-base font-bold text-white">
+                      Patch {group.patch}
+                      {release.patchInferred && <span className="cursor-help text-xs font-normal text-slate-400" title="Patch number guessed from the patches around it. The game files don't name it.">≈</span>}
+                      {isNew && <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-200">New</span>}
+                    </span>
+                    {visibleHotfixes.length > 0 && <span className="rounded-full bg-slate-700 px-2 py-0.5 text-[10px] text-slate-200">{visibleHotfixes.length} hotfix{visibleHotfixes.length === 1 ? '' : 'es'}</span>}
                   </div>
                   <div className="mt-1 text-xs text-slate-400">{formatDate(release.date)}</div>
+                  {title && <div className="mt-1 line-clamp-2 text-xs text-slate-300">{title}</div>}
+                  {!title && groupIndex === 0 && allEmpty && <div className="mt-1 text-[10px] font-bold text-slate-500">No data changes</div>}
                 </button>
-                {group.manifests.length > 1 && (
+                {groupActive && (visibleHotfixes.length > 0 || (viewMode === 'full' && group.manifests.length > 1)) && (
                   <div className="space-y-1 border-t border-slate-800 p-1.5">
                     {group.manifests.map((patch, index) => {
-                      const active = String(selectedPatch) === String(patch.manifest);
+                      const isRelease = index === group.manifests.length - 1;
+                      if (!isRelease && viewMode !== 'full' && isEmptyManifest(patch)) return null;
+                      const active = String(selectedPatch) === String(patch.manifest) && !compareFrom;
                       const empty = isEmptyManifest(patch);
                       return (
                         <button
                           key={patch.manifest}
                           type="button"
                           title={`Manifest ${patch.manifest}`}
-                          onClick={() => select(patch)}
+                          onClick={() => selectManifest(patch)}
                           className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1 text-left text-xs ${active ? 'bg-blue-500/30 text-white' : 'text-slate-300 hover:bg-slate-800'} ${empty && !active ? 'opacity-50' : ''}`}
                         >
                           <span className="font-bold">{manifestLabel(group, index)}</span>
@@ -1880,7 +1369,6 @@ export default function History() {
                     })}
                   </div>
                 )}
-                {group.manifests.length === 1 && isEmptyManifest(release) && <div className="px-3 pb-2 text-[10px] font-bold text-slate-500">No data changes</div>}
               </div>
             );
           })}
@@ -1889,156 +1377,275 @@ export default function History() {
     </aside>
   );
 
+  const notes = notesState.notes;
+  const headerTitle = selectedPatchInfo ? `Patch ${selectedPatchInfo.patch}` : 'Patch';
+  const scopeLabel = isWholePatch
+    ? `Whole patch · release and ${activeGroup.manifests.length - 1} hotfix${activeGroup.manifests.length === 2 ? '' : 'es'}`
+    : compareFrom
+      ? `Compared with ${manifestNames.get(String(compareFrom)) || 'an older update'}`
+      : manifestNames.get(String(selectedPatch)) || headerTitle;
+  const busy = viewMode === 'minimal' ? notesState.loading : loading;
+  const shownError = error || (viewMode === 'minimal' ? notesState.error : '');
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="sticky top-16 z-30 flex items-center justify-between border-b border-slate-800 bg-slate-950/95 p-3 backdrop-blur lg:hidden">
+      <div className="sticky top-16 z-30 flex items-center justify-between border-b [@media(max-height:500px)]:static border-slate-800 bg-slate-950/95 px-2 py-1.5 backdrop-blur sm:px-3 lg:hidden">
         <div>
           <div className="text-lg font-bold">Patch History</div>
-          <div className="text-xs text-slate-400">{selectedPatchInfo ? `Patch ${selectedPatchInfo.patch}` : 'Select a patch'}</div>
+          <div className="text-xs text-slate-400">{selectedPatchInfo ? headerTitle : 'Select a patch'}</div>
         </div>
         <button type="button" onClick={() => setIsSidebarOpen(true)} className="rounded-lg bg-slate-800 px-3 py-2 text-sm font-bold">Patches</button>
       </div>
 
       {isSidebarOpen && (
-        <div className="fixed inset-x-0 bottom-0 top-16 z-40 lg:hidden">
-          <button type="button" className="absolute inset-0 bg-black/60" onClick={() => setIsSidebarOpen(false)} aria-label="Close patches" />
-          <div className="relative h-full w-[min(92vw,24rem)]">{sidebar}</div>
+        <div className="fixed inset-x-0 bottom-0 top-16 z-40 lg:hidden [@media(max-height:500px)]:top-0 [@media(max-height:500px)]:z-[110]">
+          <button type="button" className="absolute inset-0 bg-black/60" onClick={() => setIsSidebarOpen(false)} aria-label="Close patches" tabIndex={-1} />
+          <div className="relative h-full w-[min(calc(100vw-3.5rem),24rem)]">{sidebar}</div>
+          <button type="button" onClick={() => setIsSidebarOpen(false)} aria-label="Close patches" className="absolute top-2 left-[min(calc(100vw-3.5rem),24rem)] ml-2 flex h-10 w-10 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-white hover:bg-slate-800">
+            <X className="h-5 w-5" aria-hidden="true" />
+          </button>
         </div>
       )}
 
-      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[20rem_minmax(0,1fr)]">
+      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[20rem_minmax(0,1fr)] 2xl:grid-cols-[20rem_minmax(0,1fr)_18rem] min-[137.5rem]:grid-cols-[20rem_minmax(0,1fr)_22rem]">
         <div className="sticky top-16 hidden h-[calc(100dvh-4rem)] overflow-hidden border-r border-slate-800 lg:block">{sidebar}</div>
-        <main className="min-w-0 p-3 sm:p-4 lg:p-5">
-          {error && (
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-rose-200">
-              <span>{error}</span>
+        <main className="min-w-0 p-2 sm:p-3">
+          {shownError && (
+            <div className="mb-3 flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-500/40 bg-rose-500/10 p-2 text-rose-200">
+              <span>{shownError}</span>
               <button
                 type="button"
-                onClick={() => (patches.length ? setHistoryRequest((value) => value + 1) : setListRequest((value) => value + 1))}
+                onClick={() => {
+                  if (!patches.length) setListRequest((value) => value + 1);
+                  else if (viewMode === 'minimal') notesState.retry();
+                  else setHistoryRequest((value) => value + 1);
+                }}
                 className="rounded-lg bg-rose-500/20 px-3 py-1.5 text-sm font-bold text-rose-100 hover:bg-rose-500/30"
               >
                 Retry
               </button>
             </div>
           )}
-          {loading && <div className="rounded-xl border border-slate-700 bg-slate-900 p-4 text-slate-300">Loading patch data...</div>}
-          {!loading && historyData && (
-            <div className="space-y-4">
-              <header className="rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-sm">
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          {selectedPatchInfo && (
+            <div className="space-y-3">
+              <header className="rounded-2xl border border-slate-700 bg-slate-900 p-3 shadow-sm">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                   <div className="min-w-0">
-                    <div className="text-xs font-bold uppercase tracking-wide text-blue-300" title={`Manifest ${historyData.manifest}`}>
-                      {manifestNames.get(String(historyData.manifest)) || `Patch ${historyData.patch || 'Unknown'}`}
-                    </div>
-                    <h2 className="mt-1 text-2xl font-bold text-white sm:text-3xl">Patch {historyData.patch || 'Unknown'}</h2>
-                    <div className="mt-1 text-sm text-slate-400">{formatDate(historyData.date)}</div>
-                    {olderManifests.length > 0 && (
-                      <label className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-400">
-                        Compared to
-                        <select
-                          value={compareFrom}
-                          onChange={(event) => setCompareFrom(event.target.value)}
-                          className="max-w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-white outline-none focus:border-blue-400"
-                        >
-                          <option value="">{manifestNames.get(String(olderManifests[0].manifest)) || 'Previous update'} (previous)</option>
-                          {olderManifests.slice(1).map((patch) => (
-                            <option key={patch.manifest} value={String(patch.manifest)}>
-                              {manifestNames.get(String(patch.manifest)) || `Patch ${patch.patch}`} - {formatDate(patch.date)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                    <div className="text-xs font-bold uppercase tracking-wide text-blue-300" title={`Manifest ${selectedPatch}`}>{scopeLabel}</div>
+                    <h2 className="mt-1 text-2xl font-bold text-white sm:text-3xl">
+                      {headerTitle}
+                      {selectedPatchInfo.patchInferred && <span className="ml-2 cursor-help align-middle text-sm font-normal text-slate-400" title="Patch number guessed from the patches around it. The game files don't name it.">number inferred</span>}
+                    </h2>
+                    <div className="mt-1 text-sm text-slate-400">{formatDate(isWholePatch && releaseInfo ? releaseInfo.date : selectedPatchInfo.date)}</div>
+                    {viewMode === 'minimal' && notes && !notes.empty && <p className="mt-2 max-w-prose text-base text-slate-200">{notes.title}</p>}
+                    {official && (
+                      <a href={official.url || official.listing} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm text-blue-300 hover:underline">
+                        {official.url ? `Official notes: ${official.title}` : 'Official patch notes'} ↗
+                      </a>
+                    )}
+                    {activeGroup && activeGroup.manifests.length > 1 && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        <button type="button" onClick={() => selectGroup(activeGroup)} className={`rounded-lg px-2.5 py-1 text-xs font-bold ${isWholePatch ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>Whole patch</button>
+                        {[...activeGroup.manifests].reverse().map((patch) => {
+                          const index = activeGroup.manifests.indexOf(patch);
+                          if (viewMode !== 'full' && index !== activeGroup.manifests.length - 1 && isEmptyManifest(patch)) return null;
+                          const active = String(selectedPatch) === String(patch.manifest) && !compareFrom;
+                          return (
+                            <button key={patch.manifest} type="button" onClick={() => selectManifest(patch)} className={`rounded-lg px-2.5 py-1 text-xs font-bold ${active ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
+                              {manifestLabel(activeGroup, index)}
+                            </button>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
                   <div className="flex flex-col items-start gap-2 xl:items-end">
-                    <div className="grid grid-cols-3 gap-2">
-                      <CountPill label="Added" value={historyData.summary?.added} tone="emerald" />
-                      <CountPill label="Changed" value={historyData.summary?.changed} tone="amber" />
-                      <CountPill label="Removed" value={historyData.summary?.removed} tone="rose" />
-                    </div>
-                    <div className="text-xs text-slate-400">
-                      {historyData.summary?.files || 0} file{historyData.summary?.files === 1 ? '' : 's'} changed
-                      {historyData.summary?.filesAdded ? ` • ${historyData.summary.filesAdded} new` : ''}
-                      {historyData.summary?.filesRemoved ? ` • ${historyData.summary.filesRemoved} removed` : ''}
-                    </div>
+                    {viewMode === 'minimal' && notes && !notes.empty && (
+                      <div className="flex flex-wrap gap-2">
+                        {notes.counts.balance > 0 && <CountPill label="Balance changes" value={notes.counts.balance} tone="amber" />}
+                        {notes.counts.legendsAdded > 0 && <CountPill label="New legends" value={notes.counts.legendsAdded} tone="blue" />}
+                        {notes.counts.mapsAdded > 0 && <CountPill label="New maps" value={notes.counts.mapsAdded} tone="blue" />}
+                        {notes.counts.cosmetics > 0 && <CountPill label="New cosmetics" value={notes.counts.cosmetics} tone="emerald" />}
+                        {notes.counts.prices > 0 && <CountPill label="Price changes" value={notes.counts.prices} tone="rose" />}
+                      </div>
+                    )}
+                    {viewMode === 'full' && historyData && (
+                      <>
+                        <div className="grid grid-cols-3 gap-2">
+                          <CountPill label="Gameplay" value={tierTotals.gameplay} tone="amber" />
+                          <CountPill label="Content" value={tierTotals.content} tone="emerald" />
+                          <CountPill label="Engine" value={tierTotals.engine} />
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {historyData.summary?.added || 0} added · {historyData.summary?.changed || 0} changed · {historyData.summary?.removed || 0} removed in {historyData.summary?.files || 0} file{historyData.summary?.files === 1 ? '' : 's'}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
-                <div className="mt-4 flex flex-wrap gap-2">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => {
                       setViewMode('minimal');
                       setCategory('');
                     }}
-                    className={`rounded-xl border px-4 py-2 text-sm font-bold transition ${viewMode === 'minimal' ? 'border-blue-400 bg-blue-500 text-white' : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'}`}
+                    className={`rounded-xl border px-3 py-2 text-sm font-bold transition ${viewMode === 'minimal' ? 'border-blue-400 bg-blue-500 text-white' : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'}`}
                   >
-                    Minimal Patch Notes
+                    Patch notes
                   </button>
                   <button
                     type="button"
                     onClick={() => setViewMode('full')}
-                    className={`rounded-xl border px-4 py-2 text-sm font-bold transition ${viewMode === 'full' ? 'border-blue-400 bg-blue-500 text-white' : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'}`}
+                    className={`rounded-xl border px-3 py-2 text-sm font-bold transition ${viewMode === 'full' ? 'border-blue-400 bg-blue-500 text-white' : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'}`}
                   >
-                    Full Data Diff
+                    Full data diff
                   </button>
+                  {viewMode === 'full' && historyData && (
+                    <button type="button" onClick={() => downloadJson(historyData, `patch-${historyData.patch}-${historyData.manifest}${compareFrom ? `-from-${compareFrom}` : ''}.json`)} className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-300 hover:border-slate-500">
+                      Download JSON
+                    </button>
+                  )}
                 </div>
+                {viewMode === 'full' && olderManifests.length > 0 && (
+                  <label className="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-400">
+                    Compare with
+                    <select
+                      value={compareFrom}
+                      onChange={(event) => setCompareFrom(event.target.value)}
+                      className="max-w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-sm text-white outline-none focus:border-blue-400"
+                    >
+                      <option value="">{manifestNames.get(String(olderManifests[0].manifest)) || 'Previous update'} (previous)</option>
+                      {olderManifests.slice(1).map((patch) => (
+                        <option key={patch.manifest} value={String(patch.manifest)}>
+                          {manifestNames.get(String(patch.manifest)) || `Patch ${patch.patch}`} - {formatDate(patch.date)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
               </header>
 
-              {historyData.categorySummary?.length > 0 && (
-                <section className="rounded-2xl border border-slate-700 bg-slate-900 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="text-lg font-bold text-white">Changed Areas</h3>
-                    {category && <button type="button" onClick={() => setCategory('')} className="rounded-lg bg-slate-800 px-2 py-1 text-xs font-bold text-slate-200 hover:bg-slate-700">Show all areas</button>}
-                  </div>
-                  <div className="mt-3 flex gap-2 overflow-x-auto pb-1 app-scrollbar">
-                    {historyData.categorySummary.filter((item) => viewMode === 'full' || (historyData.files || []).some((file) => file.label === item.label && isMinimalFile(file))).map((item) => (
-                      <button
-                        key={item.label}
-                        type="button"
-                        onClick={() => setCategory(category === item.label ? '' : item.label)}
-                        className={`shrink-0 rounded-xl border px-3 py-2 text-left text-sm ${category === item.label ? 'border-blue-400 bg-blue-500/20 text-white' : 'border-slate-700 bg-slate-950 text-slate-200 hover:border-slate-500'}`}
-                      >
-                        <div className="font-bold">{item.label}</div>
-                        <div className="text-xs text-slate-400">{item.added} added - {item.changed} changed - {item.removed} removed</div>
-                      </button>
-                    ))}
-                  </div>
-                </section>
+              {busy && <div className="max-w-3xl rounded-xl border border-slate-700 bg-slate-900 p-2 text-slate-300">Loading patch data…</div>}
+
+              {viewMode === 'minimal' && notes && (
+                <PatchNotes
+                  notes={notes}
+                  imageFor={imageFor}
+                  storeImageFor={storeImageFor}
+                  databaseUrlFor={databaseUrlFor}
+                  onOpenFull={() => setViewMode('full')}
+                />
               )}
 
-              {(historyData.files || []).length > 0 && (
-                <section className="rounded-2xl border border-slate-700 bg-slate-900 p-4">
-                  <input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Search files, item names, IDs, or changed fields"
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-blue-400"
-                  />
-                </section>
-              )}
+              {viewMode === 'full' && !loading && historyData && (
+                <>
+                  {historyData.categorySummary?.length > 0 && (
+                    <section className="rounded-2xl border border-slate-700 bg-slate-900 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h3 className="text-lg font-bold text-white">Changed Areas</h3>
+                        {category && <button type="button" onClick={() => setCategory('')} className="rounded-lg bg-slate-800 px-2 py-1 text-xs font-bold text-slate-200 hover:bg-slate-700">Show all areas</button>}
+                      </div>
+                      <div className="mt-3 flex gap-2 overflow-x-auto pb-1 app-scrollbar">
+                        {historyData.categorySummary.map((item) => (
+                          <button
+                            key={item.label}
+                            type="button"
+                            onClick={() => setCategory(category === item.label ? '' : item.label)}
+                            className={`shrink-0 rounded-xl border px-3 py-2 text-left text-sm ${category === item.label ? 'border-blue-400 bg-blue-500/20 text-white' : 'border-slate-700 bg-slate-950 text-slate-200 hover:border-slate-500'}`}
+                          >
+                            <div className="font-bold">{item.label}</div>
+                            <div className="text-xs text-slate-400">{item.added} added - {item.changed} changed - {item.removed} removed</div>
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  )}
 
-              <section className="space-y-3">
-                {viewMode === 'minimal' && weaponFiles.map((file) => <FileDiff key={`${file.section}/${file.file}`} file={file} mode={viewMode} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />)}
-                {viewMode === 'minimal' && <LegendChangeSection groups={groupedLegendChanges} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />}
-                {viewMode === 'minimal' && skinFiles.map((file) => <FileDiff key={`${file.section}/${file.file}`} file={file} mode={viewMode} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />)}
-                {viewMode === 'minimal' && storeItemFiles.map((file) => <FileDiff key={`${file.section}/${file.file}`} file={file} mode={viewMode} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />)}
-                {otherRenderedFiles.length > 0 ? (
-                  otherRenderedFiles.map((file) => <FileDiff key={`${file.section}/${file.file}`} file={file} mode={viewMode} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} />)
-                ) : groupedLegendChanges.length > 0 || groupedMapFiles.length > 0 || weaponFiles.length > 0 || skinFiles.length > 0 || storeItemFiles.length > 0 ? null : (
-                  <div className="rounded-xl border border-slate-700 bg-slate-900 p-4 text-slate-400">
-                    {(historyData.files || []).length
-                      ? 'No matching changes for this filter.'
-                      : 'No game data changed in this update. It was likely a client, asset or server-side release.'}
-                  </div>
-                )}
-                {viewMode === 'minimal' && <MapChangeSection files={groupedMapFiles} lang={lang} levelMap={levelMap} heroMap={heroMap} storeAssetMap={storeAssetMap} />}
-              </section>
+                  {(historyData.files || []).length > 0 && (
+                    <section className="flex max-w-5xl flex-col gap-2 rounded-2xl border border-slate-700 bg-slate-900 p-3 md:flex-row md:items-center">
+                      <input
+                        value={query}
+                        onChange={(event) => setQuery(event.target.value)}
+                        placeholder="Search files, names, IDs or changed fields"
+                        className="min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-blue-400"
+                      />
+                      <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white">
+                        <option value="">All Changes</option>
+                        <option value="added">Added only</option>
+                        <option value="changed">Changed only</option>
+                        <option value="removed">Removed only</option>
+                      </select>
+                      <label className="flex items-center gap-2 text-sm text-slate-300">
+                        <input type="checkbox" checked={hideVisual} onChange={(event) => setHideVisual(event.target.checked)} />
+                        Hide visual fields
+                      </label>
+                    </section>
+                  )}
+
+                  {filteredFiles.length ? (
+                    <div className="space-y-3">
+                      {['gameplay', 'content', 'engine'].map((tier) => (
+                        <TierGroup key={tier} tier={tier} files={tierFiles[tier]}>
+                          <div className="space-y-3">
+                            {tierFiles[tier].map((file) => <FileDiff key={`${file.section}/${file.file}`} file={file} lang={lang} heroMap={heroMap} storeAssetMap={storeAssetMap} typeFilter={typeFilter} hideVisual={hideVisual} />)}
+                          </div>
+                        </TierGroup>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="max-w-3xl rounded-xl border border-slate-700 bg-slate-900 p-2 text-slate-400">
+                      {(historyData.files || []).length
+                        ? 'No matching changes for this filter.'
+                        : 'No game data changed. Probably a client, art or server update.'}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
-          {!loading && !historyData && !error && (
-            <div className="rounded-xl border border-slate-700 bg-slate-900 p-4 text-slate-300">Select a patch to view its history.</div>
+          {!selectedPatchInfo && !shownError && (
+            <div className="max-w-3xl rounded-xl border border-slate-700 bg-slate-900 p-2 text-slate-300">{patches.length ? 'Pick a patch' : 'Loading patches…'}</div>
           )}
         </main>
+        <aside aria-label="On this page" className="sticky top-16 hidden max-h-[calc(100dvh-4rem)] space-y-3 self-start overflow-y-auto border-l border-slate-800 p-2 app-scrollbar 2xl:block">
+          {selectedPatchInfo && (
+            <AsideBox title={headerTitle}>
+              <FactList
+                rows={[
+                  { label: 'Date', value: formatDate(isWholePatch && releaseInfo ? releaseInfo.date : selectedPatchInfo.date) },
+                  ...(viewMode === 'minimal' && notes && !notes.empty ? [
+                    { label: 'Balance changes', value: notes.counts.balance || null },
+                    { label: 'New legends', value: notes.counts.legendsAdded || null },
+                    { label: 'New maps', value: notes.counts.mapsAdded || null },
+                    { label: 'New cosmetics', value: notes.counts.cosmetics || null },
+                    { label: 'Price changes', value: notes.counts.prices || null },
+                  ] : []),
+                  ...(viewMode === 'full' && historyData ? [
+                    { label: 'Files', value: historyData.summary?.files || 0 },
+                    { label: 'Added', value: historyData.summary?.added || 0 },
+                    { label: 'Changed', value: historyData.summary?.changed || 0 },
+                    { label: 'Removed', value: historyData.summary?.removed || 0 },
+                  ] : []),
+                ]}
+              />
+              {official && (
+                <a href={official.url || official.listing} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-bold text-blue-300 hover:underline">Official notes ↗</a>
+              )}
+            </AsideBox>
+          )}
+          {viewMode === 'minimal' && notes && <OnThisPage items={patchContents(notes).map(([id, label]) => ({ id, label }))} />}
+          {viewMode === 'full' && historyData?.categorySummary?.length > 0 && (
+            <AsideBox title="Changed Areas">
+              <LinkList
+                items={[
+                  { key: 'all', label: 'All areas', active: !category, onClick: () => setCategory('') },
+                  ...historyData.categorySummary.map((item) => ({ key: item.label, label: item.label, count: item.added + item.changed + item.removed, active: category === item.label, onClick: () => setCategory(category === item.label ? '' : item.label) })),
+                ]}
+              />
+            </AsideBox>
+          )}
+        </aside>
       </div>
     </div>
   );

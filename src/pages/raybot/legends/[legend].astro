@@ -1,0 +1,23 @@
+---
+import Layout from "../../../layouts/Layout.astro";
+import RaybotLegendBoard from "../../../components/raybot/RaybotLegendBoard.jsx";
+import { host } from "../../../stuff";
+import { slugify } from "../../../components/ui/assets.js";
+const slug = String(Astro.params.legend ?? "").toLowerCase();
+let legend = null;
+try {
+  const response = await fetch(`${host}/game/legends/summary`, { signal: AbortSignal.timeout(4000) });
+  const list = response.ok ? await response.json() : [];
+  const match = (Array.isArray(list) ? list : []).find((item) => /^\d+$/.test(String(item?.id)) && (slugify(item?.bio?.name?.normal) === slug || slugify(item?.codeName) === slug));
+  if (match) legend = { id: Number(match.id), name: match.bio.name.normal };
+} catch {}
+if (legend && slugify(legend.name) !== slug) return Astro.redirect(`/raybot/legends/${slugify(legend.name)}${Astro.url.search}`, 301);
+if (!legend) Astro.response.status = 404;
+const title = legend ? `${legend.name} Ranked Leaderboard` : "Legend not found";
+const description = legend
+  ? `The best ${legend.name} players by 1v1 peak, rating, win rate, games and XP, from the players Raybot has saved.`
+  : "No legend has this name.";
+---
+<Layout title={title} description={description} canonical={legend ? `/raybot/legends/${slugify(legend.name)}` : undefined} noindex={!legend}>
+  <RaybotLegendBoard client:load legend={legend} />
+</Layout>

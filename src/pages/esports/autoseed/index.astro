@@ -1,24 +1,69 @@
 ---
-import { host } from "../../../stuff";
-import Layout from "../../../layouts/PlayerLayout.jsx";
-import Layout2 from '../../../layouts/Layout.astro';
-import $ from "jquery";
+import Layout from '../../../layouts/Layout.astro';
 import LoginButton from '../../../components/auth/butt.jsx';
+import { Card, PageHeader, PageShell, Pill, Section } from '../../../components/ui/index.js';
 
-let session = null;
-
-if (typeof window !== "undefined") {
-  const token = localStorage.getItem('accessToken');
-  if (token) {
-    session = JSON.parse(localStorage.getItem('user'));
-  }
-  if (session) {
-    window.location.href = '/esports/autoseed/admin';
-  }
-  console.log(session, token)
-}
+const steps = [
+  { title: "Sign in", text: "Use the start.gg account that runs the tournament, or one with admin access to it." },
+  { title: "Pick a phase", text: "Choose the tournament, event and phase. Autoseed loads the phase's current seeding." },
+  { title: "Seed and upload", text: "Seed by Custom PR or Official PR, drag anyone you want to move, then upload. start.gg gets the new seed order for that phase." },
+];
 ---
 
-<Layout2 title="StartGG Auto Seeding">
-	<LoginButton client:load />
-</Layout2>
+<Layout title="Autoseed for start.gg" description="Seed a start.gg bracket by Brawlhalla power ranking and upload it back to start.gg.">
+	<PageShell>
+		<PageHeader
+			title="Autoseed for start.gg"
+		>
+			<LoginButton client:load />
+		</PageHeader>
+		<div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_22rem]">
+			<div class="min-w-0 space-y-3 min-[112.5rem]:grid min-[112.5rem]:grid-cols-2 min-[112.5rem]:gap-3 min-[112.5rem]:space-y-0">
+				<Section title="How it works" headingAs="h2">
+					<ol class="grid gap-3 md:grid-cols-3">
+						{steps.map((step, index) => (
+							<li>
+								<Card className="h-full">
+									<div class="flex items-center gap-2">
+										<span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/20 text-sm font-bold text-blue-200">{index + 1}</span>
+										<span class="font-bold text-white">{step.title}</span>
+									</div>
+									<p class="mt-2 max-w-prose text-sm text-slate-300">{step.text}</p>
+								</Card>
+							</li>
+						))}
+					</ol>
+				</Section>
+				<Section title="Seeding options" headingAs="h2">
+					<div class="grid gap-3 md:grid-cols-2">
+						<Card>
+							<div class="flex flex-wrap items-center gap-2">
+								<span class="font-bold text-white">Custom PR</span>
+								<Pill tone="blue">1v1 and 2v2</Pill>
+							</div>
+							<p class="mt-2 max-w-prose text-sm text-slate-300">This site's current Power Rankings, in the event's mode. Each player gets their rank in their region. Someone ranked in more than one region uses the first of NA, EU, SA, SEA, AUS, MENA.</p>
+							<a href="/pr" class="mt-2 inline-block text-sm font-bold text-blue-300 hover:underline">See the rankings</a>
+						</Card>
+						<Card>
+							<div class="flex flex-wrap items-center gap-2">
+								<span class="font-bold text-white">Official PR</span>
+								<Pill tone="slate">brawltools</Pill>
+							</div>
+							<p class="mt-2 max-w-prose text-sm text-slate-300">The official power ranking from brawltools for each player's start.gg account, in the event's mode.</p>
+						</Card>
+					</div>
+					<p class="max-w-prose text-sm text-slate-400">A 2v2 team is seeded by the average of both players' ranks. Unranked entrants go to the bottom in their current order.</p>
+				</Section>
+			</div>
+			<aside class="min-w-0 space-y-3">
+				<Section title="What sign-in allows" headingAs="h2">
+					<p class="text-sm text-slate-300">start.gg asks for two permissions: your account name and avatar, and managing the tournaments you run. Autoseed uses them to list your tournaments and upload seeding.</p>
+					<p class="text-sm text-slate-300">The sign-in is kept in this browser only. Sign out removes it.</p>
+				</Section>
+				<Section title="Screen size" headingAs="h2">
+					<p class="text-sm text-slate-300">Seeding is drag and drop, so use a computer or a tablet in landscape.</p>
+				</Section>
+			</aside>
+		</div>
+	</PageShell>
+</Layout>

@@ -1,10 +1,20 @@
 ---
 import Layout from '../../../../layouts/Layout.astro';
 import PlayerPage from '../../../../components/esports/PlayerPage.jsx';
-
+import { fetchPageHead } from '../../../../data/head.js';
 const playerId = Number.parseInt(Astro.params.playerId ?? '', 10);
 if (!Number.isSafeInteger(playerId) || playerId <= 0) return Astro.redirect('/esports/player', 302);
+const { head, missing } = await fetchPageHead('player', playerId);
+if (head && String(head.id) !== String(playerId)) return Astro.redirect(`${head.path}${Astro.url.search}`, 301);
+if (missing) Astro.response.status = 404;
 ---
-<Layout title="Player · Brawlhalla Esports">
-  <PlayerPage client:load playerId={playerId} />
+<Layout
+  title={head?.title ?? (missing ? 'Player not found' : 'Brawlhalla Player')}
+  description={head?.description ?? 'Brawlhalla tournament results, matches and Power Rankings for this player.'}
+  image={head?.image ?? undefined}
+  imageAlt={head?.name}
+  imageWide={head?.imageWide}
+  canonical={`/esports/player/id/${playerId}`}
+>
+  <PlayerPage client:load playerId={playerId} heading={head?.name} />
 </Layout>

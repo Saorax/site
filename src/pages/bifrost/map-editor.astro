@@ -1,11 +1,12 @@
 ---
 import Layout from "../../layouts/Layout.astro";
+import { toolText } from "../../data/head.js";
 ---
 
-<Layout title="Bifrost Map Editor">
+<Layout title="Map Editor · Bifrost" description={toolText("/bifrost/map-editor/")} footer={false}>
   <iframe
     src="/bifrost/map-editor/index.html"
-    title="Bifrost map editor"
-    class="block h-[calc(100dvh-4rem)] w-full border-0 bg-slate-950"
+    title="Bifrost Map Editor"
+    class="block h-[calc(100dvh-4rem-1px)] w-full border-0 bg-slate-950"
   ></iframe>
 </Layout>

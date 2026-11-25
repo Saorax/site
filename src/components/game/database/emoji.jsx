@@ -2,10 +2,12 @@ import { host } from '../../../stuff';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { XMarkIcon } from '@heroicons/react/20/solid';
 import { useMediaQuery } from 'react-responsive';
-import { AddedBadge, ImageWithLoader, RawDataDetails, getAddedPatch, getPatchFilterCounts, getPatchGroups, patchFilterMatches, PatchFilterSelect } from './comp/LoadingImage';
-import { VirtualCardGrid } from './comp/VirtualCardGrid';
+import { AddedBadge, ImageWithLoader, RawDataDetails, getAddedPatch, getPatchFilterCounts, getPatchGroups, patchFilterMatches, PatchOptions } from './comp/LoadingImage';
+import { ListTools, SourceLine, hasSources, sortSourceFilterValues, sourceFilterValues, useDataView, useGameNames } from '../../ui';
+import { DENSE_CARD, VirtualCardGrid } from './comp/VirtualCardGrid';
+import { FilterOption, FilterPanel, FilterSelect, FilterToggle, IconChip, NoMatches, countFilters } from './comp/FilterPanel';
 import { pageSlugForLabel, readArrayParam, readBoolParam, writeArrayParam, writeBoolParam, writeStringParam } from './comp/urlQuery';
-import { FieldGrid, StoreDataSection } from './metadata';
+import { FieldGrid, PopupFullDataFooter, PopupViewBar, StoreDataSection, storeExportColumns } from './metadata';
 
 function uniq(a) { return [...new Set(a)]; }
 function uniqueValues(array, path) {
@@ -23,6 +25,19 @@ function uniqueValues(array, path) {
   });
   return [...new Set(out)];
 }
+const EMOJI_SORTS = [
+  { value: 'ArrayIndexDesc', label: 'Newest First' },
+  { value: 'ArrayIndexAsc', label: 'Oldest first' },
+  { value: 'AlphaAsc', label: 'Name, A to Z' },
+  { value: 'AlphaDesc', label: 'Name, Z to A' },
+  { value: 'CostDesc', label: 'Mammoth Coins, high to low' },
+  { value: 'CostAsc', label: 'Mammoth Coins, low to high' },
+  { value: 'EmojiIDDesc', label: 'Emoji ID, high to low' },
+  { value: 'EmojiIDAsc', label: 'Emoji ID, low to high' },
+  { value: 'StoreIDDesc', label: 'Store ID, high to low' },
+  { value: 'StoreIDAsc', label: 'Store ID, low to high' },
+];
+
 function formatLabel(s) { return s ? String(s).replace(/([a-z])([A-Z])/g, '$1 $2') : ''; }
 const splitTags = (tags) => {
   if (!tags) return [];
@@ -51,10 +66,8 @@ function getProcessedStoreData(entity) {
         if (sd.IdolSaleCost && sd.IdolSaleCost !== '0') c.mcSale = Number(sd.IdolSaleCost);
       } else {
         sd.ItemList.forEach(it => {
-          if (it.IdolCost && it.IdolCost !== '0') c.mc += Number(it.IdolCost);
-          if (it.IdolSaleCost && it.IdolSaleCost !== '0') c.mc += Number(it.IdolSaleCost);
-          if (it.GoldCost && it.GoldCost !== '0') c.gold += Number(it.GoldCost);
-          if (it.GoldSaleCost && it.GoldSaleCost !== '0') c.gold += Number(it.GoldSaleCost);
+          c.mc += Number(it.IdolCost) || Number(it.IdolSaleCost) || 0;
+          c.gold += Number(it.GoldCost) || Number(it.GoldSaleCost) || 0;
           if (it.RankedPointsCost && it.RankedPointsCost !== '0') c.glory += Number(it.RankedPointsCost);
           if (it.SpecialCurrencyCost && it.SpecialCurrencyCost !== '0' && it.SpecialCurrencyType) {
             c.special[it.SpecialCurrencyType] = (c.special[it.SpecialCurrencyType] || 0) + Number(it.SpecialCurrencyCost);
@@ -76,7 +89,7 @@ function getProcessedStoreData(entity) {
     return { ...sd, Costs: c };
   });
   processed.sort((a, b) => {
-    const sum = (c) => (c.mc || 0) + (c.mcSale || 0) + (c.gold || 0) + (c.goldSale || 0) + (c.glory || 0) + Object.values(c.special || {}).reduce((s, v) => s + v, 0);
+    const sum = (c) => (c.mc || c.mcSale || 0) + (c.gold || c.goldSale || 0) + (c.glory || 0) + Object.values(c.special || {}).reduce((s, v) => s + v, 0);
     return sum(a.Costs) - sum(b.Costs);
   });
   return processed;
@@ -86,7 +99,7 @@ function minCost(entity) {
   const s = getProcessedStoreData(entity);
   if (!s.length) return Number.MAX_SAFE_INTEGER;
   const c = s[0].Costs;
-  return (c.mc || 0) + (c.mcSale || 0) + (c.gold || 0) + (c.goldSale || 0) + (c.glory || 0) + Object.values(c.special || {}).reduce((x, y) => x + y, 0);
+  return (c.mc || c.mcSale || 0) + (c.gold || c.goldSale || 0) + (c.glory || 0) + Object.values(c.special || {}).reduce((x, y) => x + y, 0);
 }
 
 function useOptionCounts(items, filters, helpers) {
@@ -100,6 +113,7 @@ function useOptionCounts(items, filters, helpers) {
       PromoType: {},
       BPSeason: {},
       Entitlement: {},
+      How: {},
       StoreOnly: 0,
       AllBP: 0,
       Bundle: 0,
@@ -138,7 +152,7 @@ function useOptionCounts(items, filters, helpers) {
         counts.DLC += e.entitlement ? 1 : 0;
         counts.Bundle += helpers.Bundle(e) ? 1 : 0;
       }
-      ['Category', 'Cohort', 'TimedPromotion', 'StoreID', 'StoreLabel', 'PromoType', 'BPSeason', 'Entitlement'].forEach(k => {
+      ['Category', 'Cohort', 'TimedPromotion', 'StoreID', 'StoreLabel', 'PromoType', 'BPSeason', 'Entitlement', 'How'].forEach(k => {
         if (applyFilters(e, k)) {
           const hv = helpers[k](e);
           const values = Array.isArray(hv) ? hv.filter(Boolean) : (hv ? [hv] : []);
@@ -158,6 +172,7 @@ export function EmojiStoreView({ emojis, langs }) {
   const data = useMemo(() => (Array.isArray(emojis) ? emojis : []).map(e => ({ ...e, store: normalizeStore(e) })), [emojis]);
 
   const [selectedEmoji, setSelectedEmoji] = useState(null);
+  const dataFull = useDataView().full;
   const [sortType, setSortType] = useState('ArrayIndexDesc');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState([]);
@@ -169,24 +184,18 @@ export function EmojiStoreView({ emojis, langs }) {
   const [filterPromoType, setFilterPromoType] = useState('');
   const [filterBPSeason, setFilterBPSeason] = useState('');
   const [filterEntitlement, setFilterEntitlement] = useState(false);
+  const [filterHow, setFilterHow] = useState('');
   const [filterBundle, setFilterBundle] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState('');
-  const [viewMode] = useState('grid');
-  const [filtersOpen, setFiltersOpen] = useState(true);
   const [filterPatch, setFilterPatch] = useState('');
   const patchGroups = useMemo(() => getPatchGroups(data), [data]);
   const patchCounts = useMemo(() => getPatchFilterCounts(data), [data]);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const topRef = useRef(null);
-  const filterSectionRef = useRef(null);
-  const detailPanelRef = useRef(null);
   const isMobile = useMediaQuery({ query: '(max-width: 1023px)' });
-  const isInitialMount = useRef(true);
   const filtersChanged = useRef(false);
   const urlHydrated = useRef(false);
   const urlSyncing = useRef(false);
-  const [listHeight, setListHeight] = useState(400);
-  const [filterHeight, setFilterHeight] = useState(0);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery), 250);
@@ -197,6 +206,7 @@ export function EmojiStoreView({ emojis, langs }) {
     const params = new URLSearchParams(window.location.search);
     urlSyncing.current = true;
     setSearchQuery(params.get('search') || '');
+    setDebouncedSearch(params.get('search') || '');
     setSortType(params.get('sort') || 'ArrayIndexDesc');
     setFilterCategory(readArrayParam(params, 'category'));
     setFilterCohort(params.get('cohort') || '');
@@ -207,6 +217,7 @@ export function EmojiStoreView({ emojis, langs }) {
     setFilterPromoType(params.get('promoType') || '');
     setFilterBPSeason(params.get('battlePass') || '');
     setFilterEntitlement(readBoolParam(params, 'entitlement'));
+    setFilterHow(params.get('how') || '');
     setFilterBundle(readBoolParam(params, 'bundle'));
     setFilterPatch(params.get('patch') || '');
     urlHydrated.current = true;
@@ -214,33 +225,6 @@ export function EmojiStoreView({ emojis, langs }) {
       urlSyncing.current = false;
     }, 0);
   }, []);
-
-  useEffect(() => {
-    if (filterSectionRef.current) setFilterHeight(filterSectionRef.current.offsetHeight);
-  }, [
-    filterCategory, filterCohort, filterPromo, filterStoreID, storeOnly, filterStoreLabel, filterPromoType,
-    filterBPSeason, filterEntitlement, filterBundle, debouncedSearch, sortType, viewMode, isMobile
-  ]);
-
-  useEffect(() => {
-    if (isInitialMount.current) isInitialMount.current = false;
-    else if (isMobile) { setSelectedEmoji(null); filtersChanged.current = true; }
-  }, [
-    filterCategory, filterCohort, filterPromo, filterStoreID, storeOnly, filterStoreLabel, filterPromoType,
-    filterBPSeason, filterEntitlement, filterBundle, debouncedSearch, sortType, isMobile
-  ]);
-
-  useEffect(() => {
-    const updateHeight = () => {
-      const viewportHeight = window.innerHeight;
-      const detailHeight = detailPanelRef.current ? detailPanelRef.current.offsetHeight : 0;
-      const available = Math.max(viewportHeight, detailHeight) - filterHeight;
-      setListHeight(available > 240 ? available : 240);
-    };
-    updateHeight();
-    window.addEventListener('resize', updateHeight);
-    return () => window.removeEventListener('resize', updateHeight);
-  }, [selectedEmoji, filterHeight]);
 
   const helpers = useMemo(() => ({
     Category: e => e.emojiData?.Category ?? '',
@@ -251,11 +235,14 @@ export function EmojiStoreView({ emojis, langs }) {
     PromoType: e => e.promo?.Type ?? '',
     BPSeason: e => e.bp?.ID ?? '',
     Entitlement: e => !!e.entitlement,
+    How: sourceFilterValues,
     Bundle: e => normalizeStore(e).some(s => s.Type === 'Bundle'),
     Patch: getAddedPatch
   }), []);
 
   const getDisplayNameKey = e => (normalizeStore(e)[0]?.DisplayNameKey) ?? e.emojiData?.DisplayNameKey ?? '';
+  const gameNames = useGameNames();
+  const emojiTitle = e => gameNames.emojis?.[e?.emojiData?.EmojiID] || langs.content?.[getDisplayNameKey(e)] || e?.emojiData?.EmojiName || '';
   const getDescriptionKey = e => (normalizeStore(e)[0]?.DescriptionKey) ?? e.emojiData?.DescriptionKey ?? '';
 
   const categories = useMemo(() => uniqueValues(data, ['emojiData', 'Category']), [data]);
@@ -281,6 +268,7 @@ export function EmojiStoreView({ emojis, langs }) {
       PromoType: filterPromoType,
       BPSeason: filterBPSeason,
       Entitlement: filterEntitlement,
+      How: filterHow,
       StoreOnly: storeOnly,
       Bundle: filterBundle,
       Patch: filterPatch
@@ -288,6 +276,13 @@ export function EmojiStoreView({ emojis, langs }) {
     helpers
   );
 
+  const exportColumns = useMemo(() => [
+    { key: 'name', label: 'Emoji', value: emojiTitle },
+    { key: 'category', label: 'Category', value: (emoji) => emoji.emojiData?.Category },
+    { key: 'emojiId', label: 'Emoji ID', value: (emoji) => emoji.emojiData?.EmojiID },
+    { key: 'codeName', label: 'Code name', value: (emoji) => emoji.emojiData?.EmojiName },
+    ...storeExportColumns,
+  ], [langs, gameNames]);
   const filtered = useMemo(() => {
     const q = debouncedSearch.toLowerCase();
     const arr = data.filter(e => {
@@ -303,10 +298,11 @@ export function EmojiStoreView({ emojis, langs }) {
         else if ((e.bp?.ID ?? '') !== filterBPSeason) return false;
       }
       if (filterEntitlement && !e.entitlement) return false;
+      if (filterHow && !sourceFilterValues(e).includes(filterHow)) return false;
       if (storeOnly && !normalizeStore(e).length) return false;
       if (filterBundle && !normalizeStore(e).some(s => s.Type === 'Bundle')) return false;
       const fields = [
-        langs.content?.[getDisplayNameKey(e)] || '',
+        emojiTitle(e),
         langs.content?.[getDescriptionKey(e)] || '',
         e.emojiData?.EmojiName || '',
         String(e.emojiData?.EmojiID || ''),
@@ -330,8 +326,8 @@ export function EmojiStoreView({ emojis, langs }) {
     }).sort((a, b) => {
       const idx = (e) => (typeof e.ArrayIndex === 'number' ? e.ArrayIndex : (parseInt(e.ArrayIndex, 10) || 0));
       const idxA = idx(a), idxB = idx(b);
-      const nameA = (langs.content?.[getDisplayNameKey(a)] || a.emojiData?.EmojiName || '').toString();
-      const nameB = (langs.content?.[getDisplayNameKey(b)] || b.emojiData?.EmojiName || '').toString();
+      const nameA = emojiTitle(a).toString();
+      const nameB = emojiTitle(b).toString();
       const idA = parseInt(a.emojiData?.EmojiID || 0, 10) || 0;
       const idB = parseInt(b.emojiData?.EmojiID || 0, 10) || 0;
       const minStoreId = e => {
@@ -356,7 +352,7 @@ export function EmojiStoreView({ emojis, langs }) {
     return arr;
   }, [
     data, debouncedSearch, sortType, filterCategory, filterCohort, filterPromo, filterStoreID, storeOnly,
-    filterStoreLabel, filterPromoType, filterBPSeason, filterEntitlement, filterBundle, filterPatch, langs
+    filterStoreLabel, filterPromoType, filterBPSeason, filterEntitlement, filterHow, filterBundle, filterPatch, langs, gameNames
   ]);
 
   useEffect(() => {
@@ -391,6 +387,7 @@ export function EmojiStoreView({ emojis, langs }) {
     writeStringParam(currentParams, 'promoType', filterPromoType);
     writeStringParam(currentParams, 'battlePass', filterBPSeason);
     writeBoolParam(currentParams, 'entitlement', filterEntitlement);
+    writeStringParam(currentParams, 'how', filterHow);
     writeBoolParam(currentParams, 'bundle', filterBundle);
     writeStringParam(currentParams, 'patch', filterPatch);
     const newUrl = currentParams.toString() ? `${window.location.pathname}?${currentParams}` : window.location.pathname;
@@ -406,7 +403,7 @@ export function EmojiStoreView({ emojis, langs }) {
     };
     window.addEventListener('popstate', handlePop);
     return () => window.removeEventListener('popstate', handlePop);
-  }, [selectedEmoji, filtered, isMobile, searchQuery, sortType, filterCategory, filterCohort, filterPromo, filterStoreID, storeOnly, filterStoreLabel, filterPromoType, filterBPSeason, filterEntitlement, filterBundle, filterPatch]);
+  }, [selectedEmoji, filtered, isMobile, searchQuery, sortType, filterCategory, filterCohort, filterPromo, filterStoreID, storeOnly, filterStoreLabel, filterPromoType, filterBPSeason, filterEntitlement, filterHow, filterBundle, filterPatch]);
 
   const handleFilterChange = useCallback((setter, value) => { setter(value); }, []);
   const resetFilters = useCallback(() => {
@@ -421,6 +418,7 @@ export function EmojiStoreView({ emojis, langs }) {
     setFilterPromoType('');
     setFilterBPSeason('');
     setFilterEntitlement(false);
+    setFilterHow('');
     setFilterPatch('');
     setFilterBundle(false);
     setSelectedEmoji(null); filtersChanged.current = true;
@@ -430,7 +428,7 @@ export function EmojiStoreView({ emojis, langs }) {
     if (!selectedEmoji) return;
     const url = `${window.location.origin}${window.location.pathname}?emoji=${selectedEmoji.emojiData?.EmojiID}`;
     navigator.clipboard.writeText(url).then(() => {
-      setCopyFeedback('Link Copied!');
+      setCopyFeedback('Link copied');
       setTimeout(() => setCopyFeedback(''), 2000);
     }).catch(() => {
       setCopyFeedback('No Link Copied');
@@ -444,406 +442,272 @@ export function EmojiStoreView({ emojis, langs }) {
     const emoji = data[index];
     const storeData = getProcessedStoreData(emoji);
     const isSelected = selectedEmoji?.emojiData?.EmojiID === emoji.emojiData?.EmojiID;
+    const sourced = hasSources(emoji);
     return (
       <div
-        className={viewMode === 'grid' ? 'h-full w-full p-1' : 'p-0 px-2 min-h-[160px]'}
+        className={`flex h-full w-full cursor-pointer flex-col items-center gap-1 rounded-xl border border-slate-700 bg-slate-900 p-2 text-center shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-800 ${isSelected ? 'ring-2 ring-blue-400' : ''}`}
         onClick={() => { setSelectedEmoji(emoji); filtersChanged.current = false; }}
       >
-        <div className={`relative h-full self-start text-left bg-white dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-xl cursor-pointer p-2 pt-9 transition border border-gray-200 dark:border-slate-700 min-h-52 shadow-sm hover:-translate-y-0.5 ${isSelected ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} flex flex-col`}>
-          {viewMode === 'grid' && (
-            <div className="mb-1 flex max-w-full justify-center px-1 text-sm font-bold leading-tight text-gray-900 dark:text-white sm:text-base">
-              <span className="break-words">{langs.content?.[getDisplayNameKey(emoji)] || emoji.emojiData?.EmojiName}</span>
-            </div>
-          )}
-          <ImageWithLoader src={`${host}/game/animEmoji/${emoji.emojiData?.EmojiID}`} alt="" className="h-24 w-24 self-center rounded-lg bg-slate-900/80 sm:h-32 sm:w-32" />
-          <div className="mt-1 flex w-full min-w-0 flex-1 flex-col items-center text-center">
-            <div className="flex flex-col gap-1">
-              <div className={`mt-1 justify-start text-gray-900 dark:text-white font-bold ${viewMode === 'grid' ? 'hidden' : 'flex text-lg'}`}>
-                <span >{langs.content?.[getDisplayNameKey(emoji)] || emoji.emojiData?.EmojiName}</span>
+        <ImageWithLoader src={`${host}/game/animEmoji/${emoji.emojiData?.EmojiID}`} alt="" className="aspect-square w-full rounded-lg bg-slate-950/80" imgClassName="h-full w-full object-contain" />
+        <span className="line-clamp-2 max-w-full break-words text-sm font-bold leading-tight text-white" title={emojiTitle(emoji)}>{emojiTitle(emoji)}</span>
+        <AddedBadge item={emoji} className="max-w-full flex-wrap justify-center" />
+        {sourced && <SourceLine sources={emoji.sources} phoneCompact className="max-w-full" />}
+        {!sourced && emoji.bp && (
+          <div className="border border-emerald-300/40 bg-emerald-500/20 text-emerald-100 text-[10px] font-bold px-2 py-0.5 rounded-lg">{`Battle Pass Season ${String(emoji.bp.ID).replace('BP', '').replace('-', ' ')}`}</div>
+        )}
+        {!sourced && storeData.length > 0 && (
+          <div className="flex flex-wrap items-center justify-center gap-x-3 text-sm text-white">
+            {storeData.map((sd, idx) => (
+              <div key={`costs-${idx}`} className="flex flex-wrap gap-2">
+                {sd.Type === 'Bundle' ? (
+                  <>
+                    {(sd.Costs.mc > 0 || sd.Costs.mcSale > 0) && (
+                      <div>
+                        <img loading="lazy" decoding="async" src={`${host}/game/getGfx/storeIcon/mc`} className="inline h-4 mr-1" onError={handleImgError} />
+                        <span>{sd.Costs.mc || sd.Costs.mcSale}</span>
+                        <span className="text-xs text-slate-400"> (Bundle)</span>
+                      </div>
+                    )}
+                    {sd.Costs.gold > 0 && (
+                      <div>
+                        <img loading="lazy" decoding="async" src={`${host}/game/getGfx/storeIcon/gold`} className="inline h-4 mr-1" onError={handleImgError} />
+                        <span>{sd.Costs.gold}</span>
+                        <span className="text-xs text-slate-400"> (Bundle)</span>
+                      </div>
+                    )}
+                    {sd.Costs.glory > 0 && (
+                      <div>
+                        <img loading="lazy" decoding="async" src={`${host}/game/getGfx/storeIcon/glory`} className="inline h-4 mr-1" onError={handleImgError} />
+                        <span>{sd.Costs.glory}</span>
+                        <span className="text-xs text-slate-400"> (Bundle)</span>
+                      </div>
+                    )}
+                    {Object.entries(sd.Costs.special).map(([currencyType, cost], sIdx) => cost > 0 && (
+                      <div key={`special-${sIdx}`}>
+                        <img loading="lazy" decoding="async" src={`${host}/game/getGfx/UI_Currencies/a_Currency_${currencyType}`} className="inline h-4 mr-1" onError={handleImgError} />
+                        <span>{cost}</span>
+                        <span className="text-xs text-slate-400"> (Bundle)</span>
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    {sd.Costs.mc > 0 && (
+                      <div>
+                        <img loading="lazy" decoding="async" src={`${host}/game/getGfx/storeIcon/mc`} className="inline h-4 mr-1" onError={handleImgError} />
+                        <span>{sd.Costs.mc}</span>
+                      </div>
+                    )}
+                    {sd.Costs.gold > 0 && (
+                      <div>
+                        <img loading="lazy" decoding="async" src={`${host}/game/getGfx/storeIcon/gold`} className="inline h-4 mr-1" onError={handleImgError} />
+                        <span>{sd.Costs.gold}</span>
+                      </div>
+                    )}
+                    {sd.Costs.glory > 0 && (
+                      <div>
+                        <img loading="lazy" decoding="async" src={`${host}/game/getGfx/storeIcon/glory`} className="inline h-4 mr-1" onError={handleImgError} />
+                        <span>{sd.Costs.glory}</span>
+                      </div>
+                    )}
+                    {Object.entries(sd.Costs.special).map(([currencyType, cost], sIdx) => cost > 0 && (
+                      <div key={`special-${sIdx}`}>
+                        <img loading="lazy" decoding="async" src={`${host}/game/getGfx/UI_Currencies/a_Currency_${currencyType}`} className="inline h-4 mr-1" onError={handleImgError} />
+                        <span>{cost}</span>
+                      </div>
+                    ))}
+                  </>
+                )}
               </div>
-              <AddedBadge item={emoji} className="absolute left-1/2 top-2 z-10 -translate-x-1/2 pointer-events-none" />
-              {viewMode !== 'grid' && (
-                <div className="hidden max-w-full flex-wrap justify-center gap-1 pb-1 sm:flex">
-                  {!emoji.store?.length && !emoji.bp && !emoji.promo && !emoji.entitlement && (emoji.emojiData?.DefaultUnlocked?.toString()?.toLowerCase() !== 'true') && (
-                    <div className="bg-gray-500 dark:bg-gray-600 text-white text-xs font-bold px-2 py-0.5 rounded-lg">Not Obtainable</div>
-                  )}
-                  {emoji.emojiData?.DefaultUnlocked?.toString()?.toLowerCase() === 'true' && (
-                    <div className="bg-teal-500 dark:bg-teal-600 text-white text-xs font-bold px-2 py-0.5 rounded-lg">Default Emoji</div>
-                  )}
-                  {emoji.bp && (
-                    <div className="bg-emerald-600 dark:bg-emerald-700 text-black dark:text-white text-xs font-bold px-2 py-0.5 rounded-lg">{`Battle Pass Season ${String(emoji.bp.ID).replace('BP', '').replace('-', ' ')}`}</div>
-                  )}
-                  {emoji.promo && (
-                    <div className="bg-violet-600 dark:bg-violet-700 text-black dark:text-white text-xs font-bold px-2 py-0.5 rounded-lg">{`Promo Code${!emoji.store?.length && !emoji.bp && !emoji.entitlement ? ' Only' : ''}`}</div>
-                  )}
-                  {emoji.entitlement && (
-                    <div className="bg-amber-400 dark:bg-amber-700 text-black dark:text-white text-xs font-bold px-2 py-0.5 rounded-lg">{(langs.content?.[emoji.entitlement.DisplayNameKey]?.replace('!', '') || emoji.entitlement.EntitlementName) + ' DLC'}</div>
-                  )}
-                  {emoji.store?.length > 0 && uniq(emoji.store.map(s => s.Label).filter(Boolean)).map((label, idx) => (
-                    <div key={idx} className={`${label === "New" ? "bg-yellow-300 dark:bg-yellow-500" : label === "LastChance" ? "bg-red-500 dark:bg-red-700" : "bg-cyan-400 dark:bg-cyan-600"} text-black text-xs font-bold px-2 py-0.5 rounded-lg`}>{label === "LastChance" ? "No Longer Purchasable" : label}</div>
-                  ))}
-                  {emoji.store?.length > 0 && uniq(emoji.store.map(s => s.TimedPromotion ?? '').filter(Boolean)).map((promo, idx) => (
-                    <div key={idx} className="bg-rose-400 dark:bg-rose-700 text-black dark:text-white text-xs font-bold px-2 py-0.5 rounded-lg">{formatLabel(promo)}</div>
-                  ))}
-                </div>
-              )}
-              {viewMode === 'grid' && (
-                <div className="hidden max-w-full flex-wrap justify-center gap-1 pb-1 sm:flex">
-                  {emoji.bp && (
-                    <div className="bg-emerald-600 dark:bg-emerald-700 text-black dark:text-white text-[10px] font-bold px-2 py-0.5 rounded-lg">{`Battle Pass Season ${String(emoji.bp.ID).replace('BP', '').replace('-', ' ')}`}</div>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="text-gray-900 flex flex-wrap items-center justify-center gap-x-3 dark:text-white">
-              {storeData.map((sd, idx) => (
-                <div key={`costs-${idx}`} className="flex flex-wrap gap-2">
-                  {sd.Type === 'Bundle' ? (
-                    <>
-                      {(sd.Costs.mc > 0 || sd.Costs.mcSale > 0) && (
-                        <div>
-                          <img src={`${host}/game/getGfx/storeIcon/mc`} className="inline h-4 mr-1" onError={handleImgError} />
-                          {sd.Costs.mcSale > 0 ? (
-                            <>
-                              <span className="line-through text-red-600 dark:text-red-400">{sd.Costs.mc}</span>
-                              <span className="text-green-600 dark:text-green-400 font-bold ml-1">{sd.Costs.mcSale}</span>
-                            </>
-                          ) : (
-                            <span>{sd.Costs.mc}</span>
-                          )}
-                          <span className="text-xs text-gray-500 dark:text-gray-400"> (Bundle)</span>
-                        </div>
-                      )}
-                      {sd.Costs.gold > 0 && (
-                        <div>
-                          <img src={`${host}/game/getGfx/storeIcon/gold`} className="inline h-4 mr-1" onError={handleImgError} />
-                          <span>{sd.Costs.gold}</span>
-                          <span className="text-xs text-gray-500 dark:text-gray-400"> (Bundle)</span>
-                        </div>
-                      )}
-                      {sd.Costs.glory > 0 && (
-                        <div>
-                          <img src={`${host}/game/getGfx/storeIcon/glory`} className="inline h-4 mr-1" onError={handleImgError} />
-                          <span>{sd.Costs.glory}</span>
-                          <span className="text-xs text-gray-500 dark:text-gray-400"> (Bundle)</span>
-                        </div>
-                      )}
-                      {Object.entries(sd.Costs.special).map(([currencyType, cost], sIdx) => cost > 0 && (
-                        <div key={`special-${sIdx}`}>
-                          <img src={`${host}/game/getGfx/UI_Currencies/a_Currency_${currencyType}`} className="inline h-4 mr-1" onError={handleImgError} />
-                          <span>{cost}</span>
-                          <span className="text-xs text-gray-500 dark:text-gray-400"> (Bundle)</span>
-                        </div>
-                      ))}
-                    </>
-                  ) : (
-                    <>
-                      {sd.Costs.mc > 0 && (
-                        <div>
-                          <img src={`${host}/game/getGfx/storeIcon/mc`} className="inline h-4 mr-1" onError={handleImgError} />
-                          <span>{sd.Costs.mc}</span>
-                        </div>
-                      )}
-                      {sd.Costs.gold > 0 && (
-                        <div>
-                          <img src={`${host}/game/getGfx/storeIcon/gold`} className="inline h-4 mr-1" onError={handleImgError} />
-                          <span>{sd.Costs.gold}</span>
-                        </div>
-                      )}
-                      {sd.Costs.glory > 0 && (
-                        <div>
-                          <img src={`${host}/game/getGfx/storeIcon/glory`} className="inline h-4 mr-1" onError={handleImgError} />
-                          <span>{sd.Costs.glory}</span>
-                        </div>
-                      )}
-                      {Object.entries(sd.Costs.special).map(([currencyType, cost], sIdx) => cost > 0 && (
-                        <div key={`special-${sIdx}`}>
-                          <img src={`${host}/game/getGfx/UI_Currencies/a_Currency_${currencyType}`} className="inline h-4 mr-1" onError={handleImgError} />
-                          <span>{cost}</span>
-                        </div>
-                      ))}
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div></div>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen bg-gray-100 dark:bg-slate-900" style={{ fontFamily: langs.font || 'BHLatinBold' }}>
-      <div ref={topRef} className="flex-1 p-3 lg:p-4 bg-gray-100 dark:bg-slate-900 w-full h-full">
-        <div ref={filterSectionRef} className="space-y-4 mb-4 rounded-xl bg-white/70 dark:bg-slate-800/70 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
-          <button onClick={() => setFiltersOpen((open) => !open)} className="flex w-full items-center justify-between rounded-lg bg-gray-100 dark:bg-slate-700 px-3 py-2 text-left text-sm font-bold text-gray-900 dark:text-white">
-            <span>Filters</span>
-            <span className="text-xs text-gray-500 dark:text-gray-300">{filtersOpen ? 'Hide' : 'Show'}</span>
-          </button>
-          {filtersOpen && (<>
-          <div className="flex flex-wrap gap-2 items-center overflow-x-auto app-scrollbar pt-2">
-            {categories
-              .filter(cat => optionCounts.Category[cat] > 0)
-              .map(cat => {
-                const firstEmoji = getFirstEmojiForCategory(data, cat);
-                if (!firstEmoji) return null;
-                const selected = filterCategory.includes(cat);
-                return (
-                  <button
-                    key={cat}
-                    type="button"
-                    onClick={() => handleFilterChange(setFilterCategory, selected ? filterCategory.filter(c => c !== cat) : [...filterCategory, cat])}
-                    title={cat}
-                    className={`relative flex h-14 w-14 items-center justify-center rounded-xl border bg-gray-100 p-1 transition dark:bg-slate-700 ${selected ? 'border-blue-500 ring-2 ring-blue-500' : 'border-gray-300 opacity-55 hover:opacity-100 dark:border-slate-600'}`}
-                  >
-                    <ImageWithLoader
-                      src={`${host}/game/animEmoji/${firstEmoji.emojiData?.EmojiID}`}
-                      className="h-full w-full bg-transparent"
-                      imgClassName="max-h-full max-w-full object-contain"
-                      small
-                      onError={handleImgError}
-                    />
-                    <span className="absolute -right-1 -top-1 rounded-full bg-blue-500 px-1 text-[10px] font-bold leading-4 text-white">{optionCounts.Category[cat] || 0}</span>
-                  </button>
-                );
-              })}
-          </div>
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              {Object.values(optionCounts.Cohort).some(count => count > 0) && (
-                <select
-                  value={filterCohort}
-                  onChange={e => handleFilterChange(setFilterCohort, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
+    <div className="flex flex-col lg:flex-row" style={{ fontFamily: langs.font || 'BHLatinBold' }}>
+      <div ref={topRef} className="w-full min-w-0 flex-1">
+        <FilterPanel
+          search={searchQuery}
+          onSearch={(value) => handleFilterChange(setSearchQuery, value)}
+          searchPlaceholder="Search Emojis"
+          sort={sortType}
+          onSort={setSortType}
+          sortOptions={EMOJI_SORTS}
+          shown={filtered.length}
+          total={data.length}
+          noun="emojis"
+          tools={<ListTools filename="brawlhalla-emojis" rows={filtered} columns={exportColumns} />}
+          activeCount={countFilters([filterCategory, filterCohort, filterPromo, filterStoreID, storeOnly, filterStoreLabel, filterPromoType, filterBPSeason, filterEntitlement, filterHow, filterPatch, filterBundle])}
+          onReset={resetFilters}
+          chips={categories.some(cat => optionCounts.Category[cat] > 0) && categories
+            .filter(cat => optionCounts.Category[cat] > 0)
+            .map(cat => {
+              const firstEmoji = getFirstEmojiForCategory(data, cat);
+              if (!firstEmoji) return null;
+              const selected = filterCategory.includes(cat);
+              return (
+                <IconChip
+                  key={cat}
+                  selected={selected}
+                  onClick={() => handleFilterChange(setFilterCategory, selected ? filterCategory.filter(c => c !== cat) : [...filterCategory, cat])}
+                  title={cat}
+                  count={optionCounts.Category[cat] || 0}
                 >
-                  <option value="">Cohorts</option>
-                  {cohorts.filter(c => optionCounts.Cohort[c] > 0).map(c => (
-                    <option key={c} value={c}>{formatLabel(c)} ({optionCounts.Cohort[c]})</option>
-                  ))}
-                </select>
-              )}
-              {Object.values(optionCounts.TimedPromotion).some(count => count > 0) && (
-                <select
-                  value={filterPromo}
-                  onChange={e => handleFilterChange(setFilterPromo, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
-                >
-                  <option value="">Promotions</option>
-                  {promotions.filter(p => optionCounts.TimedPromotion[p] > 0).map(p => (
-                    <option key={p} value={p}>{formatLabel(p)} ({optionCounts.TimedPromotion[p]})</option>
-                  ))}
-                </select>
-              )}
-              {Object.values(optionCounts.StoreLabel).some(count => count > 0) && (
-                <select
-                  value={filterStoreLabel}
-                  onChange={e => handleFilterChange(setFilterStoreLabel, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
-                >
-                  <option value="">Store Label</option>
-                  {storeLabels.filter(n => optionCounts.StoreLabel[n] > 0).map(n => (
-                    <option key={n} value={n}>{n} ({optionCounts.StoreLabel[n]})</option>
-                  ))}
-                </select>
-              )}
-              {Object.values(optionCounts.PromoType).some(count => count > 0) && (
-                <select
-                  value={filterPromoType}
-                  onChange={e => handleFilterChange(setFilterPromoType, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
-                >
-                  <option value="">Promo Codes</option>
-                  {promoTypes.filter(n => optionCounts.PromoType[n] > 0).map(n => (
-                    <option key={n} value={n}>{n} ({optionCounts.PromoType[n]})</option>
-                  ))}
-                </select>
-              )}
-              {(optionCounts.AllBP > 0 || Object.values(optionCounts.BPSeason).some(count => count > 0)) && (
-                <select
-                  value={filterBPSeason}
-                  onChange={e => handleFilterChange(setFilterBPSeason, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
-                >
-                  <option value="">Battle Pass</option>
-                  {optionCounts.AllBP > 0 && <option value="AllBP">All Battle Pass Emojis ({optionCounts.AllBP})</option>}
-                  {bpSeasons.filter(season => optionCounts.BPSeason[season] > 0).map(season => (
-                    <option key={season} value={season}>{String(season).replace('BP', 'Season ')} ({optionCounts.BPSeason[season]})</option>
-                  ))}
-                </select>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="inline-flex items-center bg-gray-100 dark:bg-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
-                <input type="checkbox" checked={storeOnly} onChange={() => handleFilterChange(setStoreOnly, !storeOnly)} className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer" />
-                Store Emojis Only ({optionCounts.StoreOnly || 0})
-              </label>
-              <label className="inline-flex items-center bg-gray-100 dark:bg-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
-                <input type="checkbox" checked={filterEntitlement} onChange={() => handleFilterChange(setFilterEntitlement, !filterEntitlement)} className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer" />
-                DLC Emojis ({optionCounts.DLC || 0})
-              </label>
-              <label className="inline-flex items-center bg-gray-100 dark:bg-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
-                <input type="checkbox" checked={!!filterBundle} onChange={() => handleFilterChange(setFilterBundle, !filterBundle)} className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer" />
-                Bundles Only ({optionCounts.Bundle || 0})
-              </label>
-              {patchGroups.length > 0 && (
-                <PatchFilterSelect
-                  value={filterPatch}
-                  onChange={(value) => handleFilterChange(setFilterPatch, value)}
-                  groups={patchGroups}
-                  counts={patchCounts}
-                />
-              )}
-
-              <button onClick={resetFilters} aria-label="Reset all filters" className="cursor-pointer flex items-center gap-2 text-sm bg-red-500 dark:bg-red-600 hover:bg-red-600 dark:hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                Reset Filters
-              </button>
-            </div>
-          </div>
-          </>)}
-
-          <div className="lg:flex lg:flex-col gap-4">
-            <div className="order-first flex justify-between items-center w-full sm:w-auto py-2 gap-4">
-            <div className="text-sm font-bold text-blue-600 dark:text-blue-400 sm:text-lg">
-              Showing {filtered.length} Emoji{filtered.length !== 1 ? 's' : ''}
-            </div>
-            </div>
-            <div className="relative">
-              <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => handleFilterChange(setSearchQuery, e.target.value)}
-                placeholder="Search Emojis"
-                className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white text-sm font-semibold placeholder:font-semibold rounded-lg pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
-              />
-            </div>
-          </div>
-          <div className="relative">
-            <select
-              value={sortType}
-              onChange={e => setSortType(e.target.value)}
-              className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white text-sm font-semibold w-full sm:min-w-[200px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none"
-            >
-              <option value="ArrayIndexDesc">Default Sorting (Desc)</option>
-              <option value="ArrayIndexAsc">Default Sorting (Asc)</option>
-              <option value="EmojiIDDesc">Emoji ID (Desc)</option>
-              <option value="EmojiIDAsc">Emoji ID (Asc)</option>
-              <option value="StoreIDDesc">Store ID (Desc)</option>
-              <option value="StoreIDAsc">Store ID (Asc)</option>
-              <option value="AlphaAsc">Alphabetical (A-Z)</option>
-              <option value="AlphaDesc">Alphabetical (Z-A)</option>
-              <option value="CostDesc">Mammoth Cost (Desc)</option>
-              <option value="CostAsc">Mammoth Cost (Asc)</option>
-            </select>
-            <svg className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-          </div>
-        </div>
+                  <ImageWithLoader src={`${host}/game/animEmoji/${firstEmoji.emojiData?.EmojiID}`} className="h-full w-full bg-transparent" imgClassName="max-h-full max-w-full object-contain" small onError={handleImgError} />
+                </IconChip>
+              );
+            })}
+          selects={<>
+            {Object.values(optionCounts.How).some(count => count > 0) && (
+              <FilterSelect label="How to get" value={filterHow} onChange={(value) => handleFilterChange(setFilterHow, value)}>
+                {sortSourceFilterValues(Object.keys(optionCounts.How)).filter(n => optionCounts.How[n] > 0).map(n => <FilterOption key={n} value={n} count={optionCounts.How[n]} />)}
+              </FilterSelect>
+            )}
+            {(optionCounts.AllBP > 0 || Object.values(optionCounts.BPSeason).some(count => count > 0)) && (
+              <FilterSelect label="Battle Pass" value={filterBPSeason} onChange={(value) => handleFilterChange(setFilterBPSeason, value)}>
+                {optionCounts.AllBP > 0 && <FilterOption value="AllBP" label="Any season" count={optionCounts.AllBP} />}
+                {bpSeasons.filter(season => optionCounts.BPSeason[season] > 0).map(season => <FilterOption key={season} value={season} label={`Season ${String(season).replace(/^BP/, '')}`} count={optionCounts.BPSeason[season]} />)}
+              </FilterSelect>
+            )}
+            {Object.values(optionCounts.TimedPromotion).some(count => count > 0) && (
+              <FilterSelect label="Promotion" value={filterPromo} onChange={(value) => handleFilterChange(setFilterPromo, value)}>
+                {promotions.filter(p => optionCounts.TimedPromotion[p] > 0).map(p => <FilterOption key={p} value={p} label={formatLabel(p)} count={optionCounts.TimedPromotion[p]} />)}
+              </FilterSelect>
+            )}
+            {Object.values(optionCounts.StoreLabel).some(count => count > 0) && (
+              <FilterSelect label="Store Label" value={filterStoreLabel} onChange={(value) => handleFilterChange(setFilterStoreLabel, value)}>
+                {storeLabels.filter(n => optionCounts.StoreLabel[n] > 0).map(n => <FilterOption key={n} value={n} count={optionCounts.StoreLabel[n]} />)}
+              </FilterSelect>
+            )}
+            {Object.values(optionCounts.PromoType).some(count => count > 0) && (
+              <FilterSelect label="Promo code" value={filterPromoType} onChange={(value) => handleFilterChange(setFilterPromoType, value)}>
+                {promoTypes.filter(n => optionCounts.PromoType[n] > 0).map(n => <FilterOption key={n} value={n} count={optionCounts.PromoType[n]} />)}
+              </FilterSelect>
+            )}
+            {patchGroups.length > 0 && (
+              <FilterSelect label="Patch" value={filterPatch} onChange={(value) => handleFilterChange(setFilterPatch, value)}>
+                <PatchOptions groups={patchGroups} counts={patchCounts} />
+              </FilterSelect>
+            )}
+            {(dataFull || filterCohort) && Object.values(optionCounts.Cohort).some(count => count > 0) && (
+              <FilterSelect label="Store cohort" value={filterCohort} onChange={(value) => handleFilterChange(setFilterCohort, value)}>
+                {cohorts.filter(c => optionCounts.Cohort[c] > 0).map(c => <FilterOption key={c} value={c} label={formatLabel(c)} count={optionCounts.Cohort[c]} />)}
+              </FilterSelect>
+            )}
+          </>}
+          toggles={<>
+            <FilterToggle label="In the store" count={optionCounts.StoreOnly || 0} checked={storeOnly} onChange={(value) => handleFilterChange(setStoreOnly, value)} />
+            <FilterToggle label="DLC" count={optionCounts.DLC || 0} checked={filterEntitlement} onChange={(value) => handleFilterChange(setFilterEntitlement, value)} />
+            <FilterToggle label="In bundles" count={optionCounts.Bundle || 0} checked={!!filterBundle} onChange={(value) => handleFilterChange(setFilterBundle, value)} />
+          </>}
+        />
         <VirtualCardGrid
           items={filtered}
-          rowHeight={305}
-          rowHeightMobile={260}
-          maxColumns={5}
-          className="h-[calc(100dvh-9rem)] min-h-[22rem] app-scrollbar"
+          empty={<NoMatches noun="emojis" onReset={resetFilters} />}
+          minCard={DENSE_CARD}
           getKey={(emoji, index) => emoji?.emojiData?.EmojiID || index}
-          renderItem={(emoji, index) => <Row key={emoji?.emojiData?.EmojiID || index} index={index} data={filtered} />}
+          renderItem={(emoji, index) => Row({ index, data: filtered })}
         />
       </div>
-      <div ref={detailPanelRef} className={`fixed inset-0 bg-black/70 z-50 ${selectedEmoji ? 'flex items-stretch justify-center p-0 sm:items-center sm:p-4' : 'hidden'}`} onClick={() => setSelectedEmoji(null)}> 
-        <div className="relative flex h-dvh max-h-dvh w-full max-w-[min(96vw,100rem)] flex-col gap-3 overflow-y-auto app-scrollbar rounded-none border border-gray-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:h-auto sm:max-h-[92vh] sm:rounded-xl sm:p-3 lg:gap-4 lg:p-4" onClick={(event) => event.stopPropagation()}>
+      <div className={`fixed inset-0 bg-black/70 z-[110] ${selectedEmoji ? 'flex items-stretch justify-center p-0 sm:items-center sm:p-3' : 'hidden'}`} onClick={() => setSelectedEmoji(null)}> 
+        <div className="relative flex h-dvh max-h-dvh w-full max-w-[min(96vw,100rem)] flex-col gap-3 overflow-y-auto overscroll-contain app-scrollbar rounded-none border p-2 shadow-2xl border-slate-700 bg-slate-950 sm:h-auto sm:max-h-[92vh] sm:rounded-2xl sm:p-3 lg:p-3" onClick={(event) => event.stopPropagation()}>
           <button
             type="button"
             aria-label="Close details"
-            className="absolute right-3 top-3 z-10 rounded-lg bg-gray-200 p-2 text-gray-900 hover:bg-gray-300 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700"
+            className="absolute right-3 top-3 z-10 rounded-lg p-2 bg-slate-900 text-white hover:bg-slate-800"
             onClick={() => setSelectedEmoji(null)}
           >
             <XMarkIcon className="h-5 w-5" />
           </button>
-          <div className="flex items-center justify-end pr-11">
+          <div className="flex flex-wrap items-center justify-between gap-2 pr-11">
+            <PopupViewBar />
             {isMobile && selectedEmoji && (
               <div className="flex items-center gap-2 mb-2">
-                <button onClick={handleCopyLink} className="cursor-pointer bg-blue-500 dark:bg-blue-600 text-white font-bold py-1 px-3 rounded-lg">Copy Link</button>
-                {copyFeedback && <span className="text-sm text-gray-900 dark:text-gray-300">{copyFeedback}</span>}
+                <button onClick={handleCopyLink} className="cursor-pointer bg-blue-600 text-white font-bold py-1 px-3 rounded-lg">Copy Link</button>
+                {copyFeedback && <span className="text-sm text-slate-300">{copyFeedback}</span>}
               </div>
             )}
           </div>
           {selectedEmoji ? (
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start">
-              <div className="xl:col-span-2 flex flex-col gap-2 pb-3 relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2 xl:items-start">
+              <div className="xl:col-span-2 flex flex-col gap-2 pb-3 relative rounded-2xl bg-slate-900/80 border border-slate-700 p-3 shadow-sm">
                 <div className="flex items-center gap-2">
-                  <img
+                  <img loading="lazy" decoding="async"
                     src={`${host}/game/animEmoji/${selectedEmoji.emojiData?.EmojiID}`}
                     className="h-16 w-16 object-contain"
                     onError={handleImgError}
                     alt=""
                   />
-                  <span className="text-xl font-bold text-gray-900 dark:text-white sm:text-2xl">
-                    {langs.content?.[getDisplayNameKey(selectedEmoji)] || selectedEmoji.emojiData?.EmojiName}
+                  <span className="text-xl font-bold text-white sm:text-2xl">
+                    {emojiTitle(selectedEmoji)}
                   </span>
                 </div>
                 {langs.content?.[getDescriptionKey(selectedEmoji)] && (
-                  <div className="text-gray-600 dark:text-gray-300 text-sm">
+                  <div className="max-w-prose text-slate-300 text-sm">
                     {langs.content[getDescriptionKey(selectedEmoji)]}
                   </div>
                 )}
-                {Array.isArray(selectedEmoji.store) && selectedEmoji.store.flatMap(s => splitTags(s.SearchTags)).filter(Boolean).length > 0 && (
+                {dataFull && Array.isArray(selectedEmoji.store) && selectedEmoji.store.flatMap(s => splitTags(s.SearchTags)).filter(Boolean).length > 0 && (
                   <div className="flex flex-col">
-                    <span className="text-gray-900 dark:text-white">Store Search Tags</span>
+                    <span className="text-white">Store Search Tags</span>
                     <div className="mt-1 flex max-w-full flex-wrap gap-2 pb-1">
                       {[...new Set(selectedEmoji.store.flatMap(s => splitTags(s.SearchTags)).filter(Boolean))].map((tag, idx) => (
-                        <span key={idx} className="bg-gray-200 dark:bg-slate-700 rounded-full px-3 py-1 text-xs font-bold text-gray-900 dark:text-white">{tag}</span>
+                        <span key={idx} className="bg-slate-800 rounded-full px-3 py-1 text-xs font-bold text-white">{tag}</span>
                       ))}
                     </div>
                   </div>
                 )}
                 <div className="flex max-w-full flex-wrap gap-2 pb-1">
-                  {selectedEmoji.promo && (
-                    <span className="text-sm px-3 py-1 rounded-lg bg-purple-500 dark:bg-purple-700 text-gray-900 dark:text-white">Promo Type: {selectedEmoji.promo.Type}</span>
+                  {selectedEmoji.promo && !hasSources(selectedEmoji) && (
+                    <span className="text-sm px-3 py-1 rounded-lg border border-purple-300/40 bg-purple-500/20 text-purple-100">Promo Type: {selectedEmoji.promo.Type}</span>
                   )}
-                  {selectedEmoji.bp && (
-                    <span className="text-sm px-3 py-1 rounded-lg bg-emerald-500 dark:bg-emerald-700 text-gray-900 dark:text-white">
+                  {selectedEmoji.bp && !hasSources(selectedEmoji) && (
+                    <span className="text-sm px-3 py-1 rounded-lg border border-emerald-300/40 bg-emerald-500/20 text-emerald-100">
                       Battle Pass Season {String(selectedEmoji.bp.ID).replace('BP', '').replace('-', ' ')}{selectedEmoji.bp.Tier ? ` (Tier ${selectedEmoji.bp.Tier})` : ''}
                     </span>
                   )}
-                  {selectedEmoji.entitlement && (
-                    <span className="text-sm px-3 py-1 rounded-lg bg-amber-500 dark:bg-amber-700 text-gray-900 dark:text-white">
+                  {selectedEmoji.entitlement && !hasSources(selectedEmoji) && (
+                    <span className="text-sm px-3 py-1 rounded-lg border border-amber-300/40 bg-amber-500/20 text-amber-100">
                       {(langs.content?.[selectedEmoji.entitlement.DisplayNameKey]?.replace('!', '') || selectedEmoji.entitlement.EntitlementName) + ' DLC'}
                     </span>
                   )}
                   {selectedEmoji.store?.length > 0 && [...new Set(selectedEmoji.store.map(sd => sd.Label).filter(Boolean))].map((label, idx) => (
-                    <span key={idx} className={`${label === "New" ? "bg-yellow-300 dark:bg-yellow-500" : label === "LastChance" ? "bg-red-500 dark:bg-red-700" : "bg-cyan-400 dark:bg-cyan-600"} text-black text-sm px-3 py-1 rounded-lg`}>
-                      {label === 'LastChance' ? 'No Longer Purchasable' : label}
+                    <span key={idx} className={`${label === "New" ? "border-yellow-300/40 bg-yellow-500/20 text-yellow-100" : label === "LastChance" ? "border-red-300/40 bg-red-500/20 text-red-100" : "border-cyan-300/40 bg-cyan-500/20 text-cyan-100"} border text-sm px-3 py-1 rounded-lg`}>
+                      {label === 'LastChance' ? 'Last Chance' : label}
                     </span>
                   ))}
                   {selectedEmoji.store?.length > 0 && [...new Set(selectedEmoji.store.map(s => s.TimedPromotion ?? '').filter(Boolean))].map((promo, idx) => (
-                    <span key={idx} className="text-sm px-3 py-1 rounded-lg bg-rose-500 dark:bg-rose-700 text-gray-900 dark:text-white">{formatLabel(promo)}</span>
+                    <span key={idx} className="text-sm px-3 py-1 rounded-lg border border-rose-300/40 bg-rose-500/20 text-rose-100">{formatLabel(promo)}</span>
                   ))}
                 </div>
               </div>
               <div className="contents">
                 <div className="xl:col-start-2 xl:row-start-2 w-full flex flex-col gap-2">
-                  <StoreDataSection rows={selectedEmoji.store} langs={langs} />
+                  <StoreDataSection rows={selectedEmoji.store} langs={langs} sources={selectedEmoji.sources} />
                   <FieldGrid data={selectedEmoji.emojiData} langs={langs} title="Emoji Data" />
                   <FieldGrid data={selectedEmoji.entitlement} langs={langs} title="Entitlement Data" />
-                  {false && <div className="relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
-                    <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Emoji Data</span>
+                  {false && <div className="relative rounded-2xl bg-slate-900/80 border border-slate-700 p-3 shadow-sm">
+                    <span className="text-sm font-bold uppercase tracking-wide text-blue-200">Emoji Data</span>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                      <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                      <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                         <span className="text-[11px] uppercase tracking-wide text-slate-400">Emoji Name</span>
                         <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.emojiData?.EmojiName}</span>
                       </div>
-                      <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                      <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                         <span className="text-[11px] uppercase tracking-wide text-slate-400">Emoji ID</span>
                         <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.emojiData?.EmojiID}</span>
                       </div>
                       {selectedEmoji.emojiData?.Category && (
-                        <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                        <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                           <span className="text-[11px] uppercase tracking-wide text-slate-400">Category</span>
                           <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.emojiData?.Category}</span>
                         </div>
                       )}
                       {selectedEmoji.emojiData?.DefaultUnlocked && (
-                        <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                        <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                           <span className="text-[11px] uppercase tracking-wide text-slate-400">Default Unlocked</span>
                           <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{String(selectedEmoji.emojiData?.DefaultUnlocked)}</span>
                         </div>
@@ -851,23 +715,23 @@ export function EmojiStoreView({ emojis, langs }) {
                     </div>
                   </div>}
                   {false && getProcessedStoreData(selectedEmoji).map((sd, idx) => (
-                    <div key={`store-${idx}`} className="relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
-                      <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Store Data{sd.Type === 'Bundle' ? ' (Bundle)' : ''}</span>
+                    <div key={`store-${idx}`} className="relative rounded-2xl bg-slate-900/80 border border-slate-700 p-3 shadow-sm">
+                      <span className="text-sm font-bold uppercase tracking-wide text-blue-200">Store data{sd.Type === 'Bundle' ? ' (Bundle)' : ''}</span>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                        <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                        <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                           <span className="text-[11px] uppercase tracking-wide text-slate-400">Store Name</span>
                           <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.StoreName}</span>
                         </div>
-                        <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                        <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                           <span className="text-[11px] uppercase tracking-wide text-slate-400">Store ID</span>
                           <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.StoreID}</span>
                         </div>
                         {sd.ItemList && sd.ItemList.length > 0 ? (
-                          <div className='flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3'>
-                            <span className="text-[11px] uppercase tracking-wide text-slate-400">Bundle Cost</span>
+                          <div className='flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2'>
+                            <span className="text-[11px] uppercase tracking-wide text-slate-400">Bundle price</span>
                             <div className="flex items-center gap-1">
-                              <img src={`${host}/game/getGfx/storeIcon/mc`} className="h-5 inline" onError={handleImgError} />
-                              <span className="line-through text-red-600 dark:text-red-400">{
+                              <img loading="lazy" decoding="async" src={`${host}/game/getGfx/storeIcon/mc`} className="h-5 inline" onError={handleImgError} />
+                              <span className="line-through text-red-400">{
                                 sd.ItemList.map((item, itemIdx) => {
                                   if (item.IdolCost != 0 && item.IdolCost != '') return item.IdolCost;
                                   if (item.IdolSaleCost != 0 && item.IdolSaleCost != '') return item.IdolSaleCost;
@@ -878,7 +742,7 @@ export function EmojiStoreView({ emojis, langs }) {
                                   if (item.SpecialCurrencyCost != 0 && item.SpecialCurrencyCost != '') return item.SpecialCurrencyCost;
                                 }).reduce((total, num) => parseFloat(total) + parseFloat(num), 0)}
                               </span>
-                              <span className="text-green-600 dark:text-green-400 font-bold">{Math.floor((sd.ItemList.map((item, itemIdx) => {
+                              <span className="text-green-400 font-bold">{Math.floor((sd.ItemList.map((item, itemIdx) => {
                                 if (item.IdolCost != 0 && item.IdolCost != '') return item.IdolCost;
                                 if (item.IdolSaleCost != 0 && item.IdolSaleCost != '') return item.IdolSaleCost;
                                 if (item.GoldCost != 0 && item.GoldCost != '') return item.GoldCost;
@@ -892,63 +756,63 @@ export function EmojiStoreView({ emojis, langs }) {
                         ) : (
                           <div className='col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3'>
                             {(sd.IdolCost != 0 && sd.IdolCost != '') && (
-                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
-                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Mammoth Coin Cost</span>
+                              <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
+                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Mammoth Coin price</span>
                                 <div>
-                                  <img src={`${host}/game/getGfx/storeIcon/mc`} className="h-5 pr-1 inline" onError={handleImgError} />
+                                  <img loading="lazy" decoding="async" src={`${host}/game/getGfx/storeIcon/mc`} className="h-5 pr-1 inline" onError={handleImgError} />
                                   <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.IdolCost}</span>
                                 </div>
                               </div>
                             )}
                             {sd.IdolSaleCost && (
-                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
-                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Mammoth Sale Price</span>
+                              <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
+                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Mammoth Coin sale price</span>
                                 <div className="flex items-center gap-1">
-                                  <img src={`${host}/game/getGfx/storeIcon/mc`} className="h-5 inline" onError={handleImgError} />
-                                  <span className="line-through text-red-600 dark:text-red-400">{sd.IdolCost}</span>
-                                  <span className="text-green-600 dark:text-green-400 font-bold">{sd.IdolSaleCost}</span>
+                                  <img loading="lazy" decoding="async" src={`${host}/game/getGfx/storeIcon/mc`} className="h-5 inline" onError={handleImgError} />
+                                  <span className="line-through text-red-400">{sd.IdolCost}</span>
+                                  <span className="text-green-400 font-bold">{sd.IdolSaleCost}</span>
                                 </div>
                               </div>
                             )}
                             {sd.GoldCost && (
-                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
-                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Gold Cost</span>
+                              <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
+                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Gold price</span>
                                 <div>
-                                  <img src={`${host}/game/getGfx/storeIcon/gold`} className="h-5 pr-1 inline" onError={handleImgError} />
+                                  <img loading="lazy" decoding="async" src={`${host}/game/getGfx/storeIcon/gold`} className="h-5 pr-1 inline" onError={handleImgError} />
                                   <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.GoldCost}</span>
                                 </div>
                               </div>
                             )}
                             {sd.GoldSaleCost && (
-                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                              <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                                 <span className="text-[11px] uppercase tracking-wide text-slate-400">Gold Sale Price</span>
                                 <div className="flex items-center gap-1">
-                                  <img src={`${host}/game/getGfx/storeIcon/gold`} className="h-5 inline" onError={handleImgError} />
-                                  <span className="line-through text-red-600 dark:text-red-400">{sd.GoldCost}</span>
-                                  <span className="text-green-600 dark:text-green-400 font-bold">{sd.GoldSaleCost}</span>
+                                  <img loading="lazy" decoding="async" src={`${host}/game/getGfx/storeIcon/gold`} className="h-5 inline" onError={handleImgError} />
+                                  <span className="line-through text-red-400">{sd.GoldCost}</span>
+                                  <span className="text-green-400 font-bold">{sd.GoldSaleCost}</span>
                                 </div>
                               </div>
                             )}
                             {sd.GoldBundleDiscount && (
-                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                              <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                                 <span className="text-[11px] uppercase tracking-wide text-slate-400">Gold Bundle Discount</span>
                                 <div>
-                                  <img src={`${host}/game/getGfx/storeIcon/gold`} className="h-5 pr-1 inline" onError={handleImgError} />
+                                  <img loading="lazy" decoding="async" src={`${host}/game/getGfx/storeIcon/gold`} className="h-5 pr-1 inline" onError={handleImgError} />
                                   <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.GoldBundleDiscount}</span>
                                 </div>
                               </div>
                             )}
                             {sd.RankedPointsCost && (
-                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
-                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Glory Cost</span>
+                              <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
+                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Glory price</span>
                                 <div>
-                                  <img src={`${host}/game/getGfx/storeIcon/glory`} className="h-5 pr-1 inline" onError={handleImgError} />
+                                  <img loading="lazy" decoding="async" src={`${host}/game/getGfx/storeIcon/glory`} className="h-5 pr-1 inline" onError={handleImgError} />
                                   <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.RankedPointsCost}</span>
                                 </div>
                               </div>
                             )}
                             {sd.SpecialCurrencyType && sd.SpecialCurrencyCost && (
-                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                              <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                                 <span className="text-[11px] uppercase tracking-wide text-slate-400">{sd.SpecialCurrencyType} Cost</span>
                                 <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.SpecialCurrencyCost}</span>
                               </div>
@@ -956,25 +820,25 @@ export function EmojiStoreView({ emojis, langs }) {
                           </div>
                         )}
                         {sd.Cohort && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Cohort</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.Cohort}</span>
                           </div>
                         )}
                         {sd.Popularity && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Popularity</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.Popularity}</span>
                           </div>
                         )}
                         {sd.Label && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Label</span>
-                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.Label === 'LastChance' ? 'No Longer Purchasable' : sd.Label}</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.Label === 'LastChance' ? 'Last Chance' : sd.Label}</span>
                           </div>
                         )}
                         {sd.TimedPromotion && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Timed Promotion</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{formatLabel(sd.TimedPromotion)}</span>
                           </div>
@@ -983,87 +847,87 @@ export function EmojiStoreView({ emojis, langs }) {
                     </div>
                   ))}
                   {false && selectedEmoji.entitlement && (
-                    <div className='relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm'>
-                      <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Entitlement Data</span>
+                    <div className='relative rounded-2xl bg-slate-900/80 border border-slate-700 p-3 shadow-sm'>
+                      <span className="text-sm font-bold uppercase tracking-wide text-blue-200">Entitlement Data</span>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                        <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                        <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                           <span className="text-[11px] uppercase tracking-wide text-slate-400">Entitlement Name</span>
                           <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.EntitlementName}</span>
                         </div>
                         {selectedEmoji.entitlement.EntitlementID && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Entitlement ID</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.EntitlementID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.SteamAppID && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Steam App ID</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.SteamAppID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.SonyEntitlementID && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Sony Entitlement ID</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.SonyEntitlementID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.SonyProductID && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Sony Product ID</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.SonyProductID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.NintendoConsumableID && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Nintendo Consumable ID</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.NintendoConsumableID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.NintendoEntitlementID && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Nintendo Entitlement ID</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.NintendoEntitlementID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.XB1EntitlementID && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">XB1 Entitlement ID</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.XB1EntitlementID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.XB1ProductID && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">XB1 Product ID</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.XB1ProductID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.XB1StoreID && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">XB1 Store ID</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.XB1StoreID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.AppleEntitlementID && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Apple Entitlement ID</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.AppleEntitlementID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.AndroidEntitlementID && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Android Entitlement ID</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.AndroidEntitlementID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.UbiConnectID && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Ubi Connect ID</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.UbiConnectID}</span>
                           </div>
                         )}
                         {selectedEmoji.entitlement.UbiConnectPackageID && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Ubi Connect Package ID</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedEmoji.entitlement.UbiConnectPackageID}</span>
                           </div>
@@ -1072,10 +936,10 @@ export function EmojiStoreView({ emojis, langs }) {
                     </div>
                   )}
                 </div>
-                <div className="order-[-1] xl:order-none xl:col-start-1 xl:row-start-2 w-full flex flex-col gap-2 relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
-                  <span className="text-base text-gray-900 dark:text-white sm:text-lg">Image Data</span>
-                  <div className="mt-2 flex justify-center rounded-lg bg-slate-950/70 border border-slate-700 p-3">
-                    <img
+                <div className="xl:col-start-1 xl:row-start-2 w-full flex flex-col gap-2 relative rounded-2xl bg-slate-900/80 border border-slate-700 p-3 shadow-sm">
+                  <span className="text-base text-white sm:text-lg">Image Data</span>
+                  <div className="mt-2 flex justify-center rounded-xl bg-slate-950/60 border border-slate-700 p-2">
+                    <img loading="lazy" decoding="async"
                       src={`${host}/game/animEmoji/${selectedEmoji.emojiData?.EmojiID}`}
                       className="max-w-64 h-auto"
                       onError={handleImgError}
@@ -1084,11 +948,12 @@ export function EmojiStoreView({ emojis, langs }) {
                   </div>
                 </div>
               </div>
-              <RawDataDetails data={selectedEmoji} />
+              <RawDataDetails data={selectedEmoji} filename={`emojis-${selectedEmoji?.emojiData?.EmojiID || 'item'}`} />
             </div>
           ) : (
-            <div className="text-center text-gray-600 dark:text-gray-300 italic">Select an emoji to view details</div>
+            <div className="text-center text-slate-300 italic">Pick an emoji</div>
           )}
+          {selectedEmoji && <PopupFullDataFooter />}
         </div>
       </div>
     </div>

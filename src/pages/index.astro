@@ -1,27 +1,8 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import Card from '../components/Card.astro';
-import "../styles/global.css";
+import HomePage from '../components/home/HomePage.jsx';
 ---
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width" />
-  <link rel="icon" type="image/x-icon" href="/asuri.png" />
-  <meta name="generator" content={Astro.generator} />
-  <title>meow</title>
-</head>
-<body>
-  <Layout title='Home'>
-    <div class="px-2 sm:px-4 lg:px-6 py-4">
-      <ul class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        <Card body='View the latest and previewed Power Rankings, for officials and communities' title='Power Rankings' href='/pr'/>
-        <Card body='View eSports related data, such as a large player/tournament database, and eSports statistics from the best players in the world' title='eSports Database' href='/esports'/>
-        <Card body='View data related to the game, such as the Legends, animations, & patch history' title='Game Database' href='/game'/>
-      </ul>
-    </div>
-  </Layout>
-</body>
-</html>
+<Layout title="Brawlhalla Rankings, Results and Game Data" description="Brawlhalla Power Rankings, official and community tournament results, player histories, and game data: legends, patch notes, True Combos, maps and animations.">
+  <HomePage client:load />
+</Layout>

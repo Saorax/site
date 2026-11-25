@@ -1,8 +1,25 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import MapViewer from '../../components/game/maps.jsx';
+import { host } from '../../stuff';
+import { mapThumbUrl } from '../../components/ui/assets.js';
+import { cachedJson, toolText } from '../../data/head.js';
+const requested = Astro.url.searchParams.get('name') || '';
+const catalog = requested ? await cachedJson(`${host}/game/maps/catalog`, { ttl: 10 * 60 * 1000 }) : null;
+const current = Array.isArray(catalog?.maps) ? catalog.maps.find((entry) => entry.name === requested) ?? null : null;
+const retiredList = requested && catalog && !current ? await cachedJson(`${host}/game/maps/retired`, { ttl: 60 * 60 * 1000 }) : null;
+const retired = Array.isArray(retiredList?.maps) ? retiredList.maps.find((entry) => entry.name === requested) ?? null : null;
+const map = current || retired;
+const mapName = map?.label || map?.displayName || '';
+const pools = current ? [...new Set((current.levelSets ?? []).filter((set) => /^Ranked/i.test(set.name ?? '')).map((set) => set.displayName).filter(Boolean))] : [];
+const description = current
+  ? [`${mapName} layout, platforms, spawns and art from the game files`, pools.join(', ')].filter(Boolean).join(' · ')
+  : retired
+    ? `${mapName}, a retired map${retired.patch ? ` last in patch ${retired.patch}` : ''}. Layout, platforms, spawns and blast zones from the game files`
+    : toolText('/game/maps');
+const title = current ? `${mapName} · Brawlhalla map` : retired ? `${mapName} · retired Brawlhalla map` : 'Brawlhalla maps';
 ---
 
-<Layout title="Map Viewer">
+<Layout title={title} description={description} image={map?.thumbnail ? mapThumbUrl(map) : undefined} imageAlt={mapName || undefined}>
   <MapViewer client:load />
 </Layout>

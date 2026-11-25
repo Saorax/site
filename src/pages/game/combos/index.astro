@@ -1,8 +1,15 @@
 ---
 import Layout from "../../../layouts/Layout.astro";
 import ComboPage from "./comp/_index.jsx";
+import { LoadingState, PageHeader, PageShell } from "../../../components/ui/index.js";
+import { toolText } from "../../../data/head.js";
 ---
 
-<Layout title="True Combos">
-  <ComboPage client:only="react" />
+<Layout title="Brawlhalla True Combos" description={toolText("/game/combos")}>
+  <ComboPage client:only="react">
+    <PageShell slot="fallback">
+      <PageHeader title="True Combos" />
+      <LoadingState label="Loading combos…" />
+    </PageShell>
+  </ComboPage>
 </Layout>

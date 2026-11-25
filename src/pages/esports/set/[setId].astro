@@ -1,10 +1,18 @@
 ---
 import Layout from '../../../layouts/Layout.astro';
 import { SetPage } from '../../../components/esports/MatchPages.jsx';
-
+import { fetchPageHead } from '../../../data/head.js';
 const setId = Number.parseInt(Astro.params.setId ?? '', 10);
 if (!Number.isSafeInteger(setId) || setId <= 0) return Astro.redirect('/esports/tournaments', 302);
+const { head, missing } = await fetchPageHead('set', setId);
+if (missing) Astro.response.status = 404;
 ---
-<Layout title="Match · Brawlhalla Esports">
-  <SetPage client:load setId={setId} />
+<Layout
+  title={head?.title ?? (missing ? 'Match not found' : 'Brawlhalla Tournament Match')}
+  description={head?.description ?? 'Games, legends and maps from a Brawlhalla tournament match.'}
+  image={head?.image ?? undefined}
+  imageAlt={head?.name}
+  imageWide={head?.imageWide}
+>
+  <SetPage client:load setId={setId} heading={head?.name} />
 </Layout>

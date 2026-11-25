@@ -2,10 +2,12 @@ import { host } from '../../../stuff';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { XMarkIcon } from '@heroicons/react/20/solid';
 import { useMediaQuery } from 'react-responsive';
-import { AddedBadge, ImageWithLoader, RawDataDetails, getAddedPatch, getPatchFilterCounts, getPatchGroups, patchFilterMatches, PatchFilterSelect } from './comp/LoadingImage';
-import { VirtualCardGrid } from './comp/VirtualCardGrid';
+import { AddedBadge, ImageWithLoader, RawDataDetails, getAddedPatch, getPatchFilterCounts, getPatchGroups, patchFilterMatches, PatchOptions } from './comp/LoadingImage';
+import { ListTools, SourceLine, hasSources, sortSourceFilterValues, sourceFilterValues, useDataView } from '../../ui';
+import { DENSE_CARD, VirtualCardGrid } from './comp/VirtualCardGrid';
+import { FilterOption, FilterPanel, FilterSelect, FilterToggle, IconChip, NoMatches, countFilters } from './comp/FilterPanel';
 import { pageSlugForLabel, readBoolParam, writeBoolParam, writeStringParam } from './comp/urlQuery';
-import { FieldGrid, StoreDataSection } from './metadata';
+import { FieldGrid, PopupFullDataFooter, PopupViewBar, StoreDataSection, storeExportColumns } from './metadata';
 
 function uniq(a) { return [...new Set(a)]; }
 function uniqueValues(array, path) {
@@ -23,14 +25,20 @@ function uniqueValues(array, path) {
   });
   return [...new Set(out)];
 }
+const COLOR_SORTS = [
+  { value: 'OrderIDDesc', label: 'Game order, last first' },
+  { value: 'OrderIDAsc', label: 'Game order' },
+  { value: 'AlphaAsc', label: 'Name, A to Z' },
+  { value: 'AlphaDesc', label: 'Name, Z to A' },
+  { value: 'CostDesc', label: 'Mammoth Coins, high to low' },
+  { value: 'CostAsc', label: 'Mammoth Coins, low to high' },
+  { value: 'ColorSchemeIDDesc', label: 'Color ID, high to low' },
+  { value: 'ColorSchemeIDAsc', label: 'Color ID, low to high' },
+  { value: 'StoreIDDesc', label: 'Store ID, high to low' },
+  { value: 'StoreIDAsc', label: 'Store ID, low to high' },
+];
+
 function formatLabel(s) { return s ? String(s).replace(/([a-z])([A-Z])/g, '$1 $2') : ''; }
-const splitTags = (tags) => {
-  if (!tags) return [];
-  const r = []; let b = ''; let q = false;
-  for (let c of tags) { if (c === "'") q = !q; if (c === ',' && !q) { r.push(b.trim().replace(/^'+|'+$/g, '')); b = ''; } else b += c; }
-  if (b.length) r.push(b.trim().replace(/^'+|'+$/g, ''));
-  return r.filter(Boolean);
-};
 function normalizeStore(entity) {
   return Array.isArray(entity.store) ? entity.store : (entity.store ? [entity.store] : []);
 }
@@ -49,10 +57,8 @@ function getProcessedStoreData(entity) {
         if (sd.IdolSaleCost && sd.IdolSaleCost !== '0') c.mcSale = Number(sd.IdolSaleCost);
       } else {
         sd.ItemList.forEach(it => {
-          if (it.IdolCost && it.IdolCost !== '0') c.mc += Number(it.IdolCost);
-          if (it.IdolSaleCost && it.IdolSaleCost !== '0') c.mc += Number(it.IdolSaleCost);
-          if (it.GoldCost && it.GoldCost !== '0') c.gold += Number(it.GoldCost);
-          if (it.GoldSaleCost && it.GoldSaleCost !== '0') c.gold += Number(it.GoldSaleCost);
+          c.mc += Number(it.IdolCost) || Number(it.IdolSaleCost) || 0;
+          c.gold += Number(it.GoldCost) || Number(it.GoldSaleCost) || 0;
           if (it.RankedPointsCost && it.RankedPointsCost !== '0') c.glory += Number(it.RankedPointsCost);
           if (it.SpecialCurrencyCost && it.SpecialCurrencyCost !== '0' && it.SpecialCurrencyType) {
             c.special[it.SpecialCurrencyType] = (c.special[it.SpecialCurrencyType] || 0) + Number(it.SpecialCurrencyCost);
@@ -74,7 +80,7 @@ function getProcessedStoreData(entity) {
     return { ...sd, Costs: c };
   });
   processed.sort((a, b) => {
-    const sum = (c) => (c.mc || 0) + (c.mcSale || 0) + (c.gold || 0) + (c.goldSale || 0) + (c.glory || 0) + Object.values(c.special || {}).reduce((s, v) => s + v, 0);
+    const sum = (c) => (c.mc || c.mcSale || 0) + (c.gold || c.goldSale || 0) + (c.glory || 0) + Object.values(c.special || {}).reduce((s, v) => s + v, 0);
     return sum(a.Costs) - sum(b.Costs);
   });
   return processed;
@@ -83,7 +89,7 @@ function minCost(entity) {
   const s = getProcessedStoreData(entity);
   if (!s.length) return Number.MAX_SAFE_INTEGER;
   const c = s[0].Costs;
-  return (c.mc || 0) + (c.mcSale || 0) + (c.gold || 0) + (c.goldSale || 0) + (c.glory || 0) + Object.values(c.special || {}).reduce((x, y) => x + y, 0);
+  return (c.mc || c.mcSale || 0) + (c.gold || c.goldSale || 0) + (c.glory || 0) + Object.values(c.special || {}).reduce((x, y) => x + y, 0);
 }
 function useOptionCounts(items, filters, helpers) {
   return useMemo(() => {
@@ -95,6 +101,7 @@ function useOptionCounts(items, filters, helpers) {
       PromoType: {},
       BPSeason: {},
       Entitlement: {},
+      How: {},
       StoreOnly: 0,
       AllBP: 0,
       DLC: 0
@@ -128,7 +135,7 @@ function useOptionCounts(items, filters, helpers) {
         counts.AllBP += e.bp ? 1 : 0;
         counts.DLC += e.entitlement ? 1 : 0;
       }
-      ['Cohort', 'TimedPromotion', 'StoreID', 'StoreLabel', 'PromoType', 'BPSeason', 'Entitlement'].forEach(k => {
+      ['Cohort', 'TimedPromotion', 'StoreID', 'StoreLabel', 'PromoType', 'BPSeason', 'Entitlement', 'How'].forEach(k => {
         if (applyFilters(e, k)) {
           const hv = helpers[k](e);
           const values = Array.isArray(hv) ? hv.filter(Boolean) : (hv ? [hv] : []);
@@ -162,6 +169,7 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
     ]));
   }, [data, previewSkins]);
   const [selectedColor, setSelectedColor] = useState(null);
+  const dataFull = useDataView().full;
   const [sortType, setSortType] = useState('OrderIDDesc');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCohort, setFilterCohort] = useState('');
@@ -172,21 +180,15 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
   const [filterPromoType, setFilterPromoType] = useState('');
   const [filterBPSeason, setFilterBPSeason] = useState('');
   const [filterEntitlement, setFilterEntitlement] = useState(false);
-  const [viewMode] = useState('grid');
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filterHow, setFilterHow] = useState('');
   const [filterPatch, setFilterPatch] = useState('');
   const patchGroups = useMemo(() => getPatchGroups(data), [data]);
   const patchCounts = useMemo(() => getPatchFilterCounts(data), [data]);
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const filterSectionRef = useRef(null);
-  const detailPanelRef = useRef(null);
   const isMobile = useMediaQuery({ query: '(max-width: 1023px)' });
-  const isInitialMount = useRef(true);
   const filtersChanged = useRef(false);
   const urlHydrated = useRef(false);
   const urlSyncing = useRef(false);
-  const [listHeight, setListHeight] = useState(400);
-  const [filterHeight, setFilterHeight] = useState(0);
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchQuery), 250);
     return () => clearTimeout(t);
@@ -195,6 +197,7 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
     const params = new URLSearchParams(window.location.search);
     urlSyncing.current = true;
     setSearchQuery(params.get('search') || '');
+    setDebouncedSearch(params.get('search') || '');
     setSortType(params.get('sort') || 'OrderIDDesc');
     setFilterCohort(params.get('cohort') || '');
     setFilterPromo(params.get('promo') || '');
@@ -204,36 +207,13 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
     setFilterPromoType(params.get('promoType') || '');
     setFilterBPSeason(params.get('battlePass') || '');
     setFilterEntitlement(readBoolParam(params, 'entitlement'));
+    setFilterHow(params.get('how') || '');
     setFilterPatch(params.get('patch') || '');
     urlHydrated.current = true;
     window.setTimeout(() => {
       urlSyncing.current = false;
     }, 0);
   }, []);
-  useEffect(() => {
-    if (filterSectionRef.current) setFilterHeight(filterSectionRef.current.offsetHeight);
-  }, [
-    filterCohort, filterPromo, filterStoreID, storeOnly, filterStoreLabel, filterPromoType,
-    filterBPSeason, filterEntitlement, filterPatch, debouncedSearch, sortType, viewMode, isMobile
-  ]);
-  useEffect(() => {
-    if (isInitialMount.current) isInitialMount.current = false;
-    else if (isMobile) { setSelectedColor(null); filtersChanged.current = true; }
-  }, [
-    filterCohort, filterPromo, filterStoreID, storeOnly, filterStoreLabel, filterPromoType,
-    filterBPSeason, filterEntitlement, filterPatch, debouncedSearch, sortType, isMobile
-  ]);
-  useEffect(() => {
-    const updateHeight = () => {
-      const viewportHeight = window.innerHeight;
-      const detailHeight = detailPanelRef.current ? detailPanelRef.current.offsetHeight : 0;
-      const available = Math.max(viewportHeight, detailHeight) - filterHeight;
-      setListHeight(available > 240 ? available : 240);
-    };
-    updateHeight();
-    window.addEventListener('resize', updateHeight);
-    return () => window.removeEventListener('resize', updateHeight);
-  }, [selectedColor, filterHeight]);
   const helpers = useMemo(() => ({
     Cohort: e => uniq(normalizeStore(e).map(s => s.Cohort).filter(Boolean)),
     TimedPromotion: e => uniq(normalizeStore(e).map(s => s.TimedPromotion).filter(Boolean)),
@@ -242,6 +222,7 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
     PromoType: e => e.promo?.Type ?? '',
     BPSeason: e => e.bp?.ID ?? '',
     Entitlement: e => !!e.entitlement,
+    How: sourceFilterValues,
     Patch: getAddedPatch
   }), []);
   const getDisplayNameKey = e => (normalizeStore(e)[0]?.DisplayNameKey) ?? e.colorData?.DisplayNameKey ?? '';
@@ -267,11 +248,19 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
       PromoType: filterPromoType,
       BPSeason: filterBPSeason,
       Entitlement: filterEntitlement,
+      How: filterHow,
       StoreOnly: storeOnly,
       Patch: filterPatch
     },
     helpers
   );
+  const exportColumns = useMemo(() => [
+    { key: 'name', label: 'Color', value: (color) => langs.content[color.colorData?.DisplayNameKey] || color.colorData?.ColorSchemeName },
+    { key: 'colorSchemeId', label: 'Color ID', value: (color) => color.colorData?.ColorSchemeID },
+    { key: 'codeName', label: 'Code name', value: (color) => color.colorData?.ColorSchemeName },
+    { key: 'orderId', label: 'Order ID', value: (color) => color.colorData?.OrderID },
+    ...storeExportColumns,
+  ], [langs]);
   const filtered = useMemo(() => {
     const q = debouncedSearch.toLowerCase();
     const arr = data.filter(e => {
@@ -286,6 +275,7 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
         else if ((e.bp?.ID ?? '') !== filterBPSeason) return false;
       }
       if (filterEntitlement && !e.entitlement) return false;
+      if (filterHow && !sourceFilterValues(e).includes(filterHow)) return false;
       if (storeOnly && !normalizeStore(e).length) return false;
       const fields = [
         langs.content?.[getDisplayNameKey(e)] || '',
@@ -338,7 +328,7 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
     return arr;
   }, [
     data, debouncedSearch, sortType, filterCohort, filterPromo, filterStoreID, storeOnly,
-    filterStoreLabel, filterPromoType, filterBPSeason, filterEntitlement, filterPatch, langs
+    filterStoreLabel, filterPromoType, filterBPSeason, filterEntitlement, filterHow, filterPatch, langs
   ]);
   useEffect(() => {
     if (data.length === 0 || filtered.length === 0) return;
@@ -369,6 +359,7 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
     writeStringParam(currentParams, 'promoType', filterPromoType);
     writeStringParam(currentParams, 'battlePass', filterBPSeason);
     writeBoolParam(currentParams, 'entitlement', filterEntitlement);
+    writeStringParam(currentParams, 'how', filterHow);
     writeStringParam(currentParams, 'patch', filterPatch);
     const newUrl = currentParams.toString() ? `${window.location.pathname}?${currentParams}` : window.location.pathname;
     window.history.replaceState({}, '', newUrl);
@@ -383,7 +374,7 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
     };
     window.addEventListener('popstate', handlePop);
     return () => window.removeEventListener('popstate', handlePop);
-  }, [selectedColor, filtered, isMobile, searchQuery, sortType, filterCohort, filterPromo, filterStoreID, storeOnly, filterStoreLabel, filterPromoType, filterBPSeason, filterEntitlement, filterPatch]);
+  }, [selectedColor, filtered, isMobile, searchQuery, sortType, filterCohort, filterPromo, filterStoreID, storeOnly, filterStoreLabel, filterPromoType, filterBPSeason, filterEntitlement, filterHow, filterPatch]);
   const handleFilterChange = useCallback((setter, value) => { setter(value); }, []);
   const resetFilters = useCallback(() => {
     setSortType('OrderIDDesc');
@@ -396,6 +387,7 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
     setFilterPromoType('');
     setFilterBPSeason('');
     setFilterEntitlement(false);
+    setFilterHow('');
     setFilterPatch('');
     setSelectedColor(null); filtersChanged.current = true;
   }, [filtered, isMobile]);
@@ -426,281 +418,159 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
       backgroundColor: luminance > 128 ? 'rgba(0, 0, 0, 0.14)' : 'rgba(255, 255, 255, 0.18)',
       boxShadow: luminance > 128 ? '0 0 0 1px rgba(0, 0, 0, 0.18)' : '0 0 0 1px rgba(255, 255, 255, 0.25)',
     };
+    const sourced = hasSources(item);
+    const name = langs.content?.[getDisplayNameKey(item)] || item.colorData?.ColorSchemeName;
     return (
       <div
-        className={viewMode === 'grid' ? 'h-full w-full p-1' : 'p-0 px-2 min-h-[160px]'}
+        className={`flex h-full w-full cursor-pointer flex-col items-center gap-1 rounded-xl border border-slate-700 p-2 text-center shadow-sm transition hover:-translate-y-0.5 hover:brightness-125 ${isSelected ? 'ring-2 ring-blue-400' : ''}`}
+        style={{ backgroundColor: bgColor, color: textColor }}
         onClick={() => { setSelectedColor(item); filtersChanged.current = false; }}
       >
-        <div
-          className={`relative h-full self-start text-left rounded-xl cursor-pointer p-3 transition border border-gray-200 dark:border-slate-700 min-h-52 shadow-sm hover:-translate-y-0.5 hover:brightness-110 dark:hover:brightness-125 ${isSelected ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} flex flex-col`}
-          style={{ backgroundColor: bgColor, color: textColor }}
-        >
-          <div className="mb-2 flex min-w-0 items-start gap-2">
-            <div className="flex min-h-11 min-w-0 flex-1 items-center justify-start gap-2 rounded-lg bg-slate-900/80 px-2 py-1.5 text-left text-sm font-bold leading-tight text-white sm:text-base">
-              <ImageWithLoader
-                src={`${host}/game/getGfx/UI_Icons/${item.colorData?.IconName}`}
-                alt=""
-                className="h-9 w-9 shrink-0 bg-transparent sm:h-11 sm:w-11"
-                imgClassName="h-full w-full object-contain"
-                small
-              />
-              <span className="min-w-0 break-words text-left">{langs.content?.[getDisplayNameKey(item)] || item.colorData?.ColorSchemeName}</span>
-            </div>
-            <AddedBadge item={item} className="shrink-0" style={badgeStyle} showDate={!isMobile} />
-          </div>
-          {previewSrc && (
-            <ImageWithLoader
-              src={previewSrc}
-              alt=""
-              className="h-40 w-full self-center rounded-lg bg-slate-900/80 sm:h-48"
-              imgClassName="h-full w-full object-contain"
-            />
-          )}
-          <div className="flex-1 flex w-full flex-col items-center text-center mt-2 min-w-0">
-            <div className="flex flex-col gap-1">
-              {viewMode !== 'grid' && (
-                <div className="hidden max-w-full flex-wrap justify-center gap-1 pb-1 sm:flex">
-                  {!item.store?.length && !item.bp && !item.promo && !item.entitlement && (
-                    <div className="bg-gray-500/70 text-white text-xs font-bold px-2 py-0.5 rounded-lg">Not Obtainable</div>
-                  )}
-                  {item.bp && (
-                    <div className="bg-emerald-600 text-black text-xs font-bold px-2 py-0.5 rounded-lg">{`Battle Pass Season ${String(item.bp.ID).replace('BP', '').replace('-', ' ')}`}</div>
-                  )}
-                  {item.promo && (
-                    <div className="bg-violet-600 text-black text-xs font-bold px-2 py-0.5 rounded-lg">{`Promo Code${!item.store?.length && !item.bp && !item.entitlement ? ' Only' : ''}`}</div>
-                  )}
-                  {item.entitlement && (
-                    <div className="bg-amber-400 text-black text-xs font-bold px-2 py-0.5 rounded-lg">
-                      {(langs.content?.[item.entitlement.DisplayNameKey]?.replace('!', '') || item.entitlement.EntitlementName) + ' DLC'}
-                    </div>
-                  )}
-                  {item.store?.length > 0 && uniq(item.store.map(s => s.Label).filter(Boolean)).map((label, idx) => (
-                    <div key={idx} className={`${label === "New" ? "bg-yellow-300" : label === "LastChance" ? "bg-red-500" : "bg-cyan-400"} text-black text-xs font-bold px-2 py-0.5 rounded-lg`}>{label === "LastChance" ? "No Longer Purchasable" : label}</div>
-                  ))}
-                  {item.store?.length > 0 && uniq(item.store.map(s => s.TimedPromotion ?? '').filter(Boolean)).map((promo, idx) => (
-                    <div key={idx} className="bg-rose-400 text-black text-xs font-bold px-2 py-0.5 rounded-lg">{formatLabel(promo)}</div>
-                  ))}
-                  {item.timedEvent && (
-                    <div className="bg-orange-500 text-black text-xs font-bold px-2 py-0.5 rounded-lg">{item.timedEvent.TimedEventName} Event</div>
-                  )}
-                </div>
-              )}
-              {viewMode === 'grid' && (
-                <div className="hidden max-w-full flex-wrap justify-center gap-1 pb-1 sm:flex">
-                  {item.bp && (
-                    <div className="bg-emerald-600 text-black text-[10px] font-bold px-2 py-0.5 rounded-lg">{`Battle Pass Season ${String(item.bp.ID).replace('BP', '').replace('-', ' ')}`}</div>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-x-3">
-              {storeData.map((sd, idx) => (
-                <div key={`costs-${idx}`} className="flex flex-wrap gap-2">
-                  {sd.Costs.mc > 0 && (
-                    <div>
-                      <img src={`${host}/game/getGfx/storeIcon/mc`} className="inline h-4 mr-1" onError={handleImgError} loading="lazy" />
-                      <span>{sd.Costs.mc}</span>
-                    </div>
-                  )}
-                  {sd.Costs.gold > 0 && (
-                    <div>
-                      <img src={`${host}/game/getGfx/storeIcon/gold`} className="inline h-4 mr-1" onError={handleImgError} loading="lazy" />
-                      <span>{sd.Costs.gold}</span>
-                    </div>
-                  )}
-                  {sd.Costs.glory > 0 && (
-                    <div>
-                      <img src={`${host}/game/getGfx/storeIcon/glory`} className="inline h-4 mr-1" onError={handleImgError} loading="lazy" />
-                      <span>{sd.Costs.glory}</span>
-                    </div>
-                  )}
-                  {Object.entries(sd.Costs.special).map(([currencyType, cost], sIdx) => cost > 0 && (
-                    <div key={`special-${sIdx}`}>
-                      <img src={`${host}/game/getGfx/UI_Currencies/a_Currency_${currencyType}`} className="inline h-4 mr-1" onError={handleImgError} loading="lazy" />
-                      <span>{cost}</span>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
+        {previewSrc && (
+          <ImageWithLoader
+            src={previewSrc}
+            alt=""
+            className="aspect-square w-full rounded-lg bg-slate-950/80"
+            imgClassName="h-full w-full object-contain"
+          />
+        )}
+        <div className="flex w-full min-w-0 items-center justify-center gap-1.5 rounded-lg bg-slate-950/80 px-1.5 py-1 text-xs font-bold leading-tight text-white sm:justify-start sm:text-left sm:text-sm">
+          <ImageWithLoader
+            src={`${host}/game/getGfx/UI_Icons/${item.colorData?.IconName}`}
+            alt=""
+            className="hidden h-7 w-7 shrink-0 bg-transparent sm:flex"
+            imgClassName="h-full w-full object-contain"
+            small
+          />
+          <span className="line-clamp-2 min-w-0 break-words" title={name}>{name}</span>
         </div>
+        <AddedBadge item={item} style={badgeStyle} showDate={!isMobile} className="max-w-full flex-wrap justify-center" />
+        {sourced && <SourceLine sources={item.sources} phoneCompact className="max-w-full" />}
+        {!sourced && item.bp && (
+          <div className="border border-emerald-300/40 bg-emerald-500/20 text-emerald-100 text-[10px] font-bold px-2 py-0.5 rounded-lg">{`Battle Pass Season ${String(item.bp.ID).replace('BP', '').replace('-', ' ')}`}</div>
+        )}
+        {!sourced && storeData.length > 0 && (
+          <div className="flex flex-wrap items-center justify-center gap-x-3 text-sm">
+            {storeData.map((sd, idx) => (
+              <div key={`costs-${idx}`} className="flex flex-wrap gap-2">
+                {sd.Costs.mc > 0 && (
+                  <div>
+                    <img src={`${host}/game/getGfx/storeIcon/mc`} className="inline h-4 mr-1" onError={handleImgError} loading="lazy" />
+                    <span>{sd.Costs.mc}</span>
+                  </div>
+                )}
+                {sd.Costs.gold > 0 && (
+                  <div>
+                    <img src={`${host}/game/getGfx/storeIcon/gold`} className="inline h-4 mr-1" onError={handleImgError} loading="lazy" />
+                    <span>{sd.Costs.gold}</span>
+                  </div>
+                )}
+                {sd.Costs.glory > 0 && (
+                  <div>
+                    <img src={`${host}/game/getGfx/storeIcon/glory`} className="inline h-4 mr-1" onError={handleImgError} loading="lazy" />
+                    <span>{sd.Costs.glory}</span>
+                  </div>
+                )}
+                {Object.entries(sd.Costs.special).map(([currencyType, cost], sIdx) => cost > 0 && (
+                  <div key={`special-${sIdx}`}>
+                    <img src={`${host}/game/getGfx/UI_Currencies/a_Currency_${currencyType}`} className="inline h-4 mr-1" onError={handleImgError} loading="lazy" />
+                    <span>{cost}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen bg-gray-100 dark:bg-slate-900" style={{ fontFamily: langs.font || 'BHLatinBold' }}>
-      <div className="flex-1 p-3 lg:p-4 bg-gray-100 dark:bg-slate-900 w-full h-full">
-        <div ref={filterSectionRef} className="space-y-4 mb-4 rounded-xl bg-white/70 dark:bg-slate-800/70 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
-          <button onClick={() => setFiltersOpen((open) => !open)} className="flex w-full items-center justify-between rounded-lg bg-gray-100 dark:bg-slate-700 px-3 py-2 text-left text-sm font-bold text-gray-900 dark:text-white">
-            <span>Filters</span>
-            <span className="text-xs text-gray-500 dark:text-gray-300">{filtersOpen ? 'Hide' : 'Show'}</span>
-          </button>
-          {filtersOpen && (<>
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              {Object.values(optionCounts.Cohort).some(count => count > 0) && (
-                <select
-                  value={filterCohort}
-                  onChange={e => handleFilterChange(setFilterCohort, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
-                >
-                  <option value="">Cohorts</option>
-                  {cohorts.filter(c => optionCounts.Cohort[c] > 0).map(c => (
-                    <option key={c} value={c}>{formatLabel(c)} ({optionCounts.Cohort[c]})</option>
-                  ))}
-                </select>
-              )}
-              {Object.values(optionCounts.TimedPromotion).some(count => count > 0) && (
-                <select
-                  value={filterPromo}
-                  onChange={e => handleFilterChange(setFilterPromo, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
-                >
-                  <option value="">Promotions</option>
-                  {promotions.filter(p => optionCounts.TimedPromotion[p] > 0).map(p => (
-                    <option key={p} value={p}>{formatLabel(p)} ({optionCounts.TimedPromotion[p]})</option>
-                  ))}
-                </select>
-              )}
-              {Object.values(optionCounts.StoreLabel).some(count => count > 0) && (
-                <select
-                  value={filterStoreLabel}
-                  onChange={e => handleFilterChange(setFilterStoreLabel, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
-                >
-                  <option value="">Store Label</option>
-                  {storeLabels.filter(n => optionCounts.StoreLabel[n] > 0).map(n => (
-                    <option key={n} value={n}>{n} ({optionCounts.StoreLabel[n]})</option>
-                  ))}
-                </select>
-              )}
-              {Object.values(optionCounts.PromoType).some(count => count > 0) && (
-                <select
-                  value={filterPromoType}
-                  onChange={e => handleFilterChange(setFilterPromoType, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
-                >
-                  <option value="">Promo Codes</option>
-                  {promoTypes.filter(n => optionCounts.PromoType[n] > 0).map(n => (
-                    <option key={n} value={n}>{n} ({optionCounts.PromoType[n]})</option>
-                  ))}
-                </select>
-              )}
-              {(optionCounts.AllBP > 0 || Object.values(optionCounts.BPSeason).some(count => count > 0)) && (
-                <select
-                  value={filterBPSeason}
-                  onChange={e => handleFilterChange(setFilterBPSeason, e.target.value)}
-                  className="w-full cursor-pointer rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 transition-colors duration-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-white sm:w-auto sm:min-w-[150px]"
-                >
-                  <option value="">Battle Pass</option>
-                  {optionCounts.AllBP > 0 && <option value="AllBP">All Battle Pass Colors ({optionCounts.AllBP})</option>}
-                  {bpSeasons.filter(season => optionCounts.BPSeason[season] > 0).map(season => (
-                    <option key={season} value={season}>{String(season).replace('BP', 'Season ')} ({optionCounts.BPSeason[season]})</option>
-                  ))}
-                </select>
-              )}
-              {patchGroups.length > 0 && (
-                <PatchFilterSelect
-                  value={filterPatch}
-                  onChange={(value) => handleFilterChange(setFilterPatch, value)}
-                  groups={patchGroups}
-                  counts={patchCounts}
-                />
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="inline-flex items-center bg-gray-100 dark:bg-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
-                <input type="checkbox" checked={storeOnly} onChange={() => handleFilterChange(setStoreOnly, !storeOnly)} className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer" />
-                Store Colors Only ({optionCounts.StoreOnly || 0})
-              </label>
-              <label className="inline-flex items-center bg-gray-100 dark:bg-slate-700 rounded-lg px-3 py-2 text-sm font-semibold text-gray-900 dark:text-white cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">
-                <input type="checkbox" checked={filterEntitlement} onChange={() => handleFilterChange(setFilterEntitlement, !filterEntitlement)} className="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer" />
-                DLC Colors ({optionCounts.DLC || 0})
-              </label>
-              <div className="flex items-center gap-2 ml-auto">
-                <button
-                  onClick={resetFilters}
-                  aria-label="Reset all filters"
-                  className="cursor-pointer flex items-center gap-2 text-sm bg-red-500 dark:bg-red-600 hover:bg-red-600 dark:hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition-colors duration-200"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7h16M4 7a2 2 0 012-2h3m11 2a2 2 0 00-2-2h-3m0 0V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7v10a2 2 0 002 2h3m11-12v10a2 2 0 01-2 2h-3m-6 0h6"></path></svg>
-                  Reset Filters
-                </button>
-              </div>
-            </div>
-          </div>
-          </>)}
-          <div className="flex gap-4 flex-col">
-            <div className="lg:flex lg:flex-col gap-4">
-              <div className="order-first flex flex-wrap justify-between items-center w-full py-2 gap-4">
-              <div className="text-sm font-bold text-blue-600 dark:text-blue-400 sm:text-lg">
-                  Showing {filtered.length} Color{filtered.length !== 1 ? 's' : ''}
-                </div>
-                <a href="/game/colors" className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white transition hover:bg-blue-500">
-                  Open Color Scheme Creator
-                </a>
-              </div>
-              <div className="relative">
-                <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-4.35-4.35M10 18a8 8 0 110-16 8 8 0 010 16z"></path></svg>
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={e => handleFilterChange(setSearchQuery, e.target.value)}
-                  placeholder="Search Colors"
-                  className="cursor-pointer bg-white dark:bg-slate-700 text-gray-900 dark:text-white text-sm font-semibold placeholder:font-semibold rounded-lg pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
-                />
-              </div>
-              <div className="relative">
-                <select
-                  value={sortType}
-                  onChange={e => setSortType(e.target.value)}
-                  className="cursor-pointer bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg px-4 py-2 text-gray-900 dark:text-white text-sm font-semibold w-full sm:min-w-[220px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 appearance-none pr-8"
-                >
-                  <option value="OrderIDDesc">Order ID (Desc)</option>
-                  <option value="OrderIDAsc">Order ID (Asc)</option>
-                  <option value="ColorSchemeIDDesc">Color ID (Desc)</option>
-                  <option value="ColorSchemeIDAsc">Color ID (Asc)</option>
-                  <option value="StoreIDDesc">Store ID (Desc)</option>
-                  <option value="StoreIDAsc">Store ID (Asc)</option>
-                  <option value="AlphaAsc">Alphabetical (A-Z)</option>
-                  <option value="AlphaDesc">Alphabetical (Z-A)</option>
-                  <option value="CostAsc">Mammoth Cost (Asc)</option>
-                  <option value="CostDesc">Mammoth Cost (Desc)</option>
-                </select>
-                <svg className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-              </div>
-            </div>
-          </div>
-        </div>
+    <div className="flex flex-col lg:flex-row" style={{ fontFamily: langs.font || 'BHLatinBold' }}>
+      <div className="w-full min-w-0 flex-1">
+        <FilterPanel
+          search={searchQuery}
+          onSearch={(value) => handleFilterChange(setSearchQuery, value)}
+          searchPlaceholder="Search Colors"
+          sort={sortType}
+          onSort={setSortType}
+          sortOptions={COLOR_SORTS}
+          shown={filtered.length}
+          total={data.length}
+          noun="colors"
+          tools={<div className="flex flex-wrap items-center gap-2"><ListTools filename="brawlhalla-colors" rows={filtered} columns={exportColumns} /><a href="/game/colors" className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-bold text-white transition hover:bg-blue-500">Open the color creator</a></div>}
+          activeCount={countFilters([filterCohort, filterPromo, filterStoreID, storeOnly, filterStoreLabel, filterPromoType, filterBPSeason, filterEntitlement, filterHow, filterPatch])}
+          onReset={resetFilters}
+          selects={<>
+            {Object.values(optionCounts.How).some(count => count > 0) && (
+              <FilterSelect label="How to get" value={filterHow} onChange={(value) => handleFilterChange(setFilterHow, value)}>
+                {sortSourceFilterValues(Object.keys(optionCounts.How)).filter(n => optionCounts.How[n] > 0).map(n => <FilterOption key={n} value={n} count={optionCounts.How[n]} />)}
+              </FilterSelect>
+            )}
+            {(optionCounts.AllBP > 0 || Object.values(optionCounts.BPSeason).some(count => count > 0)) && (
+              <FilterSelect label="Battle Pass" value={filterBPSeason} onChange={(value) => handleFilterChange(setFilterBPSeason, value)}>
+                {optionCounts.AllBP > 0 && <FilterOption value="AllBP" label="Any season" count={optionCounts.AllBP} />}
+                {bpSeasons.filter(season => optionCounts.BPSeason[season] > 0).map(season => <FilterOption key={season} value={season} label={`Season ${String(season).replace(/^BP/, '')}`} count={optionCounts.BPSeason[season]} />)}
+              </FilterSelect>
+            )}
+            {Object.values(optionCounts.TimedPromotion).some(count => count > 0) && (
+              <FilterSelect label="Promotion" value={filterPromo} onChange={(value) => handleFilterChange(setFilterPromo, value)}>
+                {promotions.filter(p => optionCounts.TimedPromotion[p] > 0).map(p => <FilterOption key={p} value={p} label={formatLabel(p)} count={optionCounts.TimedPromotion[p]} />)}
+              </FilterSelect>
+            )}
+            {Object.values(optionCounts.StoreLabel).some(count => count > 0) && (
+              <FilterSelect label="Store Label" value={filterStoreLabel} onChange={(value) => handleFilterChange(setFilterStoreLabel, value)}>
+                {storeLabels.filter(n => optionCounts.StoreLabel[n] > 0).map(n => <FilterOption key={n} value={n} count={optionCounts.StoreLabel[n]} />)}
+              </FilterSelect>
+            )}
+            {Object.values(optionCounts.PromoType).some(count => count > 0) && (
+              <FilterSelect label="Promo code" value={filterPromoType} onChange={(value) => handleFilterChange(setFilterPromoType, value)}>
+                {promoTypes.filter(n => optionCounts.PromoType[n] > 0).map(n => <FilterOption key={n} value={n} count={optionCounts.PromoType[n]} />)}
+              </FilterSelect>
+            )}
+            {patchGroups.length > 0 && (
+              <FilterSelect label="Patch" value={filterPatch} onChange={(value) => handleFilterChange(setFilterPatch, value)}>
+                <PatchOptions groups={patchGroups} counts={patchCounts} />
+              </FilterSelect>
+            )}
+            {(dataFull || filterCohort) && Object.values(optionCounts.Cohort).some(count => count > 0) && (
+              <FilterSelect label="Store cohort" value={filterCohort} onChange={(value) => handleFilterChange(setFilterCohort, value)}>
+                {cohorts.filter(c => optionCounts.Cohort[c] > 0).map(c => <FilterOption key={c} value={c} label={formatLabel(c)} count={optionCounts.Cohort[c]} />)}
+              </FilterSelect>
+            )}
+          </>}
+          toggles={<>
+            <FilterToggle label="In the store" count={optionCounts.StoreOnly || 0} checked={storeOnly} onChange={(value) => handleFilterChange(setStoreOnly, value)} />
+            <FilterToggle label="DLC" count={optionCounts.DLC || 0} checked={filterEntitlement} onChange={(value) => handleFilterChange(setFilterEntitlement, value)} />
+          </>}
+        />
         <VirtualCardGrid
           items={filtered}
-          rowHeight={315}
-          rowHeightMobile={270}
-          className="h-[calc(100dvh-9rem)] min-h-[22rem] app-scrollbar"
+          empty={<NoMatches noun="colors" onReset={resetFilters} />}
+          minCard={DENSE_CARD}
           getKey={(item, index) => item?.colorData?.ColorSchemeID || index}
-          renderItem={(item, index) => <Row key={item?.colorData?.ColorSchemeID || index} index={index} data={filtered} />}
+          renderItem={(item, index) => Row({ index, data: filtered })}
         />
       </div>
-      <div ref={detailPanelRef} className={`fixed inset-0 bg-black/70 z-50 ${selectedColor ? 'flex items-stretch justify-center p-0 sm:items-center sm:p-4' : 'hidden'}`} onClick={() => setSelectedColor(null)}> 
-        <div className="relative flex h-dvh max-h-dvh w-full max-w-[min(96vw,100rem)] flex-col gap-3 overflow-y-auto app-scrollbar rounded-none border border-gray-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900 sm:h-auto sm:max-h-[92vh] sm:rounded-xl sm:p-3 lg:gap-4 lg:p-4" onClick={(event) => event.stopPropagation()}>
+      <div className={`fixed inset-0 bg-black/70 z-[110] ${selectedColor ? 'flex items-stretch justify-center p-0 sm:items-center sm:p-3' : 'hidden'}`} onClick={() => setSelectedColor(null)}> 
+        <div className="relative flex h-dvh max-h-dvh w-full max-w-[min(96vw,100rem)] flex-col gap-3 overflow-y-auto overscroll-contain app-scrollbar rounded-none border p-2 shadow-2xl border-slate-700 bg-slate-950 sm:h-auto sm:max-h-[92vh] sm:rounded-2xl sm:p-3 lg:p-3" onClick={(event) => event.stopPropagation()}>
           <button
             type="button"
             aria-label="Close details"
-            className="absolute right-3 top-3 z-10 rounded-lg bg-gray-200 p-2 text-gray-900 hover:bg-gray-300 dark:bg-slate-800 dark:text-white dark:hover:bg-slate-700"
+            className="absolute right-3 top-3 z-10 rounded-lg p-2 bg-slate-900 text-white hover:bg-slate-800"
             onClick={() => setSelectedColor(null)}
           >
             <XMarkIcon className="h-5 w-5" />
           </button>
-          <div className="flex items-center justify-end pr-11">
+          <div className="flex flex-wrap items-center justify-between gap-2 pr-11">
+            <PopupViewBar />
             {isMobile && selectedColor && (
               <div className="flex items-center gap-2 mb-2">
-                <button onClick={handleCopyLink} className="cursor-pointer bg-blue-500 dark:bg-blue-600 text-white font-bold py-1 px-3 rounded-lg">Copy Link</button>
+                <button onClick={handleCopyLink} className="cursor-pointer bg-blue-600 text-white font-bold py-1 px-3 rounded-lg">Copy Link</button>
               </div>
             )}
           </div>
           {selectedColor ? (
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 xl:items-start">
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2 xl:items-start">
               <div
                 className="xl:col-span-2 flex flex-col gap-2 pb-3 p-2 rounded-lg"
                 style={{
@@ -729,26 +599,26 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
                 </div>
                 <div className="flex items-start gap-2 text-sm">
                   {langs.content?.[getDescriptionKey(selectedColor)] && (
-                    <div>{langs.content[getDescriptionKey(selectedColor)]}</div>
+                    <div className="max-w-prose">{langs.content[getDescriptionKey(selectedColor)]}</div>
                   )}
                 </div>
                 <div className="flex max-w-full flex-wrap gap-2 pb-1">
-                  {selectedColor.promo && (
+                  {selectedColor.promo && !hasSources(selectedColor) && (
                     <span className="text-sm px-3 py-1 rounded-lg bg-purple-500/80">Promo Type: {selectedColor.promo.Type}</span>
                   )}
-                  {selectedColor.bp && (
+                  {selectedColor.bp && !hasSources(selectedColor) && (
                     <span className="text-sm px-3 py-1 rounded-lg bg-emerald-500/80">
                       Battle Pass Season {String(selectedColor.bp.ID).replace('BP', '').replace('-', '')}{selectedColor.bp.Tier ? ` (Tier ${selectedColor.bp.Tier})` : ''}
                     </span>
                   )}
-                  {selectedColor.entitlement && (
+                  {selectedColor.entitlement && !hasSources(selectedColor) && (
                     <span className="text-sm px-3 py-1 rounded-lg bg-amber-500/80">
                       {(langs.content?.[selectedColor.entitlement.DisplayNameKey]?.replace('!', '') || selectedColor.entitlement.EntitlementName) + ' DLC'}
                     </span>
                   )}
                   {selectedColor.store?.length > 0 && [...new Set(selectedColor.store.map(sd => sd.Label).filter(Boolean))].map((label, idx) => (
-                    <span key={idx} className={`${label === "New" ? "bg-yellow-300/90" : label === "LastChance" ? "bg-red-500/90" : "bg-cyan-400/90"} text-black text-sm px-3 py-1 rounded-lg`}>
-                      {label === 'LastChance' ? 'No Longer Purchasable' : label}
+                    <span key={idx} className={`${label === "New" ? "border-yellow-300/40 bg-yellow-500/20 text-yellow-100" : label === "LastChance" ? "border-red-300/40 bg-red-500/20 text-red-100" : "border-cyan-300/40 bg-cyan-500/20 text-cyan-100"} border text-sm px-3 py-1 rounded-lg`}>
+                      {label === 'LastChance' ? 'Last Chance' : label}
                     </span>
                   ))}
                   {selectedColor.store?.length > 0 && [...new Set(selectedColor.store.map(s => s.TimedPromotion ?? '').filter(Boolean))].map((promo, idx) => (
@@ -764,28 +634,28 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
               <div className="contents">
                 <div className="xl:col-start-2 xl:row-start-2 w-full flex flex-col gap-2">
                   {selectedColor.colorData?.ExcludeOpponentTeamColor && (
-                    <div className="flex flex-col gap-3 rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
-                      <span className="text-lg text-gray-900 dark:text-white sm:text-2xl">Opponent Color Exclusions</span>
-                      <div className="flex items-center text-sm text-gray-600 dark:text-gray-300 rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3">
+                    <div className="flex flex-col gap-3 rounded-2xl bg-slate-900/80 border border-slate-700 p-3 shadow-sm">
+                      <span className="text-lg text-white sm:text-2xl">Opponent Color Exclusions</span>
+                      <div className="flex items-center text-sm text-slate-300 rounded-lg bg-slate-950 border border-slate-700 p-2">
                         <span>
-                          If your opponent(s) are using any of these colors while you're using{' '}
+                          An opponent using one of these colors while you use{' '}
                           <span className="inline-flex gap-2">
-                            <span className="font-bold text-gray-900 dark:text-white">
+                            <span className="font-bold text-white">
                               {langs.content[selectedColor.colorData.DisplayNameKey] || selectedColor.colorData.ColorSchemeName}
                             </span>
                           </span>
-                          , they will use a fallback color scheme, to prevent some skins blending into the map, and/or to prevent confusion on who is the enemy when playing gamemodes other than 1v1.
+                          {' '}gets the fallback color below.
                         </span>
                       </div>
-                      <div className="flex flex-col gap-2 rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3">
-                        <span className="text-base text-gray-700 dark:text-gray-200 sm:text-lg">Fallback Color</span>
-                        <div className="flex items-center gap-2 rounded-lg bg-gray-100 dark:bg-slate-800 p-2">
+                      <div className="flex flex-col gap-2 rounded-lg bg-slate-950 border border-slate-700 p-2">
+                        <span className="text-base text-slate-200 sm:text-lg">Fallback Color</span>
+                        <div className="flex items-center gap-2 rounded-lg bg-slate-900 p-2">
                           <img
                             src={`${host}/game/getGfx/UI_Icons/${(colors.find(r => r.colorData.ColorSchemeName == selectedColor.colorData.FallbackOpponentTeamColor) || {}).colorData?.IconName}`}
                             className="h-7"
                             loading="lazy"
                           />
-                          <span className="text-base font-bold text-gray-900 dark:text-white sm:text-lg">
+                          <span className="text-base font-bold text-white sm:text-lg">
                             {(() => {
                               const cd = colors.find(r => r.colorData.ColorSchemeName == selectedColor.colorData.FallbackOpponentTeamColor);
                               if (!cd) return selectedColor.colorData.FallbackOpponentTeamColor;
@@ -794,8 +664,8 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
                           </span>
                         </div>
                       </div>
-                      <div className="rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3">
-                        <span className="text-base text-gray-700 dark:text-gray-200 sm:text-lg">Color List</span>
+                      <div className="rounded-lg bg-slate-950 border border-slate-700 p-2">
+                        <span className="text-base text-slate-200 sm:text-lg">Color List</span>
                         <div className="col-span-2 flex flex-wrap gap-2 mt-2">
                           {selectedColor.colorData.ExcludeOpponentTeamColor.split(',').map((colorName, idx) => {
                             const colorData = colors.find(r => r.colorData.ColorSchemeName == colorName);
@@ -807,7 +677,7 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
                             const lum = (0.299 * rr + 0.587 * gg + 0.114 * bb);
                             const tc = lum > 128 ? '#000000' : '#ffffff';
                             return (
-                              <div key={idx} className="flex items-center gap-2 rounded-lg p-2 border border-black/10 dark:border-white/10 shadow-sm" style={{ backgroundColor: bg, color: tc }}>
+                              <div key={idx} className="flex items-center gap-2 rounded-lg p-2 border border-white/10 shadow-sm" style={{ backgroundColor: bg, color: tc }}>
                                 <img src={`${host}/game/getGfx/UI_Icons/${colorData.colorData.IconName}`} className="h-6" loading="lazy" />
                                 <span className="text-base font-bold sm:text-lg">{langs.content[getDisplayNameKey(colorData)] || colorData.colorData.ColorSchemeName}</span>
                               </div>
@@ -817,7 +687,7 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
                       </div>
                     </div>
                   )}
-                  <StoreDataSection rows={selectedColor.store} langs={langs} />
+                  <StoreDataSection rows={selectedColor.store} langs={langs} sources={selectedColor.sources} />
                   <FieldGrid
                     data={selectedColor.colorData}
                     langs={langs}
@@ -834,111 +704,111 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
                     ]}
                   />
                   <FieldGrid data={selectedColor.entitlement} langs={langs} title="Entitlement Data" />
-                  {false && <div className="relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
-                    <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Color Scheme Data</span>
+                  {false && <div className="relative rounded-2xl bg-slate-900/80 border border-slate-700 p-3 shadow-sm">
+                    <span className="text-sm font-bold uppercase tracking-wide text-blue-200">Color Scheme Data</span>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                      <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                      <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                         <span className="text-[11px] uppercase tracking-wide text-slate-400">Name</span>
                         <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedColor.colorData?.ColorSchemeName}</span>
                       </div>
-                      <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                      <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                         <span className="text-[11px] uppercase tracking-wide text-slate-400">ID</span>
                         <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedColor.colorData?.ColorSchemeID}</span>
                       </div>
                       {selectedColor.colorData?.IconName && (
-                        <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                        <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                           <span className="text-[11px] uppercase tracking-wide text-slate-400">Icon</span>
                           <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{selectedColor.colorData?.IconName}</span>
                         </div>
                       )}
                       {selectedColor.colorData?.IndicatorColor && (
-                        <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                        <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                           <span className="text-[11px] uppercase tracking-wide text-slate-400">Indicator</span>
                           <div className="flex items-center gap-2">
                             <div
-                              className="rounded-lg w-8 h-8 border border-gray-300 dark:border-slate-700"
+                              className="rounded-lg w-8 h-8 border border-slate-700"
                               style={{ backgroundColor: `#${selectedColor.colorData.IndicatorColor.slice(2)}` }}
                             />
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{`#${selectedColor.colorData.IndicatorColor.slice(2)}`}</span>
                           </div>
                         </div>
                       )}
-                      <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                      <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                         <span className="text-[11px] uppercase tracking-wide text-slate-400">Order ID</span>
                         <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{getOrderID(selectedColor)}</span>
                       </div>
                     </div>
                   </div>}
                   {false && getProcessedStoreData(selectedColor).map((sd, idx) => (
-                    <div key={`store-${idx}`} className="relative rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
-                      <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Store Data{sd.Type === 'Bundle' ? ' (Bundle)' : ''}</span>
+                    <div key={`store-${idx}`} className="relative rounded-2xl bg-slate-900/80 border border-slate-700 p-3 shadow-sm">
+                      <span className="text-sm font-bold uppercase tracking-wide text-blue-200">Store data{sd.Type === 'Bundle' ? ' (Bundle)' : ''}</span>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                         {sd.StoreName && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Store Name</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.StoreName}</span>
                           </div>
                         )}
                         {(sd.StoreID !== undefined && sd.StoreID !== null && sd.StoreID !== '') && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Store ID</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.StoreID}</span>
                           </div>
                         )}
                         {sd.Item && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Item</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.Item}</span>
                           </div>
                         )}
                         {sd.Type && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Type</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.Type}</span>
                           </div>
                         )}
                         {sd.Label && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Store Label</span>
-                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.Label === 'LastChance' ? 'No Longer Purchasable' : sd.Label}</span>
+                            <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.Label === 'LastChance' ? 'Last Chance' : sd.Label}</span>
                           </div>
                         )}
                         {sd.TimedPromotion && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Timed Promotion</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{formatLabel(sd.TimedPromotion)}</span>
                           </div>
                         )}
                         {sd.Cohort && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Cohort</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.Cohort}</span>
                           </div>
                         )}
                         {sd.Popularity && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Popularity</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.Popularity}</span>
                           </div>
                         )}
                         {sd.SearchTags && (
-                          <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3 col-span-2">
+                          <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2 col-span-2">
                             <span className="text-[11px] uppercase tracking-wide text-slate-400">Search Tags</span>
                             <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.SearchTags}</span>
                           </div>
                         )}
                         {sd.ItemList && sd.ItemList.length > 0 ? (
                           <div className="col-span-2">
-                            <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
-                              <span className="text-[11px] uppercase tracking-wide text-slate-400">Bundle Cost</span>
-                              <div className="flex flex-wrap items-center gap-4">
+                            <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
+                              <span className="text-[11px] uppercase tracking-wide text-slate-400">Bundle price</span>
+                              <div className="flex flex-wrap items-center gap-3">
                                 {(sd.Costs.mc > 0 || sd.Costs.mcSale > 0) && (
                                   <div className="flex items-center gap-1">
                                     <img src={`${host}/game/getGfx/storeIcon/mc`} className="h-5 inline" onError={handleImgError} loading="lazy" />
                                     {sd.Costs.mcSale > 0 ? (
                                       <>
-                                        <span className="line-through text-red-600 dark:text-red-400">{sd.Costs.mc}</span>
-                                        <span className="text-green-600 dark:text-green-400 font-bold">{sd.Costs.mcSale}</span>
+                                        <span className="line-through text-red-400">{sd.Costs.mc}</span>
+                                        <span className="text-green-400 font-bold">{sd.Costs.mcSale}</span>
                                       </>
                                     ) : (
                                       <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.Costs.mc}</span>
@@ -950,8 +820,8 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
                                     <img src={`${host}/game/getGfx/storeIcon/gold`} className="h-5 inline" onError={handleImgError} loading="lazy" />
                                     {sd.Costs.goldSale > 0 ? (
                                       <>
-                                        <span className="line-through text-red-600 dark:text-red-400">{sd.Costs.gold}</span>
-                                        <span className="text-green-600 dark:text-green-400 font-bold">{sd.Costs.goldSale}</span>
+                                        <span className="line-through text-red-400">{sd.Costs.gold}</span>
+                                        <span className="text-green-400 font-bold">{sd.Costs.goldSale}</span>
                                       </>
                                     ) : (
                                       <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.Costs.gold}</span>
@@ -976,8 +846,8 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
                         ) : (
                           <div className="col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
                             {(sd.IdolCost && sd.IdolCost !== 0 && sd.IdolCost !== '') && (
-                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
-                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Mammoth Coin Cost</span>
+                              <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
+                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Mammoth Coin price</span>
                                 <div>
                                   <img src={`${host}/game/getGfx/storeIcon/mc`} className="h-5 pr-1 inline" onError={handleImgError} loading="lazy" />
                                   <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.IdolCost}</span>
@@ -985,18 +855,18 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
                               </div>
                             )}
                             {(sd.IdolSaleCost && sd.IdolSaleCost !== 0 && sd.IdolSaleCost !== '') && (
-                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
-                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Mammoth Sale Price</span>
+                              <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
+                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Mammoth Coin sale price</span>
                                 <div className="flex items-center gap-1">
                                   <img src={`${host}/game/getGfx/storeIcon/mc`} className="h-5 inline" onError={handleImgError} loading="lazy" />
-                                  <span className="line-through text-red-600 dark:text-red-400">{sd.IdolCost}</span>
-                                  <span className="text-green-600 dark:text-green-400 font-bold">{sd.IdolSaleCost}</span>
+                                  <span className="line-through text-red-400">{sd.IdolCost}</span>
+                                  <span className="text-green-400 font-bold">{sd.IdolSaleCost}</span>
                                 </div>
                               </div>
                             )}
                             {(sd.GoldCost && sd.GoldCost !== 0 && sd.GoldCost !== '') && (
-                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
-                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Gold Cost</span>
+                              <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
+                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Gold price</span>
                                 <div>
                                   <img src={`${host}/game/getGfx/storeIcon/gold`} className="h-5 pr-1 inline" onError={handleImgError} loading="lazy" />
                                   <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.GoldCost}</span>
@@ -1004,18 +874,18 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
                               </div>
                             )}
                             {(sd.GoldSaleCost && sd.GoldSaleCost !== 0 && sd.GoldSaleCost !== '') && (
-                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                              <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                                 <span className="text-[11px] uppercase tracking-wide text-slate-400">Gold Sale Price</span>
                                 <div className="flex items-center gap-1">
                                   <img src={`${host}/game/getGfx/storeIcon/gold`} className="h-5 inline" onError={handleImgError} loading="lazy" />
-                                  <span className="line-through text-red-600 dark:text-red-400">{sd.GoldCost}</span>
-                                  <span className="text-green-600 dark:text-green-400 font-bold">{sd.GoldSaleCost}</span>
+                                  <span className="line-through text-red-400">{sd.GoldCost}</span>
+                                  <span className="text-green-400 font-bold">{sd.GoldSaleCost}</span>
                                 </div>
                               </div>
                             )}
                             {(sd.RankedPointsCost && sd.RankedPointsCost !== 0 && sd.RankedPointsCost !== '') && (
-                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
-                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Glory Cost</span>
+                              <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
+                                <span className="text-[11px] uppercase tracking-wide text-slate-400">Glory price</span>
                                 <div>
                                   <img src={`${host}/game/getGfx/storeIcon/glory`} className="h-5 pr-1 inline" onError={handleImgError} loading="lazy" />
                                   <span className="mt-1 text-sm text-white break-words whitespace-pre-wrap">{sd.RankedPointsCost}</span>
@@ -1023,7 +893,7 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
                               </div>
                             )}
                             {(sd.SpecialCurrencyType && sd.SpecialCurrencyCost) && (
-                              <div className="flex flex-col rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                              <div className="flex flex-col rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                                 <span className="text-[11px] uppercase tracking-wide text-slate-400">{sd.SpecialCurrencyType} Cost</span>
                                 <div>
                                   <img src={`${host}/game/getGfx/UI_Currencies/a_Currency_${sd.SpecialCurrencyType}`} className="h-5 pr-1 inline" onError={handleImgError} loading="lazy" />
@@ -1037,10 +907,10 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
                     </div>
                   ))}
                 </div>
-                <div className="order-[-1] xl:order-none xl:col-start-1 xl:row-start-2 w-full flex flex-col gap-2  rounded-lg">
-                  <div className="flex flex-col gap-3 rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
-                    <span className="text-lg text-gray-900 dark:text-white sm:text-2xl">Color Details</span>
-                    <div className="flex flex-col text-sm gap-4">
+                <div className="xl:col-start-1 xl:row-start-2 w-full flex flex-col gap-2  rounded-lg">
+                  <div className="flex flex-col gap-3 rounded-2xl bg-slate-900/80 border border-slate-700 p-3 shadow-sm">
+                    <span className="text-lg text-white sm:text-2xl">Color Details</span>
+                    <div className="flex flex-col text-sm gap-3">
                       {[
                         { category: 'Hair', items: [
                           { label: 'Light', key: 'HairLt_Swap' },
@@ -1085,9 +955,9 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
                           { label: 'Accent', key: 'WeaponAcc_Swap' },
                         ]},
                       ].map(({ category, items }) => (
-                        <div key={category} className="rounded-lg bg-slate-950/70 border border-slate-700 p-3">
+                        <div key={category} className="rounded-xl bg-slate-950/60 border border-slate-700 p-2">
                           <div className="flex flex-col gap-3">
-                            <span className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{category}</span>
+                            <span className="text-sm font-bold uppercase tracking-wide text-blue-200">{category}</span>
                             <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-2 mt-2">
                               {items.map(({ label, key }) => {
                                 const hexColor = selectedColor.colorData?.[key];
@@ -1098,7 +968,7 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
                                 const luminance = (0.299 * r + 0.587 * g + 0.114 * b);
                                 const tc = luminance > 128 ? '#000000' : '#ffffff';
                                 return (
-                                  <div key={key} className="flex flex-col p-3 rounded-2xl border border-black/10 dark:border-white/10 shadow-sm" style={{ backgroundColor: `#${hexColor.substr(2)}`, color: tc }}>
+                                  <div key={key} className="flex flex-col p-3 rounded-2xl border border-white/10 shadow-sm" style={{ backgroundColor: `#${hexColor.substr(2)}`, color: tc }}>
                                     <span className="text-sm font-bold sm:text-base">{category} {label}</span>
                                     <code className="break-all text-sm font-bold sm:text-lg">{hexColor}</code>
                                   </div>
@@ -1111,23 +981,21 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
                     </div>
                   </div>
                   {Array.isArray(selectedColor.levelExclusion) && selectedColor.levelExclusion.length > 0 && (
-                    <div className="flex flex-col gap-3 mt-2 rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 p-3 shadow-sm">
-                      <span className="text-lg text-gray-900 dark:text-white sm:text-2xl">Level Exclusions</span>
-                      <div className="flex items-center text-sm text-gray-600 dark:text-gray-300 rounded-lg bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 p-3">
+                    <div className="flex flex-col gap-3 mt-2 rounded-2xl bg-slate-900/80 border border-slate-700 p-3 shadow-sm">
+                      <span className="text-lg text-white sm:text-2xl">Map exclusions</span>
+                      <div className="flex items-center text-sm text-slate-300 rounded-lg bg-slate-950 border border-slate-700 p-2">
                         <span>
-                          If you are using{' '}
-                          <span className="inline-flex gap-2">
-                            <span className="font-bold text-gray-900 dark:text-white">
-                              {langs.content[selectedColor.colorData.DisplayNameKey] || selectedColor.colorData.ColorSchemeName}
-                            </span>
+                          These maps exclude{' '}
+                          <span className="font-bold text-white">
+                            {langs.content[selectedColor.colorData.DisplayNameKey] || selectedColor.colorData.ColorSchemeName}
                           </span>
-                          {' '} on these maps, your opponent(s) will see you with the fallback color scheme.
+                          .
                         </span>
                       </div>
                       <div className="mt-2 grid grid-cols-2 items-stretch gap-2 text-center text-sm sm:text-lg md:grid-cols-3">
                         {selectedColor.levelExclusion.map((exclusion, idx) => (
-                          <div key={idx} className="flex flex-col bg-gray-200 dark:bg-slate-900 border border-gray-300 dark:border-slate-700 p-2 rounded-2xl h-full items-center">
-                            <span className="text-gray-900 dark:text-white flex-grow flex items-center">{exclusion.DisplayName}</span>
+                          <div key={idx} className="flex flex-col bg-slate-950 border border-slate-700 p-2 rounded-2xl h-full items-center">
+                            <span className="text-white flex-grow flex items-center">{exclusion.DisplayName}</span>
                             <img
                               src={`${host}/game/images/images/thumbnails/${exclusion.ThumbnailPNGFile}`}
                               className="rounded-lg mt-2 w-full h-32 object-cover"
@@ -1141,11 +1009,12 @@ export function ColorSchemeStoreView({ colors, skins = [], langs }) {
                   )}
                 </div>
               </div>
-              <RawDataDetails data={selectedColor} />
+              <RawDataDetails data={selectedColor} filename={`colors-${selectedColor?.colorData?.ColorSchemeID || 'item'}`} />
             </div>
           ) : (
-            <div className="text-center text-gray-600 dark:text-gray-300 italic">Select a Color Scheme to see details</div>
+            <div className="text-center text-slate-300 italic">Pick a color scheme</div>
           )}
+          {selectedColor && <PopupFullDataFooter />}
         </div>
       </div>
     </div>

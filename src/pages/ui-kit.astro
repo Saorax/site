@@ -1,0 +1,8 @@
+---
+import Layout from "../layouts/Layout.astro";
+import KitPreview from "../components/ui/KitPreview.jsx";
+if (import.meta.env.PROD) return new Response(null, { status: 404 });
+---
+<Layout title="UI Kit" noindex>
+  <KitPreview client:load />
+</Layout>

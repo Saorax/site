@@ -1,0 +1,23 @@
+---
+export interface Props {
+  value?: string;
+  legends?: boolean;
+}
+const { value = '', legends = true } = Astro.props as Props;
+const field = 'min-w-0 flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-blue-400';
+const button = 'shrink-0 rounded-xl bg-slate-800 px-3 py-2 text-sm font-bold text-slate-200 hover:bg-slate-700';
+---
+<div class="grid gap-2">
+  <form action="/esports/player" method="get" class="flex gap-2">
+    <label for="find-player" class="sr-only">Player name</label>
+    <input id="find-player" name="search" type="search" value={value} placeholder="Player name" class={field} />
+    <button type="submit" class={button}>Find player</button>
+  </form>
+  {legends && (
+    <form action="/game/legends" method="get" class="flex gap-2">
+      <label for="find-legend" class="sr-only">Legend name</label>
+      <input id="find-legend" name="search" type="search" value={value} placeholder="Legend name" class={field} />
+      <button type="submit" class={button}>Find legend</button>
+    </form>
+  )}
+</div>

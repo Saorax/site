@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { host } from '../../stuff';
+import { PageShell, ScrollX, PageHeader, SidebarHeader, SidebarItem, Section, Pill, Tabs, SearchInput, SelectInput, Toggle, LoadingState, EmptyState, ErrorState, DataViewToggle, RawData, ShowFullData, useDataView, useQueryFlag, useQueryState, mapThumbUrl, plural, isPatchNumber } from '../ui';
 
 const COLORS = {
   camera: '#60a5fa',
@@ -10,6 +11,7 @@ const COLORS = {
   noSlide: '#f59e0b',
   bouncy: '#34d399',
   hazard: '#fb7185',
+  mud: '#b45309',
   pressure: '#facc15',
   item: '#22c55e',
   respawn: '#2dd4bf',
@@ -21,31 +23,92 @@ const COLORS = {
 
 const LAYER_OPTIONS = [
   ['background', 'Background', true],
-  ['cameraBounds', 'Camera Bounds', true],
-  ['killBounds', 'Kill Bounds', true],
-  ['spawnBotBounds', 'Spawn Bot Bounds', false],
-  ['hardCollision', 'Hard Collision', true],
-  ['softCollision', 'Soft Collision', true],
-  ['noSlideCollision', 'No-Slide Collision', true],
-  ['bouncyCollision', 'Bouncy Collision', true],
-  ['lavaCollision', 'Lava Collision', true],
+  ['cameraBounds', 'Camera edge', true],
+  ['killBounds', 'Blast zones', true],
+  ['spawnBotBounds', 'Bot spawn area', false, true],
+  ['hardCollision', 'Solid ground and walls', true],
+  ['softCollision', 'Drop-through platforms', true],
+  ['noSlideCollision', 'No wall-slide walls', true],
+  ['bouncyCollision', 'Bouncy surfaces', true],
+  ['lavaCollision', 'Hazards', true],
+  ['mudCollision', 'Mud', true],
   ['pressureCollision', 'Pressure Plates', true],
-  ['gameModeCollision', 'Game Mode Collision', true],
-  ['respawns', 'Respawns', true],
-  ['itemSpawns', 'Item Spawns', true],
-  ['initialItemSpawns', 'Initial Item Spawns', true],
-  ['teamItemSpawns', 'Team Item Spawns', true],
+  ['gameModeCollision', 'Game mode walls', true, true],
+  ['respawns', 'Respawn points', true],
+  ['itemSpawns', 'Weapon spawns', true],
+  ['initialItemSpawns', 'First weapon spawns', true],
+  ['teamItemSpawns', 'Team weapon spawns', true],
   ['goals', 'Goals', true],
-  ['navigation', 'Navigation', false],
+  ['modeItems', 'Game mode item spots', true, true],
+  ['navigation', 'Bot paths', false, true],
   ['movingPlatforms', 'Moving Platforms', true],
-  ['wavePaths', 'Wave Paths', true],
-  ['waveEnemies', 'Wave Enemies', true],
-  ['animatedBackgrounds', 'Animated Backgrounds', false],
-  ['levelAnimations', 'Level Animations', false],
-  ['versionChanges', 'Version Changes', false],
-  ['assets', 'Map Assets', true],
-  ['modeAssets', 'Mode Assets', false],
+  ['wavePaths', 'Enemy paths', true],
+  ['waveEnemies', 'Enemies', true],
+  ['animatedBackgrounds', 'Animated Backgrounds', false, true],
+  ['levelAnimations', 'Map effects', false, true],
+  ['versionChanges', 'Changes from this version', false],
+  ['assets', 'Map art', true],
+  ['foreground', 'Foreground art', true],
+  ['modeAssets', 'Game mode art', false, true],
 ];
+
+const ADVANCED_LAYERS = new Set(LAYER_OPTIONS.filter((option) => option[3]).map(([key]) => key));
+
+const THEME_LABELS = {
+  Halloween: 'Halloween look',
+  Christmas: 'Christmas look',
+  TWDHalloween: 'Walking Dead look',
+};
+
+function themeLabel(theme) {
+  return THEME_LABELS[theme] || `${titleCase(theme)} look`;
+}
+
+const KILL_FREE_MARGIN = 200;
+
+const SECTION_LABELS = {
+  ranked: 'Ranked',
+  tournament: 'Tournament only',
+  casual: 'Casual',
+  modes: 'Game modes',
+  botw: 'Brawl of the Week',
+  tutorial: 'Tutorial and test',
+};
+
+const SECTION_ORDER = Object.keys(SECTION_LABELS);
+
+function orderMaps(maps) {
+  const rank = (entry) => {
+    const index = SECTION_ORDER.indexOf(entry?.section || 'tutorial');
+    return index < 0 ? SECTION_ORDER.length : index;
+  };
+  return [...array(maps)].sort((left, right) => rank(left) - rank(right) || mapName(left).localeCompare(mapName(right)));
+}
+
+function mapName(entry) {
+  return String(entry?.label || entry?.displayName || entry?.name || '');
+}
+
+function tournamentModes(entry) {
+  return array(entry?.levelSets).map((set) => clean(set?.name || set?.LevelSetName).match(/^Tournament(\dv\d)$/i)?.[1]).filter(Boolean);
+}
+
+function mapBadges(entry, short = false) {
+  const pools = array(entry?.pools);
+  const badges = [];
+  if (pools.includes('ranked1v1')) badges.push({ key: 'ranked1v1', label: short ? '1v1' : 'Ranked 1v1', title: 'Ranked 1v1', tone: 'amber' });
+  if (pools.includes('ranked2v2')) badges.push({ key: 'ranked2v2', label: short ? '2v2' : 'Ranked 2v2', title: 'Ranked 2v2', tone: 'amber' });
+  const modes = tournamentModes(entry);
+  if (modes.length) badges.push({ key: 'tournament', label: short ? 'Tournament' : `Tournament ${modes.join(', ')}`, title: `Tournament ${modes.join(', ')}`, tone: 'violet' });
+  if (entry?.testLevel) badges.push({ key: 'test', label: 'Test map', title: 'Test map', tone: 'rose' });
+  return badges;
+}
+
+function MapBadges({ entry, short = false }) {
+  const badges = mapBadges(entry, short);
+  if (!badges.length) return null;
+  return badges.map((badge) => <Pill key={badge.key} tone={badge.tone} title={badge.title} className={short ? 'px-1.5 text-[10px]' : ''}>{badge.label}</Pill>);
+}
 
 const LAYER_COLORS = {
   background: '#64748b',
@@ -57,6 +120,7 @@ const LAYER_COLORS = {
   noSlideCollision: COLORS.noSlide,
   bouncyCollision: COLORS.bouncy,
   lavaCollision: COLORS.hazard,
+  mudCollision: COLORS.mud,
   pressureCollision: COLORS.pressure,
   gameModeCollision: '#e879f9',
   respawns: COLORS.respawn,
@@ -64,6 +128,7 @@ const LAYER_COLORS = {
   initialItemSpawns: '#4ade80',
   teamItemSpawns: '#14b8a6',
   goals: COLORS.goal,
+  modeItems: '#a3e635',
   navigation: COLORS.nav,
   movingPlatforms: COLORS.moving,
   wavePaths: '#f472b6',
@@ -72,6 +137,7 @@ const LAYER_COLORS = {
   levelAnimations: '#fde047',
   versionChanges: '#fb7185',
   assets: COLORS.asset,
+  foreground: '#94a3b8',
   modeAssets: '#818cf8',
 };
 
@@ -139,7 +205,7 @@ const LEVEL_SET_GROUP_ORDER = [
   '3v3',
   'FFA (Free-For-All)',
   'BOTW (Brawl of the Week)',
-  'All / Game Modes',
+  'All / game modes',
   'Other',
 ];
 
@@ -152,11 +218,22 @@ function levelSetGroup(set) {
   if (/(^|[^0-9])2v2([^0-9]|$)/i.test(text)) return '2v2';
   if (/(^|[^0-9])3v3([^0-9]|$)/i.test(text)) return '3v3';
   if (text.includes('ffa') || text.includes('free-for-all') || text.includes('free for all')) return 'FFA (Free-For-All)';
-  if (text.includes('all') || text.includes('game mode') || text.includes('gamemode')) return 'All / Game Modes';
+  if (text.includes('all') || text.includes('game mode') || text.includes('gamemode')) return 'All / game modes';
   return 'Other';
 }
 
-function groupedLevelSets(levelSets) {
+function groupedLevelSets(levelSets, order) {
+  const named = array(levelSets);
+  if (named.some((set) => set?.group)) {
+    const byGroup = new Map(array(order).map((group) => [group, []]));
+    named.forEach((set) => {
+      const group = set.group || 'Game modes';
+      byGroup.set(group, [...(byGroup.get(group) || []), set]);
+    });
+    return [...byGroup.entries()]
+      .filter(([, sets]) => sets.length)
+      .map(([group, sets]) => [group, [...sets].sort((left, right) => String(left.label || left.name).localeCompare(String(right.label || right.name), undefined, { numeric: true, sensitivity: 'base' }))]);
+  }
   const groups = new Map(LEVEL_SET_GROUP_ORDER.map((group) => [group, []]));
   sortLevelSets(levelSets).forEach((set) => {
     const group = levelSetGroup(set);
@@ -446,11 +523,26 @@ function collectMapGeometry(scene, level, assetDir, selectedWaveId = null, party
       const height = number(node.H);
       const imageMatrix = multiplyMatrix(worldMatrix, [width < 0 ? -1 : 1, 0, 0, height < 0 ? -1 : 1, 0, 0]);
       addLinked({ kind: 'image', layer: assetLayers[0], layers: assetLayers, type: tag, ...matrixBounds(imageMatrix, 0, 0, Math.abs(width), Math.abs(height)), matrix: imageMatrix, imageW: Math.abs(width), imageH: Math.abs(height), href: mapAssetUrl(assetDir, node.AssetName), color: COLORS.asset, details });
-    } else if (tag === 'Platform' && node.AssetName && node.W && node.H) {
+    } else if ((tag === 'Platform' || tag === 'ForegroundAsset') && node.AssetName && node.W && node.H) {
       const width = number(node.W);
       const height = number(node.H);
       const imageMatrix = multiplyMatrix(worldMatrix, [width < 0 ? -1 : 1, 0, 0, height < 0 ? -1 : 1, 0, 0]);
-      addLinked({ kind: 'image', layer: assetLayers[0], layers: assetLayers, type: tag, ...matrixBounds(imageMatrix, 0, 0, Math.abs(width), Math.abs(height)), matrix: imageMatrix, imageW: Math.abs(width), imageH: Math.abs(height), href: mapAssetUrl(assetDir, node.AssetName), color: COLORS.asset, details });
+      const layersForImage = tag === 'ForegroundAsset' && !themes.length && !variant.mode ? ['foreground'] : assetLayers;
+      addLinked({ kind: 'image', layer: layersForImage[0], layers: layersForImage, foreground: tag === 'ForegroundAsset', type: tag, ...matrixBounds(imageMatrix, 0, 0, Math.abs(width), Math.abs(height)), matrix: imageMatrix, imageW: Math.abs(width), imageH: Math.abs(height), href: mapAssetUrl(assetDir, node.AssetName), color: COLORS.asset, details });
+    } else if (tag === 'MudCollision') {
+      const surfaceY = number(node.Y, ownY);
+      const start = matrixPoint(parentMatrix, number(node.X1, ownX), surfaceY);
+      const end = matrixPoint(parentMatrix, number(node.X2, ownX), surfaceY);
+      const depth = number(node.MudKillDepth, 150);
+      addLinked({ kind: 'rect', hitMode: 'stroke', layer: 'mudCollision', type: 'MudDepth', x: Math.min(start.x, end.x), y: start.y, w: Math.abs(end.x - start.x), h: depth, color: COLORS.mud, details });
+      addLinked({ kind: 'line', layer: 'mudCollision', type: tag, x1: start.x, y1: start.y, x2: end.x, y2: end.y, color: COLORS.mud, details });
+    } else if (tag === 'TeamScoreboard') {
+      const scoreY = number(node.Y, ownY);
+      [['Red', node.RedTeamX], ['Blue', node.BlueTeamX]].forEach(([team, teamX]) => {
+        if (clean(teamX)) addLinked({ kind: 'point', layer: 'modeAssets', type: tag, ...matrixPoint(parentMatrix, number(teamX), scoreY), color: team === 'Red' ? '#f87171' : '#60a5fa', details: { ...details, team } });
+      });
+    } else if (tag === 'ItemSet') {
+      addLinked({ kind: 'point', layer: 'modeItems', type: tag, x, y, color: LAYER_COLORS.modeItems, details });
     } else if (tag === 'AnimatedBackground') {
       const position = coordinatePair(node.Position);
       const scale = coordinatePair(node.Scale, 1, 1);
@@ -679,6 +771,15 @@ function collectMapGeometry(scene, level, assetDir, selectedWaveId = null, party
       color: COLORS.kill,
       details: { type: 'KillBounds', LeftKill: left, RightKill: right, TopKill: top, BottomKill: bottom },
     });
+    const isTrue = (value) => /^true$/i.test(clean(value));
+    const killX = number(camera.X) - left;
+    const killY = number(camera.Y) - top;
+    const killW = number(camera.W) + left + right;
+    const killH = number(camera.H) + top + bottom;
+    const freeLine = (side, x1, y1, x2, y2, distance) => add({ kind: 'line', dashed: true, layer: 'killBounds', type: 'FreeKillLine', x1, y1, x2, y2, color: COLORS.kill, details: { type: 'FreeKillLine', side, distance } });
+    if (!isTrue(level?.HardLeftKill)) freeLine('Left', killX - KILL_FREE_MARGIN, killY, killX - KILL_FREE_MARGIN, killY + killH, left + KILL_FREE_MARGIN);
+    if (!isTrue(level?.HardRightKill)) freeLine('Right', killX + killW + KILL_FREE_MARGIN, killY, killX + killW + KILL_FREE_MARGIN, killY + killH, right + KILL_FREE_MARGIN);
+    if (isTrue(level?.SoftTopKill)) freeLine('Top', killX, killY - KILL_FREE_MARGIN, killX + killW, killY - KILL_FREE_MARGIN, top + KILL_FREE_MARGIN);
   }
 
   return shapes;
@@ -693,7 +794,8 @@ function geometryViewBox(scene, shapes) {
     const width = killBounds?.w || number(camera.W);
     const height = killBounds?.h || number(camera.H);
     const padding = Math.max(width, height) * 0.03;
-    return [x - padding, y - padding, width + padding * 2, height + padding * 2];
+    const sidePadding = padding + (killBounds ? KILL_FREE_MARGIN : 0);
+    return [x - sidePadding, y - padding, width + sidePadding * 2, height + padding * 2];
   }
   const points = shapes.flatMap((shape) => {
     if (shape.kind === 'line') return [[shape.x1, shape.y1], [shape.x2, shape.y2]];
@@ -711,16 +813,82 @@ function geometryViewBox(scene, shapes) {
   return [minX - padding, minY - padding, maxX - minX + padding * 2, maxY - minY + padding * 2];
 }
 
+const SHAPE_NAMES = {
+  HardCollision: 'Solid ground',
+  SoftCollision: 'Drop-through platform',
+  NoSlideCollision: 'No-slide wall',
+  BouncyCollision: 'Bouncy surface',
+  LavaCollision: 'Lava',
+  MudCollision: 'Mud',
+  MudDepth: 'Mud',
+  ForegroundAsset: 'Foreground art',
+  TeamScoreboard: 'Team score',
+  PressurePlateCollision: 'Pressure plate',
+  GameModeHardCollision: 'Game mode wall',
+  Respawn: 'Respawn point',
+  ItemSpawn: 'Item spawn',
+  ItemInitSpawn: 'First item spawn',
+  TeamItemInitSpawn: 'Team item spawn',
+  ItemSet: 'Game mode item spot',
+  CameraBounds: 'Camera edge',
+  SpawnBotBounds: 'Bot spawn area',
+  KillBounds: 'Blast zone',
+  FreeKillLine: 'Blast line out of hitstun',
+  NavNode: 'Bot path point',
+  MovingPlatform: 'Moving platform',
+  MovingPlatformPath: 'Moving platform path',
+  WavePath: 'Enemy path',
+  Platform: 'Platform art',
+  Background: 'Background',
+  Asset: 'Map art',
+};
+
+function mudText(mud) {
+  const sideways = Math.round(number(mud?.MudXSpeedMult, 1) * 100);
+  return `You sink slowly and move at ${sideways}% speed sideways. Past ${formatUnits(number(mud?.MudKillDepth, 150))} units deep you fall at full speed.`;
+}
+
+function shapeSize(shape) {
+  if (shape.kind === 'line') {
+    const length = Math.round(Math.hypot(number(shape.x2) - number(shape.x1), number(shape.y2) - number(shape.y1)));
+    if (!length) return '';
+    return Math.abs(number(shape.y2) - number(shape.y1)) > Math.abs(number(shape.x2) - number(shape.x1)) ? `${length} units tall` : `${length} units wide`;
+  }
+  if (shape.kind === 'rect' && shape.w && shape.h) return `${Math.round(shape.w)} × ${Math.round(shape.h)} units`;
+  return '';
+}
+
+function plainShapeLabel(shape) {
+  const type = shape?.type || '';
+  const name = SHAPE_NAMES[type] || (/Collision$/.test(type) ? `${titleCase(type.replace(/Collision$/, ''))} surface` : titleCase(type));
+  const extras = [];
+  if (type === 'Respawn' && String(shape.details?.Initial).toLowerCase() === 'true') extras.push('used at match start');
+  if (type === 'WavePath' && shape.details?.wave !== undefined) extras.push(`wave ${shape.details.wave}`);
+  if (type === 'KillBounds') {
+    const { LeftKill, RightKill, TopKill, BottomKill } = shape.details || {};
+    return { name, detail: `Left ${LeftKill}, right ${RightKill}, top ${TopKill}, bottom ${BottomKill} past the camera edge. In hitstun you're KO'd at this line.` };
+  }
+  if (type === 'FreeKillLine') return { name, detail: `${shape.details?.side} side, ${formatUnits(shape.details?.distance)} past the camera edge` };
+  if (type === 'MudCollision' || type === 'MudDepth') return { name, detail: mudText(shape.details) };
+  if (type === 'TeamScoreboard') return { name: `${shape.details?.team} team score`, detail: '' };
+  const size = shapeSize(shape);
+  if (size) extras.push(size);
+  return { name, detail: extras.join(', ') };
+}
+
 function HoverTooltip({ hovered, pointer }) {
+  const { full } = useDataView({ url: true });
   if (!hovered) return null;
-  const pairs = displayPairs(hovered.details, ['type', 'path']);
+  const pairs = full ? displayPairs(hovered.details, ['type', 'path']) : [];
+  const plain = plainShapeLabel(hovered);
   return (
     <div
-      className="pointer-events-none absolute z-30 max-w-80 rounded-xl border border-slate-600 bg-slate-950/95 p-3 text-xs text-slate-200 shadow-2xl backdrop-blur"
+      className="pointer-events-none absolute z-30 max-w-80 rounded-xl border border-slate-600 bg-slate-950/95 p-2 text-xs text-slate-200 shadow-2xl backdrop-blur"
       style={{ left: pointer.x + 18, top: pointer.y + 18 }}
     >
-      <div className="font-bold text-white">{titleCase(hovered.type)}</div>
-      {hovered.details?.path && <div className="mt-0.5 break-all text-[10px] text-slate-500">{hovered.details.path}</div>}
+      <div className="font-bold text-white">{full ? titleCase(hovered.type) : plain.name}</div>
+      {!full && plain.detail && <div className="mt-0.5 text-slate-300">{plain.detail}</div>}
+      {full && hovered.details?.path && <div className="mt-0.5 break-all font-mono text-[10px] text-slate-500">{hovered.details.path}</div>}
       {pairs.length > 0 && (
         <div className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
           {pairs.slice(0, 14).map(([label, value]) => (
@@ -792,7 +960,7 @@ function MapShape({ shape, active, onEnter, onLeave, onMove, onPlatformPointerDo
   if (shape.kind === 'line') {
     return (
       <g {...common}>
-        <line x1={shape.x1} y1={shape.y1} x2={shape.x2} y2={shape.y2} stroke={stroke} strokeWidth={active ? 5 : 2.5} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+        <line x1={shape.x1} y1={shape.y1} x2={shape.x2} y2={shape.y2} stroke={stroke} strokeWidth={active ? 5 : 2.5} strokeDasharray={shape.dashed ? '4 10' : undefined} strokeOpacity={shape.dashed && !active ? 0.6 : 1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
         <line x1={shape.x1} y1={shape.y1} x2={shape.x2} y2={shape.y2} stroke="transparent" strokeWidth="20" vectorEffect="non-scaling-stroke" pointerEvents="stroke" />
       </g>
     );
@@ -862,7 +1030,7 @@ function MapShape({ shape, active, onEnter, onLeave, onMove, onPlatformPointerDo
   }
   return (
     <g {...common}>
-      <rect x={shape.x} y={shape.y} width={Math.max(shape.w, 1)} height={Math.max(shape.h, 1)} fill={active ? '#facc1528' : `${shape.color}12`} stroke={stroke} strokeWidth={active ? 4 : 2} strokeDasharray={shape.type.includes('Bounds') ? '10 7' : undefined} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+      <rect x={shape.x} y={shape.y} width={Math.max(shape.w, 1)} height={Math.max(shape.h, 1)} fill={active ? '#facc1528' : `${shape.color}${shape.type === 'MudDepth' ? '40' : '12'}`} stroke={stroke} strokeWidth={active ? 4 : 2} strokeDasharray={shape.type.includes('Bounds') ? '10 7' : undefined} vectorEffect="non-scaling-stroke" pointerEvents="none" />
       <rect
         x={shape.x - (shape.hitMode === 'stroke' ? 0 : pointRadius)}
         y={shape.y - (shape.hitMode === 'stroke' ? 0 : pointRadius)}
@@ -878,8 +1046,18 @@ function MapShape({ shape, active, onEnter, onLeave, onMove, onPlatformPointerDo
   );
 }
 
+function shapeDepth(shape) {
+  if (shape.type === 'Background') return 0;
+  if (shape.kind === 'image') return shape.foreground ? 3 : 1;
+  if (shape.kind === 'animation') return 2;
+  return 4;
+}
+
 function MapCanvas({ detail, comparisonDetail, selectedWaveId, partySize = 2, waveTime = 0, wavePlaying = false, onWaveDuration }) {
+  const { full } = useDataView({ url: true });
   const [layers, setLayers] = useState(DEFAULT_LAYERS);
+  const [moreLayers, setMoreLayers] = useState(false);
+  const showAdvanced = full || moreLayers;
   const [hovered, setHovered] = useState(null);
   const [selectedAnimation, setSelectedAnimation] = useState(null);
   const [pointer, setPointer] = useState({ x: 0, y: 0 });
@@ -909,8 +1087,8 @@ function MapCanvas({ detail, comparisonDetail, selectedWaveId, partySize = 2, wa
     ...[...availableLayers]
       .filter((layer) => layer.startsWith('event:'))
       .sort()
-      .map((layer) => [layer, `${layer.slice('event:'.length)} Assets`, false]),
-  ], [availableLayers]);
+      .map((layer) => [layer, full ? `${layer.slice('event:'.length)} assets` : themeLabel(layer.slice('event:'.length)), false]),
+  ], [availableLayers, full]);
   const baseViewBox = useMemo(() => geometryViewBox(detail.scene, shapes), [detail, selectedWaveId, partySize]);
   const [viewBox, setViewBox] = useState(baseViewBox);
   useEffect(() => setViewBox(baseViewBox), [baseViewBox]);
@@ -926,8 +1104,17 @@ function MapCanvas({ detail, comparisonDetail, selectedWaveId, partySize = 2, wa
     if (!wavePlaying) svgRef.current?.setCurrentTime?.(waveTime);
   }, [waveTime, wavePlaying]);
   const pointRadius = Math.max(viewBox[2], viewBox[3]) / 280;
-  const layerEnabled = (layer) => layer.startsWith('event:') ? layers[layer] === true : layers[layer] !== false;
-  const visible = positionedShapes.filter((shape) => (shape.layers || [shape.layer]).some(layerEnabled));
+  const layerEnabled = (layer) => {
+    if (ADVANCED_LAYERS.has(layer) && !showAdvanced) return false;
+    return layer.startsWith('event:') ? layers[layer] === true : layers[layer] !== false;
+  };
+  const shownLayerOptions = layerOptions.filter(([layer]) => availableLayers.has(layer) && (showAdvanced || !ADVANCED_LAYERS.has(layer)));
+  const hiddenLayerCount = layerOptions.filter(([layer]) => availableLayers.has(layer) && ADVANCED_LAYERS.has(layer)).length;
+  const visible = positionedShapes
+    .filter((shape) => (shape.layers || [shape.layer]).some(layerEnabled))
+    .map((shape, index) => [shapeDepth(shape), index, shape])
+    .sort((left, right) => left[0] - right[0] || left[1] - right[1])
+    .map(([, , shape]) => shape);
 
   const clientToMap = (event) => {
     const svg = svgRef.current;
@@ -1003,9 +1190,9 @@ function MapCanvas({ detail, comparisonDetail, selectedWaveId, partySize = 2, wa
   };
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-3">
       <div className="flex flex-wrap gap-2">
-        {layerOptions.filter(([layer]) => availableLayers.has(layer)).map(([layer, label]) => (
+        {shownLayerOptions.map(([layer, label]) => (
           <button
             key={layer}
             type="button"
@@ -1023,12 +1210,17 @@ function MapCanvas({ detail, comparisonDetail, selectedWaveId, partySize = 2, wa
             {label}
           </button>
         ))}
+        {!full && hiddenLayerCount > 0 && (
+          <button type="button" onClick={() => setMoreLayers((value) => !value)} aria-expanded={moreLayers} className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-bold text-slate-300 hover:bg-slate-800">
+            {moreLayers ? 'Fewer layers' : `More layers (${hiddenLayerCount})`}
+          </button>
+        )}
       </div>
-      <div ref={containerRef} className="relative min-h-[34rem] overflow-hidden rounded-2xl border border-slate-700 bg-[#07101d] shadow-inner">
+      <div ref={containerRef} className="relative -order-1 min-h-[17rem] overflow-hidden rounded-2xl sm:min-h-[34rem] lg:order-none min-[137.5rem]:min-h-[46rem] border border-slate-700 bg-[#07101d] shadow-inner">
         <svg
           ref={svgRef}
           viewBox={viewBox.join(' ')}
-          className="h-[34rem] w-full cursor-grab touch-none active:cursor-grabbing"
+          className="h-[17rem] w-full cursor-grab sm:h-[34rem] min-[137.5rem]:h-[46rem] touch-none active:cursor-grabbing"
           preserveAspectRatio="xMidYMid meet"
           data-pan-surface="true"
           onPointerDown={startPan}
@@ -1053,22 +1245,22 @@ function MapCanvas({ detail, comparisonDetail, selectedWaveId, partySize = 2, wa
           <button type="button" onClick={() => setViewBox(baseViewBox)} className="border-x border-slate-700 px-3 py-2 text-[11px] font-bold text-slate-300 hover:bg-slate-800">Reset</button>
           <button type="button" onClick={() => zoomAt(1.25)} className="px-3 py-2 text-sm font-bold text-white hover:bg-slate-800" aria-label="Zoom out">-</button>
         </div>
-        <div className="absolute bottom-3 left-3 rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-2 text-[11px] text-slate-400">
+        {full && <div className="absolute bottom-3 left-3 rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-2 text-[11px] text-slate-400">
           ViewBox {viewBox.map((value) => Math.round(value)).join(' x ')} - {visible.length} visible elements
-        </div>
+        </div>}
         {layers.versionChanges && comparisonDetail && <div className="absolute bottom-3 right-3 flex gap-3 rounded-lg border border-slate-700 bg-slate-950/90 px-3 py-2 text-[11px] font-bold"><span className="text-rose-400">Historical only</span><span className="text-green-400">Current only</span></div>}
       </div>
-      {movingPaths.size > 0 && <div className="grid gap-2 rounded-xl border border-orange-400/30 bg-orange-500/5 p-3 sm:grid-cols-2 xl:grid-cols-5">
+      {movingPaths.size > 0 && <div className="grid gap-2 rounded-xl border border-orange-400/30 bg-orange-500/5 p-2 sm:grid-cols-2 xl:grid-cols-5">
         {[...movingPaths].map(([platformId, path]) => {
           const timing = movingPlatformTiming(path);
           return <label key={platformId} className="rounded-lg bg-slate-950 px-3 py-2 text-xs text-slate-300">
-            <span className="flex items-center justify-between gap-3"><span className="font-bold text-orange-200">Moving Platform {platformId}</span><span>{Math.round((platformProgress[platformId] || 0) * 100)}%</span></span>
+            <span className="flex items-center justify-between gap-3"><span className="font-bold text-orange-200">Moving platform {platformId}</span><span>{Math.round((platformProgress[platformId] || 0) * 100)}%</span></span>
             <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-400">
               <span>Start frame {timing.startFrame || 0}</span>
               {timing.numFrames > 0 && <span>Loop {timing.numFrames} frames</span>}
               {timing.slowMult !== 1 && <span>Speed x{timing.slowMult}</span>}
             </span>
-            <input type="range" min="0" max="1000" value={Math.round((platformProgress[platformId] || 0) * 1000)} onChange={(event) => setPlatformProgress((current) => ({ ...current, [platformId]: number(event.target.value) / 1000 }))} className="mt-2 w-full accent-orange-400" aria-label={`Moving Platform ${platformId} position`} />
+            <input type="range" min="0" max="1000" value={Math.round((platformProgress[platformId] || 0) * 1000)} onChange={(event) => setPlatformProgress((current) => ({ ...current, [platformId]: number(event.target.value) / 1000 }))} className="mt-2 w-full accent-orange-400" aria-label={`Moving platform ${platformId} position`} />
             <span className="mt-1 block text-[10px] text-slate-500">Drag its collision, artwork, or orange path handle.</span>
           </label>;
         })}
@@ -1077,20 +1269,19 @@ function MapCanvas({ detail, comparisonDetail, selectedWaveId, partySize = 2, wa
   );
 }
 
-function MetadataCard({ title, children }) {
+function MetadataCard({ title, count, children }) {
   return (
-    <section className="rounded-xl border border-slate-700 bg-slate-900/75 p-3">
-      <h3 className="text-sm font-bold text-white">{title}</h3>
-      <div className="mt-2">{children}</div>
-    </section>
+    <Section title={title} count={count} bodyClassName="space-y-3">
+      {children}
+    </Section>
   );
 }
 
-function DataPairs({ data, omitted = [] }) {
+function DataPairs({ data, omitted = [], className = '' }) {
   const pairs = displayPairs(data, omitted);
   if (!pairs.length) return <div className="text-xs text-slate-500">No data</div>;
   return (
-    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+    <div className={`grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3 ${className}`}>
       {pairs.map(([label, value]) => (
         <div key={label} className="rounded-lg bg-slate-950 px-3 py-2">
           <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</div>
@@ -1115,11 +1306,11 @@ function cssColor(value, fallback = '#334155') {
   return Number.isFinite(numeric) ? `#${Math.max(0, numeric).toString(16).padStart(6, '0').slice(-6)}` : fallback;
 }
 
-function ColorExclusionIcons({ colors }) {
+function ColorExclusionIcons({ colors, bare = false }) {
   if (!array(colors).length) return null;
   return (
-    <div className="mt-3 border-t border-slate-700 pt-3">
-      <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Color Exclusions</div>
+    <div className={bare ? '' : 'border-t border-slate-800 pt-3'}>
+      {!bare && <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Color Exclusions</div>}
       <div className="flex flex-wrap gap-3">
         {array(colors).map((color) => <div key={color.ColorSchemeID || color.ColorSchemeName} className="flex w-20 flex-col items-center gap-1 text-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-xl border border-slate-700 p-2" style={{ backgroundColor: cssColor(color.IndicatorColor) }}>
@@ -1154,24 +1345,25 @@ function WaveData({ waves, selectedWaveId, onSelectWave, partySize, onPartySize,
   const totalEnemies = groupData.reduce((total, group) => total + group.count, 0);
 
   return (
-    <div className="rounded-xl border border-rose-400/30 bg-slate-900/75 p-3">
-      <div className="space-y-3">
+    <Section title="Waves" count={entries.length} tone="rose" bodyClassName="space-y-3">
+      <div className="max-w-4xl space-y-3">
         <div className="space-y-3">
-          <div>
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Waves</div>
-            <div className="flex gap-2 overflow-x-auto pb-2 app-scrollbar">
-            {entries.map((entry, index) => {
-              const id = entry.ID ?? index;
-              const active = String(id) === String(wave.ID ?? selectedIndex);
-              return <button key={id} type="button" onClick={() => onSelectWave(id)} className={`shrink-0 rounded-lg border px-3 py-2 text-xs font-bold transition ${active ? 'border-rose-400 bg-rose-500/20 text-white' : 'border-slate-700 bg-slate-950 text-slate-400 hover:border-slate-500 hover:text-white'}`}>Wave {id}</button>;
-            })}
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2.5">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Players</span>
-            <div className="flex gap-2">
-              {[2, 3, 4].map((size) => <button key={size} type="button" onClick={() => onPartySize(size)} className={`min-w-10 rounded-lg border px-3 py-2 text-xs font-bold transition ${partySize === size ? 'border-blue-400 bg-blue-500/20 text-white' : 'border-slate-700 bg-slate-900 text-slate-400 hover:text-white'}`}>{size}</button>)}
-            </div>
+          <Tabs
+            variant="chips"
+            label="Waves"
+            value={String(wave.ID ?? selectedIndex)}
+            onChange={(id) => onSelectWave(entries.find((entry, index) => String(entry.ID ?? index) === String(id))?.ID ?? id)}
+            items={entries.map((entry, index) => ({ value: String(entry.ID ?? index), label: `Wave ${entry.ID ?? index}` }))}
+          />
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Players</span>
+            <Tabs
+              variant="small"
+              label="Players"
+              value={partySize}
+              onChange={(size) => onPartySize(Number(size))}
+              items={[2, 3, 4].map((size) => ({ value: size, label: String(size) }))}
+            />
           </div>
         </div>
 
@@ -1180,9 +1372,9 @@ function WaveData({ waves, selectedWaveId, onSelectWave, partySize, onPartySize,
           <div className="text-right"><div className="text-xl font-black text-rose-300">{totalEnemies}</div><div className="text-[10px] font-bold uppercase text-slate-500">Enemies</div></div>
         </div>
 
-        <div className="flex flex-col gap-2 rounded-xl border border-slate-700 bg-slate-950 p-3 sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-2 rounded-xl border border-slate-700 bg-slate-950 p-2 sm:flex-row sm:items-center">
           <div className="flex shrink-0 gap-2">
-            <button type="button" onClick={() => onPlaying(!playing)} disabled={!waveDuration} className="rounded-lg bg-rose-500 px-4 py-2 text-xs font-bold text-white disabled:opacity-40">{playing ? 'Pause' : 'Play'}</button>
+            <button type="button" onClick={() => onPlaying(!playing)} disabled={!waveDuration} className="rounded-lg bg-rose-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">{playing ? 'Pause' : 'Play'}</button>
             <button type="button" onClick={() => { onTime(0); onPlaying(true); }} disabled={!waveDuration} className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-bold text-slate-200 disabled:opacity-40">Replay</button>
           </div>
           <input type="range" min="0" max={Math.max(1, Math.round(waveDuration * 1000))} value={Math.min(Math.round(waveTime * 1000), Math.max(1, Math.round(waveDuration * 1000)))} onChange={(event) => { onPlaying(false); onTime(number(event.target.value) / 1000); }} className="w-full accent-rose-400" aria-label="Wave playback position" />
@@ -1190,24 +1382,104 @@ function WaveData({ waves, selectedWaveId, onSelectWave, partySize, onPartySize,
         </div>
 
       </div>
-    </div>
+    </Section>
   );
 }
 
 function LevelEffects({ scene }) {
+  const { full } = useDataView({ url: true });
   const backgrounds = array(scene?.AnimatedBackground);
   const periodic = [...array(scene?.LevelAnimation), ...array(scene?.LevelAnim)];
   if (!backgrounds.length && !periodic.length) return null;
-  return <details className="rounded-xl border border-slate-700 bg-slate-900/75"><summary className="cursor-pointer px-3 py-2 text-sm font-bold text-white">Map Animations ({backgrounds.length + periodic.length})</summary><div className="space-y-3 border-t border-slate-700 p-3"><div className="text-xs text-slate-400">Enable an animation layer, then select a marker on the map to load that effect.</div>{backgrounds.length > 0 && <div><div className="mb-2 text-[10px] font-bold uppercase text-fuchsia-300">Animated Backgrounds ({backgrounds.length})</div><div className="flex flex-wrap gap-2">{backgrounds.map((effect, index) => <span key={index} className="rounded-lg bg-slate-950 px-2 py-1 text-[11px] text-slate-300">{effect.Gfx?.AnimClass || `Effect ${index + 1}`}</span>)}</div></div>}{periodic.length > 0 && <div><div className="mb-2 text-[10px] font-bold uppercase text-yellow-300">Level Animations ({periodic.length})</div><div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{periodic.map((effect, index) => <div key={index} className="rounded-lg bg-slate-950 p-2"><div className="text-xs font-bold text-white">{effect.AnimationName || effect.AssetName || `Animation ${index + 1}`}</div><DataPairs data={effect} omitted={['AnimationName', 'AssetName']} /></div>)}</div></div>}</div></details>;
+  return <Section collapsible defaultOpen={false} title="Map animations" count={backgrounds.length + periodic.length} bodyClassName="space-y-3"><div className="text-xs text-slate-400">Turn on an animation layer and click a marker on the map to play it.</div>{backgrounds.length > 0 && <div><div className="mb-2 text-[10px] font-bold uppercase text-fuchsia-300">Animated Backgrounds ({backgrounds.length})</div><div className="flex flex-wrap gap-2">{backgrounds.map((effect, index) => <Pill key={index}>{effect.Gfx?.AnimClass || `Effect ${index + 1}`}</Pill>)}</div></div>}{periodic.length > 0 && <div><div className="mb-2 text-[10px] font-bold uppercase text-yellow-300">Level Animations ({periodic.length})</div><div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 min-[137.5rem]:grid-cols-5">{periodic.map((effect, index) => <div key={index} className="rounded-lg bg-slate-950 p-2"><div className="text-xs font-bold text-white">{effect.AnimationName || effect.AssetName || `Animation ${index + 1}`}</div>{full && <DataPairs data={effect} omitted={['AnimationName', 'AssetName']} />}</div>)}</div></div>}</Section>;
 }
 
 function LevelSounds({ sounds }) {
   const entries = array(sounds).sort((left, right) => number(left.Delay) - number(right.Delay));
   if (!entries.length) return null;
-  return <details className="rounded-xl border border-slate-700 bg-slate-900/75"><summary className="cursor-pointer px-3 py-2 text-sm font-bold text-white">Sound Timeline ({entries.length})</summary><div className="grid gap-2 border-t border-slate-700 p-3 sm:grid-cols-2 xl:grid-cols-4">{entries.map((sound, index) => <div key={`${sound.SoundEventName}-${index}`} className="rounded-lg bg-slate-950 p-2"><div className="text-xs font-bold text-white">{sound.SoundEventName}</div><div className="mt-1 text-[11px] text-slate-400">Starts {seconds(sound.Delay)}{clean(sound.Interval) ? ` · repeats every ${seconds(sound.Interval)}` : ''}</div></div>)}</div></details>;
+  return <Section collapsible defaultOpen={false} title="Sound timeline" count={entries.length}><div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5 min-[112.5rem]:grid-cols-6 min-[137.5rem]:grid-cols-8">{entries.map((sound, index) => <div key={`${sound.SoundEventName}-${index}`} className="rounded-lg bg-slate-950 p-2"><div className="text-xs font-bold text-white">{sound.SoundEventName}</div><div className="mt-1 text-[11px] text-slate-400">Starts {seconds(sound.Delay)}{clean(sound.Interval) ? ` · repeats every ${seconds(sound.Interval)}` : ''}</div></div>)}</div></Section>;
 }
 
-function MapDetails({ detail, comparisonDetail }) {
+function formatUnits(value) {
+  return Math.round(number(value)).toLocaleString('en-US');
+}
+
+function compareText(value, average, more, less, same) {
+  if (!average) return '';
+  const percent = Math.round((value / average - 1) * 100);
+  if (!percent) return same;
+  return `${Math.abs(percent)}% ${percent > 0 ? more : less}`;
+}
+
+function blastRules(rules) {
+  const lines = [];
+  if (rules.hardLeft && rules.hardRight) lines.push('The side lines KO you out of hitstun too.');
+  else if (rules.hardLeft || rules.hardRight) {
+    const hard = rules.hardLeft ? 'left' : 'right';
+    const other = rules.hardLeft ? 'right' : 'left';
+    lines.push(`The ${hard} line KOs you out of hitstun too. Out of hitstun the ${other} line is ${KILL_FREE_MARGIN} further out.`);
+  } else lines.push(`Out of hitstun the side lines are ${KILL_FREE_MARGIN} further out.`);
+  if (rules.softTop) lines.push(`The top KOs you out of hitstun too, ${KILL_FREE_MARGIN} above the line.`);
+  else lines.push('The top only KOs you in hitstun.');
+  lines.push('The bottom line always KOs.');
+  return lines;
+}
+
+function SizeStat({ label, value, note }) {
+  return (
+    <div className="rounded-lg bg-slate-950 px-2 py-1.5">
+      <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="text-sm font-bold tabular-nums text-white">{value}</div>
+      {note && <div className="text-[11px] text-slate-400">{note}</div>}
+    </div>
+  );
+}
+
+function MapSizeCard({ size, averages, mud }) {
+  const { full } = useDataView({ url: true });
+  if (!size) return null;
+  const { camera, kill, blast, rules } = size;
+  const pickAverage = averages?.ranked1v1 || averages?.ranked2v2;
+  const poolName = pickAverage?.pool === 'ranked2v2' ? 'ranked 2v2' : 'ranked 1v1';
+  const versus = pickAverage ? [
+    compareText(blast.width, pickAverage.blastWidth, 'wider', 'narrower', 'same width'),
+    compareText(blast.height, pickAverage.blastHeight, 'taller', 'shorter', 'same height'),
+  ] : [];
+  return (
+    <Section title="Size and blast zones" tone="rose" padded={false} bodyClassName="space-y-2 p-3">
+      <div className="grid grid-cols-2 gap-2">
+        <SizeStat label="Camera area" value={`${formatUnits(camera.width)} × ${formatUnits(camera.height)}`} />
+        <SizeStat label="Blast zone box" value={`${formatUnits(blast.width)} × ${formatUnits(blast.height)}`} note={pickAverage ? `${versus.join(', ')} than ${poolName} average` : undefined} />
+        <SizeStat label="Respawn points" value={size.respawns} />
+        <SizeStat label="Weapon spawns" value={size.itemSpawns} note={size.firstItemSpawns ? `${size.firstItemSpawns} at match start` : undefined} />
+      </div>
+      <div>
+        <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">Blast lines past the camera edge</div>
+        <div className="grid grid-cols-4 gap-2">
+          {[['Left', kill.left], ['Right', kill.right], ['Top', kill.top], ['Bottom', kill.bottom]].map(([label, value]) => (
+            <div key={label} className="rounded-lg border border-rose-400/25 bg-rose-500/5 px-2 py-1 text-center">
+              <div className="text-[10px] font-bold uppercase text-rose-300">{label}</div>
+              <div className="text-sm font-bold tabular-nums text-white">{formatUnits(value)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <ul className="list-disc space-y-0.5 pl-5 text-xs text-slate-300">
+        {blastRules(rules).map((line) => <li key={line}>{line}</li>)}
+        {mud && <li>Mud along the bottom: {mudText(mud).replace(/^You/, 'you')}</li>}
+      </ul>
+      {pickAverage && <div className="text-[11px] text-slate-500">Average of {pickAverage.maps} {poolName} maps: blast zone box {formatUnits(pickAverage.blastWidth)} × {formatUnits(pickAverage.blastHeight)}, camera {formatUnits(pickAverage.width)} × {formatUnits(pickAverage.height)}.</div>}
+      {full && (
+        <div className="rounded-lg bg-slate-950 px-2 py-1.5 font-mono text-[11px] text-slate-400">
+          LevelTypes.xml LeftKill {kill.left} · RightKill {kill.right} · TopKill {kill.top} · BottomKill {kill.bottom} · HardLeftKill {String(rules.hardLeft)} · HardRightKill {String(rules.hardRight)} · SoftTopKill {String(rules.softTop)} · CameraBounds {camera.x}, {camera.y}, {camera.width} × {camera.height} · {size.movingPlatforms} moving platforms. Kill values inside LevelDesc comments are not read by the game.
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function MapDetails({ detail, comparisonDetail, detailUrl, averages }) {
+  const { full } = useDataView({ url: true });
   const waves = useMemo(() => array(detail.scene?.WaveData), [detail]);
   const firstWaveId = waves.find((wave) => array(wave.Group).length > 0)?.ID ?? waves[0]?.ID ?? null;
   const [selectedWaveId, setSelectedWaveId] = useState(firstWaveId);
@@ -1237,8 +1509,11 @@ function MapDetails({ detail, comparisonDetail }) {
   const spawnRates = useMemo(() => {
     const unique = new Map();
     array(detail.gameModes).forEach((mode) => array(mode.itemSpawnRates).forEach((rate) => unique.set(rate.SpawnRateName, rate)));
-    return [...unique.values()].sort((a, b) => number(a.SpawnRateID) - number(b.SpawnRateID));
-  }, [detail]);
+    const timers = ['InitSpawnDelay', 'FixedTimeBetweenSpawns', 'VariableTimeBetweenSpawns', 'RandomTimeBetweenSpawns'];
+    return [...unique.values()]
+      .filter((rate) => full || timers.some((field) => number(rate[field]) > 0))
+      .sort((a, b) => number(a.SpawnRateID) - number(b.SpawnRateID));
+  }, [detail, full]);
   return (
     <div className="space-y-3">
       <WaveData
@@ -1253,136 +1528,244 @@ function MapDetails({ detail, comparisonDetail }) {
         onPlaying={setWavePlaying}
         onTime={setWaveTime}
       />
-      <MapCanvas detail={detail} comparisonDetail={comparisonDetail} selectedWaveId={selectedWaveId} partySize={partySize} waveTime={waveTime} wavePlaying={wavePlaying} onWaveDuration={setWaveDuration} />
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <MetadataCard title={`Item Spawn Timers (${spawnRates.length})`}>
+      <div className="grid gap-3 min-[112.5rem]:grid-cols-[minmax(0,1fr)_26rem] min-[112.5rem]:items-start">
+      <div className="min-w-0"><MapCanvas detail={detail} comparisonDetail={comparisonDetail} selectedWaveId={selectedWaveId} partySize={partySize} waveTime={waveTime} wavePlaying={wavePlaying} onWaveDuration={setWaveDuration} /></div>
+      <div className="grid grid-cols-1 content-start gap-3 xl:grid-cols-2 2xl:grid-cols-3 min-[112.5rem]:grid-cols-1">
+        <MapSizeCard size={detail.size} averages={averages} mud={array(detail.scene?.MudCollision)[0]} />
+        <MetadataCard title="Item spawn timers" count={spawnRates.length}>
           {spawnRates.length > 0 ? <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {spawnRates.map((rate) => <div key={rate.SpawnRateName} className="rounded-lg bg-slate-950 p-2"><div className="text-xs font-bold text-white">{rate.SpawnRateName}</div><div className="mt-1 text-[11px] text-slate-400">Initial {seconds(rate.InitSpawnDelay)} · Fixed {seconds(rate.FixedTimeBetweenSpawns)} · Variable {seconds(rate.VariableTimeBetweenSpawns)} · Random {seconds(rate.RandomTimeBetweenSpawns)}</div></div>)}
+            {spawnRates.map((rate) => <div key={rate.SpawnRateName} className="rounded-lg bg-slate-950 p-2"><div className="text-xs font-bold text-white">{full ? rate.SpawnRateName : titleCase(rate.SpawnRateName)}</div><div className="mt-1 text-[11px] text-slate-400">Initial {seconds(rate.InitSpawnDelay)} · Fixed {seconds(rate.FixedTimeBetweenSpawns)} · Variable {seconds(rate.VariableTimeBetweenSpawns)} · Random {seconds(rate.RandomTimeBetweenSpawns)}</div></div>)}
           </div> : <div className="text-xs text-slate-500">No item spawn timers</div>}
         </MetadataCard>
-        <MetadataCard title={`Level Sets (${detail.levelSets?.length || 0})`}>
-          <div className="flex flex-wrap gap-2">{sortLevelSets(detail.levelSets).map((set) => <span key={set.LevelSetName} className="rounded-lg bg-slate-950 px-2.5 py-1.5 text-xs text-slate-200">{set.LevelSetName}</span>)}</div>
+        <MetadataCard title="Level sets" count={detail.levelSets?.length || 0}>
+          {detail.levelSets?.length ? <div className="flex flex-wrap gap-2">{sortLevelSets(detail.levelSets).map((set) => <Pill key={set.LevelSetName} title={set.LevelSetName}>{set.label || set.LevelSetName}</Pill>)}</div> : <div className="text-xs text-slate-500">Not in any level set</div>}
         </MetadataCard>
       </div>
-      <MetadataCard title="Level Type"><DataPairs data={detail.level} omitted={['LevelName', 'DisplayName', 'ColorExclusionList']} /><ColorExclusionIcons colors={detail.colorExclusions} /></MetadataCard>
-      <LevelEffects scene={detail.scene} />
-      <LevelSounds sounds={detail.scene?.LevelSound} />
+      </div>
+      {full ? (
+        <>
+          <MetadataCard title="Level Type"><DataPairs data={detail.level} omitted={['LevelName', 'DisplayName', 'ColorExclusionList']} className="2xl:grid-cols-4 min-[112.5rem]:grid-cols-5 min-[137.5rem]:grid-cols-6" /><ColorExclusionIcons colors={detail.colorExclusions} /></MetadataCard>
+          <LevelEffects scene={detail.scene} />
+          <LevelSounds sounds={detail.scene?.LevelSound} />
+          <RawData data={detail.level} title="Raw level data" filename={`level-${detail.name}`} />
+          <RawData data={detail} title="Raw map data" source={detailUrl} filename={`map-${detail.name}${detail.manifest ? `-${detail.manifest}` : ''}`} />
+        </>
+      ) : (
+        <>
+          {array(detail.colorExclusions).length > 0 && <MetadataCard title="Colors you can't use here"><ColorExclusionIcons colors={detail.colorExclusions} bare /></MetadataCard>}
+          <LevelEffects scene={detail.scene} />
+          <ShowFullData label="Show level data and raw files" url className="self-start" />
+        </>
+      )}
     </div>
   );
 }
 
-function LessonObjectList({ title, value }) {
-  const entries = array(value);
-  if (!entries.length) return null;
+function outOfHitstunKos(rules) {
+  if (!rules) return '';
+  const parts = [];
+  if (rules.hardLeft && rules.hardRight) parts.push('Sides');
+  else if (rules.hardLeft) parts.push('Left');
+  else if (rules.hardRight) parts.push('Right');
+  if (rules.softTop) parts.push('Top');
+  return parts.join(', ');
+}
+
+const COMPARE_COLUMNS = [
+  { key: 'map', label: 'Map', text: true, value: (entry) => mapName(entry) },
+  { key: 'cameraWidth', label: 'Camera W', title: 'Camera area width', value: (entry) => entry.size?.camera?.width },
+  { key: 'cameraHeight', label: 'Camera H', title: 'Camera area height', value: (entry) => entry.size?.camera?.height },
+  { key: 'blastWidth', label: 'Blast W', title: 'Blast zone box width', value: (entry) => entry.size?.blast?.width },
+  { key: 'blastHeight', label: 'Blast H', title: 'Blast zone box height', value: (entry) => entry.size?.blast?.height },
+  { key: 'left', label: 'Left', title: 'Left blast line, past the camera edge', value: (entry) => entry.size?.kill?.left },
+  { key: 'right', label: 'Right', title: 'Right blast line, past the camera edge', value: (entry) => entry.size?.kill?.right },
+  { key: 'top', label: 'Top', title: 'Top blast line, past the camera edge', value: (entry) => entry.size?.kill?.top },
+  { key: 'bottom', label: 'Bottom', title: 'Bottom blast line, past the camera edge', value: (entry) => entry.size?.kill?.bottom },
+  { key: 'outOfHitstun', label: 'KO out of hitstun', title: 'Blast lines that KO you out of hitstun too. The bottom always does.', text: true, value: (entry) => outOfHitstunKos(entry.size?.rules) },
+  { key: 'respawns', label: 'Respawns', value: (entry) => entry.size?.respawns },
+  { key: 'itemSpawns', label: 'Weapon spawns', value: (entry) => entry.size?.itemSpawns },
+  { key: 'movingPlatforms', label: 'Moving Platforms', value: (entry) => entry.size?.movingPlatforms },
+  { key: 'name', label: 'Level name', text: true, full: true, value: (entry) => entry.name },
+  { key: 'levelId', label: 'Level ID', full: true, value: (entry) => (clean(entry.levelId) ? number(entry.levelId) : undefined) },
+  { key: 'cameraX', label: 'Camera X', full: true, value: (entry) => entry.size?.camera?.x },
+  { key: 'cameraY', label: 'Camera Y', full: true, value: (entry) => entry.size?.camera?.y },
+  { key: 'firstItemSpawns', label: 'First weapon spawns', full: true, value: (entry) => entry.size?.firstItemSpawns },
+];
+
+function compareValues(left, right, text) {
+  const missingLeft = left === undefined || left === null || left === '';
+  const missingRight = right === undefined || right === null || right === '';
+  if (missingLeft || missingRight) return Number(missingLeft) - Number(missingRight);
+  return text ? String(left).localeCompare(String(right)) : number(left) - number(right);
+}
+
+function MapCompare({ maps, retired, includeRetired, onIncludeRetired, averages, pool, onOpen }) {
+  const { full } = useDataView({ url: true });
+  const [sort, setSort] = useQueryState('sort', 'map');
+  const [direction, setDirection] = useQueryState('dir', 'asc');
+  const columns = COMPARE_COLUMNS.filter((column) => full || !column.full);
+  const sortColumn = COMPARE_COLUMNS.find((column) => column.key === sort) || COMPARE_COLUMNS[0];
+  const rows = useMemo(() => {
+    const list = [...maps, ...(includeRetired ? retired.map((entry) => ({ ...entry, retired: true })) : [])];
+    const factor = direction === 'desc' ? -1 : 1;
+    return list
+      .map((entry, index) => [entry, index])
+      .sort(([left, leftIndex], [right, rightIndex]) => {
+        const leftValue = sortColumn.value(left);
+        const rightValue = sortColumn.value(right);
+        const missing = Number(leftValue === undefined || leftValue === null || leftValue === '') - Number(rightValue === undefined || rightValue === null || rightValue === '');
+        if (missing) return missing;
+        return factor * compareValues(leftValue, rightValue, sortColumn.text) || leftIndex - rightIndex;
+      })
+      .map(([entry]) => entry);
+  }, [maps, retired, includeRetired, sortColumn, direction]);
+  const average = (pool === 'ranked2v2' ? averages?.ranked2v2 : averages?.ranked1v1) || averages?.ranked1v1;
+  const averageName = average?.pool === 'ranked2v2' ? 'Ranked 2v2' : 'Ranked 1v1';
+  const averageValues = average ? { cameraWidth: average.width, cameraHeight: average.height, blastWidth: average.blastWidth, blastHeight: average.blastHeight } : {};
+  const pickSort = (column) => {
+    if (column.key === sort) setDirection(direction === 'asc' ? 'desc' : 'asc');
+    else {
+      setSort(column.key);
+      setDirection(column.text ? 'asc' : 'desc');
+    }
+  };
   return (
-    <div>
-      <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">{title} ({entries.length})</div>
-      <div className="grid gap-2 sm:grid-cols-2">
-        {entries.map((entry, index) => <div key={`${title}-${index}`} className="rounded-lg border border-slate-800 bg-slate-950 p-2"><DataPairs data={entry} omitted={['demoRecording']} /></div>)}
+    <Section padded={false} bodyClassName="space-y-2 p-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="text-sm font-bold text-white">{plural(rows.length, 'map')}</span>
+        {retired.length > 0 && <Toggle label={`Retired maps (${retired.length})`} checked={includeRetired} onChange={onIncludeRetired} />}
       </div>
-    </div>
+      {rows.length === 0 ? <EmptyState title="No maps match" bare /> : (
+        <ScrollX className="rounded-lg border border-slate-800">
+          <table className="w-full min-w-[56rem] border-collapse text-xs tabular-nums">
+            <thead className="bg-slate-950 text-[11px] uppercase tracking-wide text-slate-400">
+              <tr>
+                {columns.map((column, index) => {
+                  const active = column.key === sortColumn.key;
+                  return (
+                    <th key={column.key} scope="col" aria-sort={active ? (direction === 'desc' ? 'descending' : 'ascending') : 'none'} className={`whitespace-nowrap px-2 py-1.5 font-bold ${column.text ? 'text-left' : 'text-right'} ${index === 0 ? 'sticky left-0 z-10 bg-slate-950' : ''}`}>
+                      <button type="button" title={column.title} onClick={() => pickSort(column)} className={`inline-flex items-center gap-1 uppercase hover:text-white ${active ? 'text-white' : ''}`}>
+                        {column.label}
+                        <span aria-hidden="true" className={active ? 'text-blue-300' : 'text-slate-600'}>{active ? (direction === 'desc' ? '▼' : '▲') : '↕'}</span>
+                      </button>
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {average && (
+                <tr className="border-t border-slate-800 bg-amber-500/5 text-amber-100">
+                  {columns.map((column, index) => (
+                    <td key={column.key} className={`whitespace-nowrap px-2 py-1.5 ${column.text ? 'text-left' : 'text-right'} ${index === 0 ? 'sticky left-0 z-10 bg-slate-900 font-bold' : ''}`}>
+                      {index === 0 ? `${averageName} average (${average.maps})` : averageValues[column.key] !== undefined ? formatUnits(averageValues[column.key]) : ''}
+                    </td>
+                  ))}
+                </tr>
+              )}
+              {rows.map((entry) => (
+                <tr key={`${entry.retired ? 'retired' : 'map'}-${entry.name}`} className="border-t border-slate-800 hover:bg-slate-800/50">
+                  {columns.map((column, index) => {
+                    if (index === 0) {
+                      return (
+                        <th key={column.key} scope="row" className="sticky left-0 z-10 bg-slate-900 px-2 py-1 text-left font-normal">
+                          <button type="button" onClick={() => onOpen(entry)} className="flex max-w-[16rem] items-center gap-2 text-left hover:text-blue-200">
+                            {entry.thumbnail && <img src={mapThumbUrl(entry)} alt="" loading="lazy" className="h-6 w-10 shrink-0 rounded bg-slate-950 object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} />}
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-bold text-white">{mapName(entry)}</span>
+                              <span className="flex flex-wrap gap-1">
+                                {entry.retired ? <Pill tone="rose" className="px-1.5 text-[10px]">{entry.patch ? `Retired after ${entry.patch}` : 'Retired'}</Pill> : <MapBadges entry={entry} short />}
+                              </span>
+                            </span>
+                          </button>
+                        </th>
+                      );
+                    }
+                    const value = column.value(entry);
+                    return (
+                      <td key={column.key} className={`whitespace-nowrap px-2 py-1 ${column.text ? 'text-left text-slate-300' : 'text-right text-slate-100'} ${column.key === sortColumn.key ? 'bg-blue-500/5' : ''}`}>
+                        {value === undefined || value === null || value === '' ? <span className="text-slate-600">-</span> : column.text ? value : formatUnits(value)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ScrollX>
+      )}
+    </Section>
   );
 }
 
-function LessonDetails({ lesson }) {
-  const sequence = array(lesson.sequence);
-  const [eventIndex, setEventIndex] = useState(0);
-  const activeEvent = sequence[eventIndex] || null;
-  const activePower = activeEvent?.powers?.[0] || null;
-  const playerEntity = array(lesson.Entity).find((entity) => clean(entity.Role) === 'Player');
-  const animation = activePower?.animation;
-  const playerAnimation = animation && playerEntity?.hero?.HeroID !== undefined
-    ? `${host}/game/anim/char/${playerEntity.hero.HeroID}-${playerEntity.costume?.index || 0}/${animation.folder}/${animation.rig}/${animation.state}/loop`
-    : null;
-  const duration = sequence.length ? Math.max(...sequence.map((event) => number(event.time))) : 0;
-  const challenge = useMemo(() => ({
-    entities: array(lesson.Entity),
-    markers: [...array(lesson.Marker), ...array(lesson.Waypoint)],
-    activeEvent,
-    playerAnimation,
-  }), [lesson, activeEvent, playerAnimation]);
-  useEffect(() => setEventIndex(0), [lesson.LessonName]);
-  return (
-    <details open className="rounded-xl border border-slate-700 bg-slate-950/75">
-      <summary className="cursor-pointer px-3 py-3">
-        <span className="font-bold text-white">{lesson.displayTitle || lesson.LessonName}</span>
-        <span className="ml-2 text-xs text-slate-400">{lesson.Category} · {lesson.LevelType}</span>
-      </summary>
-      <div className="space-y-3 border-t border-slate-700 p-3">
-        {lesson.displayDescription && <p className="text-sm leading-6 text-slate-300">{lesson.displayDescription}</p>}
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <div className="rounded-lg border border-amber-400/25 bg-amber-500/10 px-3 py-2"><div className="text-[10px] font-bold uppercase text-amber-300">Gold Reward</div><div className="text-lg font-black text-white">{lesson.GoldReward || 0}</div></div>
-          <div className="rounded-lg border border-violet-400/25 bg-violet-500/10 px-3 py-2"><div className="text-[10px] font-bold uppercase text-violet-300">Difficulty</div><div className="text-lg font-black text-white">{lesson.Difficulty || '-'}</div></div>
-          <div className="rounded-lg border border-cyan-400/25 bg-cyan-500/10 px-3 py-2"><div className="text-[10px] font-bold uppercase text-cyan-300">Timeframe</div><div className="text-lg font-black text-white">{seconds(duration)}</div></div>
-          <div className="rounded-lg border border-blue-400/25 bg-blue-500/10 px-3 py-2"><div className="text-[10px] font-bold uppercase text-blue-300">Win Condition</div><div className="text-sm font-black text-white">{lesson.WinCondition || '-'}</div></div>
-        </div>
-
-        {lesson.map ? <MapCanvas detail={lesson.map} selectedWaveId={null} challenge={challenge} /> : <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-200">The map for this challenge is unavailable.</div>}
-
-        {sequence.length > 0 && <section className="rounded-xl border border-slate-700 bg-slate-900/70 p-3">
-          <div className="flex items-end justify-between gap-3"><div><div className="text-sm font-bold text-white">Challenge Sequence</div><div className="text-[11px] text-slate-400">Select an event to inspect what occurs on the map.</div></div><div className="text-xs font-bold text-cyan-300">{eventIndex + 1} / {sequence.length}</div></div>
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-2 app-scrollbar">
-            {sequence.map((event, index) => {
-              const power = event.powers?.[0];
-              return <button key={`${event.eventType}-${event.time}-${index}`} type="button" onClick={() => setEventIndex(index)} className={`min-w-36 shrink-0 rounded-lg border px-3 py-2 text-left transition ${eventIndex === index ? 'border-cyan-300 bg-cyan-500/15' : 'border-slate-700 bg-slate-950 hover:border-slate-500'}`}>
-                <div className="text-[10px] font-bold uppercase text-slate-500">{seconds(event.time)}</div>
-                <div className="mt-0.5 text-xs font-bold text-white">{titleCase(event.eventType)}</div>
-                {power && <div className="mt-0.5 truncate text-[10px] text-cyan-300">{power.PowerName}</div>}
-              </button>;
-            })}
-          </div>
-          <div className="mt-2 grid gap-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-            <div className="rounded-lg bg-slate-950 p-3">
-              <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Selected Event</div>
-              <div className="mt-1 text-base font-bold text-white">{titleCase(activeEvent?.eventType)}</div>
-              <div className="text-xs text-slate-400">At {seconds(activeEvent?.time)}</div>
-              {activePower?.DevNotes && <p className="mt-3 text-xs leading-5 text-slate-300">{activePower.DevNotes}</p>}
-            </div>
-            <div className="rounded-lg bg-slate-950 p-3">
-              <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Power Result</div>
-              {activeEvent?.powers?.length ? <div className="space-y-2">{activeEvent.powers.map((power) => <div key={power.PowerID} className="rounded-lg border border-slate-800 p-2"><div className="mb-2 text-xs font-bold text-cyan-300">{power.PowerName}</div><DataPairs data={power} omitted={['DevNotes', 'HitGfx', 'animation']} /></div>)}</div> : <div className="mt-2 text-xs text-slate-500">This event is an input or movement event, not a power.</div>}
-            </div>
-          </div>
-        </section>}
-
-        <details className="rounded-lg border border-slate-800 bg-slate-950"><summary className="cursor-pointer px-3 py-2 text-xs font-bold text-slate-300">Challenge Data</summary><div className="space-y-3 border-t border-slate-800 p-3"><DataPairs data={lesson} omitted={['Entity', 'Item', 'Marker', 'Waypoint', 'MessageTrigger', 'Combo', 'sequence', 'map', 'categoryData', 'displayTitle', 'displayDescription']} /><LessonObjectList title="Items" value={lesson.Item} /><LessonObjectList title="Message Triggers" value={lesson.MessageTrigger} /></div></details>
-      </div>
-    </details>
-  );
+function versionDate(entry) {
+  return entry?.date ? new Date(number(entry.date) * 1000).toLocaleDateString() : '';
 }
 
 export default function MapViewer() {
+  const { full } = useDataView({ url: true });
   const [catalog, setCatalog] = useState(null);
+  const [retired, setRetired] = useState([]);
   const [selected, setSelected] = useState('');
   const [detail, setDetail] = useState(null);
   const [comparisonDetail, setComparisonDetail] = useState(null);
-  const [query, setQuery] = useState('');
-  const [showDevMaps, setShowDevMaps] = useState(false);
-  const [levelSet, setLevelSet] = useState('');
+  const [query, setQuery] = useQueryState('q', '');
+  const [pool, setPool] = useState('');
+  const [levelSet, setLevelSet] = useQueryState('set', '');
   const [history, setHistory] = useState([]);
   const [selectedManifest, setSelectedManifest] = useState('');
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
+  const [detailAttempt, setDetailAttempt] = useState(0);
+  const [tab, setTab] = useQueryState('tab', 'map');
+  const [showRetired, setShowRetired] = useState(false);
+  const [compareRetired, setCompareRetired] = useQueryFlag('retired');
+  const comparing = tab === 'compare';
 
   useEffect(() => {
+    setLoading(true);
+    setError(null);
+    const retiredRequest = fetch(`${host}/game/maps/retired`)
+      .then((response) => (response.ok ? response.json() : { maps: [] }))
+      .then((data) => array(data?.maps))
+      .catch(() => []);
+    retiredRequest.then(setRetired);
     fetch(`${host}/game/maps/catalog`)
       .then((response) => {
         if (!response.ok) throw new Error(`Catalog request failed: ${response.status}`);
         return response.json();
       })
-      .then((data) => {
+      .then(async (data) => {
         setCatalog(data);
         const params = new URLSearchParams(window.location.search);
         const collection = data.maps;
         const requestedName = params.get('name');
         const requestedManifest = params.get('manifest') || '';
-        const defaultEntry = collection;
+        const requestedPool = params.get('pool') || '';
+        const knownPool = array(data.support?.pools).some((entry) => entry.key === requestedPool) ? requestedPool : '';
+        const ordered = orderMaps(collection);
+        const defaultEntry = ordered.find((entry) => knownPool ? array(entry.pools).includes(knownPool) : array(entry.pools).includes('ranked1v1')) || ordered[0];
+        setPool(knownPool);
+        if (requestedName && !collection.some((entry) => entry.name === requestedName)) {
+          const retiredEntry = (await retiredRequest).find((entry) => entry.name === requestedName);
+          if (retiredEntry) {
+            setShowRetired(true);
+            setSelected(retiredEntry.name);
+            setSelectedManifest(requestedManifest || retiredEntry.manifest);
+            return;
+          }
+        }
         setSelected(collection.some((entry) => entry.name === requestedName) ? requestedName : defaultEntry?.name || '');
         setSelectedManifest(requestedManifest);
       })
-      .catch((requestError) => setError(requestError.message))
+      .catch((requestError) => setError({ scope: 'catalog', message: requestError.message }))
       .finally(() => setLoading(false));
-  }, []);
+  }, [catalogAttempt]);
+
+  const retiredByName = useMemo(() => new Map(retired.map((entry) => [entry.name, entry])), [retired]);
+  const retiredEntry = catalog?.maps?.some((entry) => entry.name === selected) ? null : retiredByName.get(selected) || null;
+  const baseManifest = retiredEntry?.manifest || '';
 
   useEffect(() => {
     if (!selected) return;
@@ -1394,30 +1777,31 @@ export default function MapViewer() {
       })
       .then((data) => {
         setHistory(data);
-        setSelectedManifest((current) => data.some((entry) => entry.manifest === current) ? current : '');
+        setSelectedManifest((current) => (current === baseManifest || data.some((entry) => entry.manifest === current) ? current : baseManifest));
       })
       .catch((requestError) => {
-        if (requestError.name !== 'AbortError') setError(requestError.message);
+        if (requestError.name !== 'AbortError') setError({ scope: 'detail', message: requestError.message });
       });
     return () => controller.abort();
-  }, [selected]);
+  }, [selected, baseManifest, detailAttempt]);
 
   useEffect(() => {
     if (!selected) return;
+    const manifest = selectedManifest || baseManifest;
     const controller = new AbortController();
     setLoading(true);
-    setError('');
+    setError(null);
     setDetail(null);
     setComparisonDetail(null);
-    const versionQuery = selectedManifest ? `?manifest=${encodeURIComponent(selectedManifest)}` : '';
     const detailUrl = `${host}/game/maps/map/${encodeURIComponent(selected)}`;
+    const withManifest = (value) => (value ? `${detailUrl}?manifest=${encodeURIComponent(value)}` : detailUrl);
     const getJson = (url) => fetch(url, { signal: controller.signal }).then((response) => {
       if (!response.ok) throw new Error(`Detail request failed: ${response.status}`);
       return response.json();
     });
     Promise.all([
-      getJson(`${detailUrl}${versionQuery}`),
-      selectedManifest ? getJson(detailUrl) : Promise.resolve(null),
+      getJson(withManifest(manifest)),
+      manifest && manifest !== baseManifest ? getJson(withManifest(baseManifest)) : Promise.resolve(null),
     ])
       .then(([data, currentData]) => {
         setDetail(data);
@@ -1425,83 +1809,192 @@ export default function MapViewer() {
         const params = new URLSearchParams(window.location.search);
         params.delete('type');
         params.set('name', selected);
-        if (selectedManifest) params.set('manifest', selectedManifest);
+        if (manifest) params.set('manifest', manifest);
         else params.delete('manifest');
         window.history.replaceState({}, '', `${window.location.pathname}?${params}`);
       })
-      .catch((requestError) => { if (requestError.name !== 'AbortError') setError(requestError.message); })
+      .catch((requestError) => { if (requestError.name !== 'AbortError') setError({ scope: 'detail', message: requestError.message }); })
       .finally(() => setLoading(false));
     return () => controller.abort();
-  }, [selected, selectedManifest]);
+  }, [selected, selectedManifest, baseManifest, detailAttempt]);
 
-  const collection = catalog?.maps || [];
-  const levelSetGroups = useMemo(() => groupedLevelSets(catalog?.support?.levelSets), [catalog]);
-  const filtered = collection.filter((entry) => {
-    if (!`${entry.displayName} ${entry.name}`.toLowerCase().includes(query.trim().toLowerCase())) return false;
-    if (levelSet && !entry.levelSets?.some((set) => set.name === levelSet)) return false;
+  const collection = useMemo(() => orderMaps(catalog?.maps || []), [catalog]);
+  const levelSetGroups = useMemo(() => groupedLevelSets(catalog?.support?.levelSets, catalog?.support?.levelSetGroups), [catalog]);
+  const activeLevelSet = full ? levelSet : '';
+  const inFilters = (entry) => {
+    if (pool && !array(entry.pools).includes(pool)) return false;
+    if (activeLevelSet && !entry.levelSets?.some((set) => set.name === activeLevelSet)) return false;
     return true;
-  });
+  };
+  const needle = query.trim().toLowerCase();
+  const matchesQuery = (entry) => `${mapName(entry)} ${entry.displayName} ${entry.name}`.toLowerCase().includes(needle);
+  const filtered = collection.filter((entry) => inFilters(entry) && matchesQuery(entry));
+  const retiredShown = pool || activeLevelSet ? [] : retired.filter(matchesQuery);
+  const retiredOpen = showRetired || Boolean(needle) || Boolean(retiredEntry);
+  const sectioned = collection.some((entry) => entry.section);
+  const sections = sectioned
+    ? SECTION_ORDER.map((key) => [key, filtered.filter((entry) => (entry.section || 'tutorial') === key)]).filter(([, entries]) => entries.length)
+    : [['all', filtered]];
+  const poolItems = useMemo(() => [
+    { value: '', label: 'All', count: collection.length },
+    ...array(catalog?.support?.pools).map((entry) => ({ value: entry.key, label: entry.label, count: collection.filter((map) => array(map.pools).includes(entry.key)).length })).filter((item) => item.count > 0),
+  ], [catalog, collection]);
+  useEffect(() => {
+    if (!catalog || retiredByName.has(selected)) return;
+    const available = collection.filter(inFilters);
+    if (available.length && !available.some((entry) => entry.name === selected)) setSelected(available[0].name);
+  }, [catalog, pool, activeLevelSet, selected, retiredByName]);
   useEffect(() => {
     if (!catalog) return;
-    const available = catalog.maps.filter((entry) => {
-      if (levelSet && !entry.levelSets?.some((set) => set.name === levelSet)) return false;
-      return true;
-    });
-    if (available.length && !available.some((entry) => entry.name === selected)) setSelected(available[0].name);
-  }, [catalog, showDevMaps, levelSet, selected]);
+    const params = new URLSearchParams(window.location.search);
+    if (pool) params.set('pool', pool);
+    else params.delete('pool');
+    const search = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${search ? `?${search}` : ''}`);
+  }, [catalog, pool]);
+
+  const retry = () => {
+    if (error?.scope === 'catalog' || !catalog) setCatalogAttempt((value) => value + 1);
+    else setDetailAttempt((value) => value + 1);
+  };
+  const clearFilters = () => {
+    setQuery('');
+    setPool('');
+    setLevelSet('');
+  };
+  const openMap = (entry, close) => {
+    setSelected(entry.name);
+    setSelectedManifest(retiredByName.has(entry.name) && !collection.some((map) => map.name === entry.name) ? entry.manifest : '');
+    if (comparing) setTab('map');
+    close?.();
+  };
+  const selectedEntry = collection.find((entry) => entry.name === selected);
+  const lastChange = history.find((entry) => isPatchNumber(entry.patch));
+  const mapTitle = mapName(retiredEntry || selectedEntry || detail) || 'Map Viewer';
+  const title = comparing ? 'Compare maps' : mapTitle;
+  const poolLabel = array(catalog?.support?.pools).find((entry) => entry.key === pool)?.label;
+  const mapCount = catalog ? (filtered.length === collection.length ? plural(collection.length, 'map') : `${filtered.length} of ${collection.length} maps`) : undefined;
+  const wasRanked = retiredEntry && array(retiredEntry.pools).some((entry) => entry === 'ranked1v1' || entry === 'ranked2v2');
+  const headerMeta = comparing ? (
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <span>{poolLabel || 'All maps'}</span>
+      {needle && <span>matching "{query.trim()}"</span>}
+    </span>
+  ) : detail ? (
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      {retiredEntry ? (
+        <>
+          <Pill tone="rose">Retired</Pill>
+          {isPatchNumber(retiredEntry.patch) && <span>Last in patch {retiredEntry.patch}</span>}
+          {wasRanked && <span>Was a ranked map</span>}
+        </>
+      ) : (
+        <>
+          <MapBadges entry={selectedEntry} />
+          {['casual', 'modes', 'botw', 'tutorial'].includes(selectedEntry?.section) && <span>{SECTION_LABELS[selectedEntry.section]}</span>}
+          {lastChange && <span>Last changed in patch {lastChange.patch}</span>}
+        </>
+      )}
+      {full && [detail.name, detail.file, isPatchNumber(detail.patch) && `Patch ${detail.patch}`, `Manifest ${detail.manifest}`, retiredEntry && isPatchNumber(retiredEntry.firstPatch) && `Files from ${retiredEntry.firstPatch} to ${retiredEntry.patch}`].filter(Boolean).map((part) => <span key={part} className="font-mono text-xs text-slate-500">{part}</span>)}
+    </span>
+  ) : undefined;
+
+  const mapRow = (entry, close, retiredRow = false) => (
+    <SidebarItem key={`${retiredRow ? 'retired' : 'map'}-${entry.name}`} active={selected === entry.name && !comparing} onClick={() => openMap(entry, close)} className="px-2 py-1.5">
+      <div className="flex items-center gap-2">
+        {entry.thumbnail ? <img src={mapThumbUrl(entry)} alt="" loading="lazy" className={`h-10 w-16 shrink-0 rounded-md bg-slate-950 object-cover ${retiredRow ? 'opacity-70 grayscale' : ''}`} onError={(event) => { event.currentTarget.style.display = 'none'; }} /> : <div className="h-10 w-16 shrink-0 rounded-md bg-slate-950" />}
+        <div className="min-w-0">
+          <div className="break-words text-sm font-bold text-white">{mapName(entry)}</div>
+          {full && <div className="truncate font-mono text-[10px] text-slate-500">{entry.name}</div>}
+          {retiredRow ? (
+            isPatchNumber(entry.patch) && <div className="text-[11px] text-slate-400">Last in {entry.patch}</div>
+          ) : mapBadges(entry).length > 0 && <div className="mt-0.5 flex flex-wrap gap-1"><MapBadges entry={entry} short /></div>}
+        </div>
+      </div>
+    </SidebarItem>
+  );
+
+  const sidebar = ({ close }) => (
+    <>
+      <SidebarHeader title="Maps" subtitle={mapCount} as="h2" />
+      <SearchInput value={query} onChange={setQuery} placeholder="Search maps" className="flex-none" />
+      <Tabs variant="small" label="Map pool" value={pool} onChange={setPool} items={poolItems} className="flex-none" />
+      {full && (
+        <SelectInput label="Level set" inline={false} value={levelSet} onChange={setLevelSet}>
+          <option value="">All Level Sets</option>
+          {levelSetGroups.map(([group, sets]) => (
+            <optgroup key={group} label={group}>
+              {sets.map((set) => <option key={set.name} value={set.name}>{set.label || set.name}</option>)}
+            </optgroup>
+          ))}
+        </SelectInput>
+      )}
+      {catalog && filtered.length === 0 && retiredShown.length === 0 ? (
+        <EmptyState title="No maps match" action={<button type="button" onClick={clearFilters} className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm font-bold text-slate-200 hover:bg-slate-700">Clear filters</button>} />
+      ) : (
+        <div className="space-y-3">
+          {sections.map(([key, entries]) => (
+            <div key={key}>
+              {SECTION_LABELS[key] && (
+                <div className="mb-1 flex items-center justify-between px-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                  <span>{SECTION_LABELS[key]}</span>
+                  <span className="text-slate-500">{entries.length}</span>
+                </div>
+              )}
+              <div className="space-y-1">{entries.map((entry) => mapRow(entry, close))}</div>
+            </div>
+          ))}
+          {retiredShown.length > 0 && (
+            <div>
+              <button type="button" onClick={() => setShowRetired((value) => !value)} aria-expanded={retiredOpen} className="mb-1 flex w-full items-center justify-between rounded px-1 text-[11px] font-bold uppercase tracking-wide text-slate-400 hover:text-slate-200">
+                <span>{retiredOpen ? '▾' : '▸'} Retired</span>
+                <span className="text-slate-500">{retiredShown.length}</span>
+              </button>
+              {retiredOpen && <div className="space-y-1">{retiredShown.map((entry) => mapRow(entry, close, true))}</div>}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  const versionSelect = !comparing && (history.length > 0 || retiredEntry) && (
+    <SelectInput label="Version" value={selectedManifest || baseManifest} onChange={setSelectedManifest} className="max-w-full">
+      {retiredEntry
+        ? <option value={baseManifest}>Last version{isPatchNumber(retiredEntry.patch) ? ` - Patch ${retiredEntry.patch}` : ''}</option>
+        : <option value="">Current{catalog?.patch ? ` - Patch ${catalog.patch}` : ''}</option>}
+      {history.filter((entry) => entry.manifest !== catalog?.manifest && entry.manifest !== baseManifest).map((entry) => <option key={entry.manifest} value={entry.manifest}>{isPatchNumber(entry.patch) ? `Changed in Patch ${entry.patch}` : 'Changed'} - {versionDate(entry) || entry.manifest}</option>)}
+    </SelectInput>
+  );
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-slate-950 text-slate-100">
-      <div className="grid min-h-[calc(100vh-4rem)] content-start grid-cols-1 lg:grid-cols-[18rem_minmax(0,1fr)]">
-        <aside className="border-b border-slate-800 bg-slate-950 p-3 lg:sticky lg:top-0 lg:flex lg:h-[calc(100vh-4rem)] lg:flex-col lg:border-b-0 lg:border-r">
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search maps" className="mt-3 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-blue-400" />
-          <div className="mt-2 space-y-2">
-            <select value={levelSet} onChange={(event) => setLevelSet(event.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-blue-400">
-              <option value="">All Level Sets</option>
-              {levelSetGroups.map(([group, sets]) => (
-                <optgroup key={group} label={group}>
-                  {sets.map((set) => <option key={set.name} value={set.name}>{set.name}</option>)}
-                </optgroup>
-              ))}
-            </select>
+    <PageShell title={title} subtitle={mapCount} sidebar={sidebar} sidebarLabel="Maps" sidebarTitle="Map list">
+      <PageHeader
+        eyebrow={!comparing && retiredEntry ? 'Retired map' : undefined}
+        title={<span className="break-words">{title}</span>}
+        meta={headerMeta}
+        actions={(
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            <Tabs variant="small" label="View" value={comparing ? 'compare' : 'map'} onChange={setTab} items={[{ value: 'map', label: 'Map' }, { value: 'compare', label: 'Compare maps' }]} />
+            {versionSelect}
+            <DataViewToggle url />
           </div>
-          <select value={selected} onChange={(event) => setSelected(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none lg:hidden">
-            {filtered.map((entry) => <option key={entry.name} value={entry.name}>{entry.displayName}</option>)}
-          </select>
-          <div className="mt-3 hidden min-h-0 flex-1 overflow-y-auto pr-1 app-scrollbar lg:block">
-            <div className="space-y-1">
-              {filtered.map((entry) => (
-                <button key={entry.name} type="button" onClick={() => setSelected(entry.name)} className={`w-full rounded-xl border px-3 py-2 text-left transition ${selected === entry.name ? 'border-blue-400 bg-blue-500/20' : 'border-slate-800 bg-slate-900 hover:border-slate-600'}`}>
-                  <div className="flex items-center gap-3">
-                    {entry.thumbnail && <img src={`${host}/game/images/images/thumbnails/${entry.thumbnail}`} alt="" loading="lazy" className="h-12 w-20 shrink-0 rounded-md bg-slate-950 object-cover" onError={(event) => { event.currentTarget.style.display = 'none'; }} />}
-                    <div className="min-w-0"><div className="break-words text-sm font-bold text-white">{entry.displayName}</div><div className="mt-0.5 break-all text-[11px] text-slate-500">{entry.name}</div></div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        </aside>
-        <main className="min-w-0 p-3 sm:p-4 lg:p-5">
-          <header className="mb-4 rounded-2xl border border-slate-700 bg-slate-900/80 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="text-xs font-bold uppercase tracking-wide text-blue-300">Dynamic LevelDesc</div>
-                <h1 className="mt-1 break-words text-2xl font-bold text-white sm:text-3xl">{detail?.displayName || detail?.name || 'Map Viewer'}</h1>
-              </div>
-              {history.length > 0 && <label className="min-w-56 text-[10px] font-bold uppercase tracking-wide text-slate-500">Version History
-                <select value={selectedManifest} onChange={(event) => setSelectedManifest(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold normal-case text-white outline-none focus:border-blue-400">
-                  <option value="">Current{catalog?.patch ? ` - Patch ${catalog.patch}` : ''}</option>
-                  {history.filter((entry) => entry.manifest !== catalog?.manifest).map((entry) => <option key={entry.manifest} value={entry.manifest}>Changed in Patch {entry.patch || 'Unknown'} - {entry.date ? new Date(number(entry.date) * 1000).toLocaleDateString() : entry.manifest}</option>)}
-                </select>
-              </label>}
-            </div>
-            {detail && <div className="mt-1 text-xs text-slate-400">{detail.file} - Patch {detail.patch || 'Unknown'} - Manifest {detail.manifest}</div>}
-          </header>
-          {loading && <div className="rounded-xl border border-slate-700 bg-slate-900 p-4 text-slate-300">Loading map geometry...</div>}
-          {error && <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4 text-rose-200">{error}</div>}
-          {!loading && detail && <MapDetails detail={detail} comparisonDetail={comparisonDetail} />}
-        </main>
-      </div>
-    </div>
+        )}
+      />
+      {loading && !comparing && <LoadingState label={catalog ? 'Loading map…' : 'Loading maps…'} rows={4} />}
+      {error && (!comparing || error.scope === 'catalog') && <ErrorState message={error.scope === 'catalog' ? "Couldn't load the map list." : "Couldn't load this map."} detail={error.message} onRetry={retry} />}
+      {comparing && catalog && (
+        <MapCompare
+          maps={filtered}
+          retired={pool || activeLevelSet ? [] : retired.filter(matchesQuery)}
+          includeRetired={compareRetired}
+          onIncludeRetired={setCompareRetired}
+          averages={catalog?.support?.averages}
+          pool={pool}
+          onOpen={(entry) => openMap(entry)}
+        />
+      )}
+      {!comparing && !loading && detail && <MapDetails averages={catalog?.support?.averages} detail={detail} comparisonDetail={comparisonDetail} detailUrl={`${host}/game/maps/map/${encodeURIComponent(detail.name || selected)}${selectedManifest || baseManifest ? `?manifest=${encodeURIComponent(selectedManifest || baseManifest)}` : ''}`} />}
+    </PageShell>
   );
 }

@@ -1,16 +1,31 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FaTwitch, FaTwitter } from "react-icons/fa";
 import { host } from "../../stuff";
+import { pageTitle } from "../../data/head";
 import {
-  apiUrl, Avatar, avatarUrl, Badge, Card, date, Empty, ErrorNote, FlagIcon, Loading, modeName, money, number,
-  ordinal, Pagination, points, regionName, SearchInput, Select, Tabs, useApi, useDebounced, useQueryState,
+  apiUrl, Avatar, avatarUrl, Badge, Card, date, DELETED_ACCOUNT_NOTE, Empty, ErrorNote, FlagIcon,
+  isDeletedAccountName, isLostSpelling, Loading, modeName, money, number, officialRegions,
+  ordinal, PageShell, Pagination, points, regionName, SearchInput, Select, Tabs, useApi, useDebounced, useQueryState,
 } from "./ui";
 import { mapName, useLegendNames } from "./MatchPages";
 import { ContributionList } from "./RankingsPage";
+import { ScrollX } from "../ui";
 
 const MODES = [["1", "1v1"], ["2", "2v2"], ["other", "Other"]];
 const modeKey = (gameMode) => (Number(gameMode) === 1 ? "1" : Number(gameMode) === 2 ? "2" : "other");
 const confirmed = (event) => event.placement_confirmed && !event.disqualified && Number(event.placement) > 0;
+const LIST_KEYS = ["q", "mode", "year", "sort", "order", "page", "type", "finish", "prize", "event", "vs"];
+const intParam = (value) => Math.max(1, Number.parseInt(value, 10) || 1);
+const day = (value) => (value ? String(value).slice(0, 10) : "");
+
+function clearListParams(filters = {}) {
+  const url = new URL(window.location.href);
+  LIST_KEYS.forEach((key) => url.searchParams.delete(key));
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value && value !== "all") url.searchParams.set(key, String(value));
+  });
+  window.history.replaceState(window.history.state, "", url);
+}
 const FINISHES = {
   gold: (place) => place === 1, silver: (place) => place === 2, bronze: (place) => place === 3,
   top8: (place) => place <= 8, top16: (place) => place <= 16, top32: (place) => place <= 32,
@@ -29,11 +44,12 @@ const socialUrl = (network, handle) => {
   return /^\w{1,25}$/.test(name) ? (network === "twitter" ? `https://twitter.com/${name}` : `https://twitch.tv/${name}`) : null;
 };
 
-export default function PlayerPage({ playerId }) {
+export default function PlayerPage({ playerId, heading }) {
   const history = useApi(apiUrl(`/players/${playerId}/history`));
   const providers = new Set((history.data?.player?.identities ?? []).map((identity) => identity.provider));
   const legacy = useApi(providers.has("startgg") ? apiUrl(`/players/${playerId}/legacy-games`) : null);
   const cmode = useApi(providers.has("challengermode") ? apiUrl(`/players/${playerId}/cmode-games`) : null);
+  const officialPr = useApi(providers.has("startgg") ? apiUrl(`/players/${playerId}/official-pr`) : null);
   const [tab, setTab] = useQueryState("tab", "events");
   const [finish, setFinish] = useState({ mode: "all", finish: "all", year: "all" });
   const data = history.data;
@@ -42,26 +58,35 @@ export default function PlayerPage({ playerId }) {
     .sort((left, right) => new Date(right.starts_at) - new Date(left.starts_at)), [data]);
 
   useEffect(() => {
-    if (data?.player) document.title = `${data.player.display_name} · Brawlhalla Player History`;
+    if (data?.player) document.title = pageTitle(`${data.player.display_name} · Brawlhalla player`);
   }, [data]);
 
-  const shell = (children) => <div className="mx-auto w-full max-w-[120rem] px-3 py-4 sm:px-6 lg:px-8">{children}</div>;
-  if (history.error) return shell(<ErrorNote message={history.error} />);
-  if (!data) return shell(<Loading label="Loading player..." />);
-  if (!data.player) return shell(<Empty>This player wasn't found.</Empty>);
+  const back = { href: "/esports/player", label: "All players" };
+  const shell = (children) => <PageShell back={back}>{children}</PageShell>;
+  if (history.error) return shell(<ErrorNote message={history.error} onRetry={history.retry} />);
+  if (!data) return <PageShell back={back} title={heading}><Loading label="Loading player…" /></PageShell>;
+  if (!data.player) return shell(<Empty action={<a href="/esports/player" className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm font-bold text-slate-200 hover:bg-slate-700">Search players</a>}>Player not found</Empty>);
 
-  const browse = (filters) => { setFinish({ mode: "all", finish: "all", year: "all", ...filters }); setTab("appearances"); };
+  const browse = (filters) => {
+    clearListParams(filters);
+    setFinish({ mode: "all", finish: "all", year: "all", ...filters });
+    setTab("appearances");
+  };
+  const changeTab = (next) => {
+    if (next === tab) return;
+    clearListParams();
+    setTab(next);
+  };
 
-  return shell(
-    <>
-      <a href="/esports/player" className="text-sm font-bold text-blue-600 hover:text-blue-500 dark:text-blue-300">← All players</a>
+  return (
+    <PageShell back={back}>
       <ProfileHeader data={data} events={events} legacy={legacy.data} cmode={cmode.data} onBrowse={browse} />
-      <ModeCards data={data} events={events} legacy={legacy.data} cmode={cmode.data} onBrowse={browse} />
+      <ModeCards data={data} events={events} legacy={legacy.data} cmode={cmode.data} officialPr={officialPr} onBrowse={browse} />
       <CareerYears events={events} onBrowse={browse} />
-      <div className="mt-6">
+      <div>
         <Tabs
           value={tab}
-          onChange={setTab}
+          onChange={changeTab}
           tabs={[
             { key: "events", label: "Events" },
             { key: "opponents", label: "Opponent History" },
@@ -70,18 +95,17 @@ export default function PlayerPage({ playerId }) {
             { key: "appearances", label: "All Appearances", count: events.length },
           ]}
         />
-        <div className="mt-4">
+        <div className="mt-3">
           {tab === "events" && <EventExplorer playerId={playerId} events={events} />}
           {tab === "opponents" && <OpponentExplorer playerId={playerId} playerName={data.player.display_name} />}
           {tab === "legends" && <CareerUsage legacy={legacy} cmode={cmode} />}
           {tab === "rankings" && <Rankings playerId={playerId} latest={data.latestRankings ?? []} history={data.rankingHistory ?? []} />}
-          {tab === "appearances" && <Appearances key={JSON.stringify(finish)} events={events} initial={finish} />}
+          {tab === "appearances" && <Appearances key={JSON.stringify(finish)} events={events} />}
         </div>
       </div>
-    </>,
+    </PageShell>
   );
 }
-
 
 function ProfileHeader({ data, events, legacy, cmode, onBrowse }) {
   const { player } = data;
@@ -91,7 +115,7 @@ function ProfileHeader({ data, events, legacy, cmode, onBrowse }) {
   const twitter = socialUrl("twitter", player.twitter);
   const twitch = socialUrl("twitch", player.twitch);
   const names = [...new Set([...(data.pastNames ?? []).map((entry) => entry.name), ...(legacy?.names ?? [])])]
-    .filter((name) => name && name !== player.display_name);
+    .filter((name) => name && name !== player.display_name && !isDeletedAccountName(name) && !isLostSpelling(name, player.display_name));
   const prefixes = (legacy?.prefixes ?? []).filter((value) => value && value !== prefix);
   const identities = player.identities ?? [];
   const brawlhallaId = identities.map((identity) => identity.providerBrawlhallaId).find((value) => /^\d+$/.test(String(value ?? "")));
@@ -109,11 +133,11 @@ function ProfileHeader({ data, events, legacy, cmode, onBrowse }) {
   );
 
   return (
-    <header className="relative mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-slate-900 text-white shadow-xl dark:border-slate-800">
+    <header className="relative overflow-hidden rounded-2xl border bg-slate-900/80 text-white shadow-xl border-slate-700">
       {banner && <div className="absolute inset-0 bg-cover bg-center opacity-30" style={{ backgroundImage: `url("${banner}")` }} />}
       <div className="absolute inset-0 bg-gradient-to-r from-slate-950/95 via-slate-900/80 to-slate-900/40" />
-      <div className="relative grid gap-6 p-4 sm:p-6 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,32rem)]">
-        <div className="flex min-w-0 flex-wrap items-start gap-5">
+      <div className="relative grid gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,32rem)]">
+        <div className="flex min-w-0 flex-wrap items-start gap-3">
           <div className="relative shrink-0">
             <div className="grid h-28 w-28 place-items-center overflow-hidden rounded-2xl border-2 border-slate-600 bg-slate-700 text-5xl font-black shadow-xl sm:h-40 sm:w-40">
               {player.display_name.slice(0, 1).toUpperCase()}
@@ -125,6 +149,11 @@ function ProfileHeader({ data, events, legacy, cmode, onBrowse }) {
             {prefix && <div className="text-lg font-bold text-slate-400 sm:text-2xl">{prefix}</div>}
             <h1 className="break-words text-3xl font-black sm:text-5xl">{player.display_name}</h1>
             <div className="mt-3 flex flex-wrap items-center gap-2">
+              {player.account_deleted && (
+                <span title="Name from the Brawlhalla esports directory" className="rounded-full bg-amber-400/15 px-3 py-1 text-xs font-bold text-amber-200 ring-1 ring-amber-300/20">
+                  {DELETED_ACCOUNT_NOTE}
+                </span>
+              )}
               {twitter && (
                 <a href={twitter} target="_blank" rel="noopener noreferrer" className="group relative rounded-lg bg-sky-500/15 p-2 text-sky-300 hover:bg-sky-500/25" aria-label="Twitter">
                   <FaTwitter className="h-5 w-5" />
@@ -149,8 +178,8 @@ function ProfileHeader({ data, events, legacy, cmode, onBrowse }) {
               )}
             </div>
             {player.bio && <p className="mt-3 max-w-3xl whitespace-pre-line text-sm leading-relaxed text-slate-200">Bio: {player.bio}</p>}
-            {names.length > 0 && <p className="mt-2 text-sm text-slate-400">Past names: <span className="text-slate-200">{names.join(", ")}</span></p>}
-            {prefixes.length > 0 && <p className="mt-1 text-sm text-slate-400">Past prefixes: <span className="text-slate-200">{prefixes.join(", ")}</span></p>}
+            {names.length > 0 && <p className="mt-2 max-w-prose text-sm text-slate-400">Past names: <span className="text-slate-200">{names.join(", ")}</span></p>}
+            {prefixes.length > 0 && <p className="mt-1 max-w-prose text-sm text-slate-400">Past prefixes: <span className="text-slate-200">{prefixes.join(", ")}</span></p>}
             <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
               <span className="rounded bg-cyan-400/15 px-2 py-1 text-cyan-200">{official} official</span>
               {community > 0 && <span className="rounded bg-slate-700/80 px-2 py-1">{community} community</span>}
@@ -159,12 +188,20 @@ function ProfileHeader({ data, events, legacy, cmode, onBrowse }) {
         </div>
 
         <aside className="self-start overflow-hidden rounded-xl border border-white/15 bg-slate-950/75 backdrop-blur-sm">
-          <div className="border-b border-white/10 px-4 py-3">
+          <div className="border-b border-white/10 px-3 py-3">
             <div className="text-xs font-black uppercase tracking-[0.15em] text-cyan-300">Career record</div>
             <div className="mt-1 flex flex-wrap items-baseline gap-3">
               <strong className="text-2xl">{number(events.length)}</strong><span className="text-sm text-slate-400">events</span>
-              <strong className="ml-auto text-xl text-emerald-300">{money(data.earnings?.total)}</strong><span className="text-xs text-slate-400">earnings</span>
+              {data.earnings?.official != null
+                ? <><PrizeTotal value={data.earnings.official} className="ml-auto text-xl" /><span className="text-xs text-slate-400">official prize money</span></>
+                : <><PrizeTotal value={data.earnings?.total} className="ml-auto text-xl" /><span className="text-xs text-slate-400">recorded prizes</span></>}
             </div>
+            {data.earnings?.official != null && Number(data.earnings.total) > Number(data.earnings.official) && (
+              <p className="mt-1 text-xs text-slate-400" title="Official and community events, team prizes split between teammates">
+                {money(data.earnings.total)} with community events
+              </p>
+            )}
+            {playedBefore2020(events) && <p className="mt-1 text-xs text-slate-500">Prizes from before 2020 aren't recorded yet.</p>}
           </div>
           <div className="grid grid-cols-3 divide-x divide-white/10 border-b border-white/10">
             {medal("gold", "Gold", "🥇", "text-amber-300")}
@@ -181,7 +218,7 @@ function ProfileHeader({ data, events, legacy, cmode, onBrowse }) {
             ))}
           </div>
           {gamesPlayed > 0 && (
-            <div className="border-t border-white/10 px-4 py-2 text-xs text-slate-400">
+            <div className="border-t border-white/10 px-3 py-2 text-xs text-slate-400">
               {number(gamesPlayed)} games played · {number(gamesWon)} games won
             </div>
           )}
@@ -192,13 +229,23 @@ function ProfileHeader({ data, events, legacy, cmode, onBrowse }) {
 }
 
 
+function playedBefore2020(events) {
+  return events.some((event) => new Date(event.starts_at).getFullYear() < 2020);
+}
+
+function PrizeTotal({ value, className = "" }) {
+  return Number(value) > 0
+    ? <strong className={`font-black text-emerald-300 ${className}`}>{money(value)}</strong>
+    : <strong className={`font-black text-slate-500 ${className}`} title="No prize money recorded for these events">None</strong>;
+}
+
 function WinBar({ wins, total, label }) {
   const rate = total > 0 ? (wins / total) * 100 : 0;
   return (
     <div>
       <div className="flex justify-between text-sm font-bold">
         <span className="text-sky-500">{number(wins)}W</span>
-        <span className="text-slate-500 dark:text-slate-300">{number(total)} {label} · {rate.toFixed(1)}%</span>
+        <span className="text-slate-300">{number(total)} {label} · {rate.toFixed(1)}%</span>
         <span className="text-rose-500">{number(total - wins)}L</span>
       </div>
       <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-rose-500/70"><div className="h-full bg-sky-500" style={{ width: `${rate}%` }} /></div>
@@ -211,7 +258,7 @@ function bestRanking(latest, mode) {
     .sort((left, right) => left.rank - right.rank)[0] ?? null;
 }
 
-function ModeCards({ data, events, legacy, cmode, onBrowse }) {
+function ModeCards({ data, events, legacy, cmode, officialPr, onBrowse }) {
   const cards = MODES.map(([mode, label]) => {
     const modeEvents = events.filter((event) => modeKey(event.game_mode) === mode);
     const legacyMode = legacy?.byMode?.[mode === "other" ? "unknown" : mode];
@@ -226,36 +273,37 @@ function ModeCards({ data, events, legacy, cmode, onBrowse }) {
   }).filter((card) => card.mode !== "other" || card.modeEvents.length);
 
   return (
-    <div className="mt-4 grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
+    <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
       {cards.map((card) => (
-        <section key={card.mode} className={`rounded-2xl border border-l-4 border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 ${card.mode === "1" ? "border-l-cyan-400" : card.mode === "2" ? "border-l-violet-400" : "border-l-slate-500"}`}>
+        <section key={card.mode} className={`rounded-2xl border border-l-4 p-3 border-slate-700 bg-slate-900/80 ${card.mode === "1" ? "border-l-cyan-400" : card.mode === "2" ? "border-l-violet-400" : "border-l-slate-500"}`}>
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-2xl font-black text-slate-950 dark:text-white">{card.mode === "other" ? "Other formats" : `${card.label} PR`}</h2>
+            <h2 className="text-2xl font-black text-white">{card.mode === "other" ? "Other formats" : `${card.label} PR`}</h2>
             <button type="button" onClick={() => onBrowse({ mode: card.mode })} className="text-sm font-bold text-slate-500 hover:text-blue-500 hover:underline">{card.modeEvents.length} events</button>
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-3 border-b border-slate-200 pb-3 text-sm dark:border-slate-800">
+          <div className={`mt-3 grid gap-3 border-b pb-3 text-sm border-slate-800 ${card.mode === "other" ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-4"}`}>
             {card.mode !== "other" ? (
               <>
-                <div><div className="text-slate-500">Region</div><div className="text-lg font-black text-slate-950 dark:text-white">{card.ranking ? regionName(card.ranking.region) : "—"}</div></div>
+                <div><div className="text-slate-500">Region</div><div className="text-lg font-black text-white">{card.ranking ? regionName(card.ranking.region) : "—"}</div></div>
                 <div>
                   <div className="text-slate-500">Ranking</div>
-                  <div className={`text-3xl font-black ${card.mode === "1" ? "text-cyan-600 dark:text-cyan-300" : "text-violet-600 dark:text-violet-300"}`}>{card.ranking ? `#${card.ranking.rank}` : "—"}</div>
+                  <div className={`text-3xl font-black ${card.mode === "1" ? "text-cyan-300" : "text-violet-300"}`}>{card.ranking ? `#${card.ranking.rank}` : "—"}</div>
                   {card.ranking?.previous_rank != null && <RankChange rank={card.ranking.rank} previous={card.ranking.previous_rank} />}
                 </div>
+                <OfficialPr state={officialPr} mode={card.mode} />
               </>
             ) : (
               <>
-                <div><div className="text-slate-500">Events</div><div className="text-lg font-black text-slate-950 dark:text-white">{card.modeEvents.length}</div></div>
-                <div><div className="text-slate-500">Sets</div><div className="text-lg font-black text-slate-950 dark:text-white">{number(card.sets.playedSets)}</div></div>
+                <div><div className="text-slate-500">Events</div><div className="text-lg font-black text-white">{card.modeEvents.length}</div></div>
+                <div><div className="text-slate-500">Sets</div><div className="text-lg font-black text-white">{number(card.sets.playedSets)}</div></div>
               </>
             )}
-            <div><div className="text-slate-500">Earnings</div><div className="text-lg font-black text-emerald-600 dark:text-emerald-300">{money(card.earnings)}</div></div>
+            <div><div className="text-slate-500">Recorded prizes</div><PrizeTotal value={card.earnings} className="text-lg" /></div>
           </div>
           <div className="mt-3 grid grid-cols-3 gap-1 text-sm sm:grid-cols-6">
             {[["Gold", "gold", "text-amber-500"], ["Silver", "silver", "text-slate-400"], ["Bronze", "bronze", "text-orange-500"], ["Top 8", "top8", ""], ["Top 16", "top16", ""], ["Top 32", "top32", ""]].map(([label, key, tone]) => (
-              <button key={key} type="button" onClick={() => onBrowse({ mode: card.mode, finish: key })} className="rounded px-1 py-1 text-left transition hover:bg-slate-100 dark:hover:bg-white/10">
+              <button key={key} type="button" onClick={() => onBrowse({ mode: card.mode, finish: key })} className="rounded px-1 py-1 text-left transition hover:bg-white/10">
                 <div className="text-slate-500">{label}</div>
-                <div className={`text-lg font-black ${tone || "text-slate-950 dark:text-white"}`}>{finishCount(card.modeEvents, key)}</div>
+                <div className={`text-lg font-black ${tone || "text-white"}`}>{finishCount(card.modeEvents, key)}</div>
               </button>
             ))}
           </div>
@@ -265,6 +313,43 @@ function ModeCards({ data, events, legacy, cmode, onBrowse }) {
           </div>
         </section>
       ))}
+    </div>
+  );
+}
+
+function officialPrUpdated(value) {
+  const parsed = new Date(value);
+  if (!value || Number.isNaN(parsed.getTime())) return "";
+  const minutes = Math.floor((Date.now() - parsed.getTime()) / 60000);
+  if (minutes < 1) return "updated just now";
+  if (minutes < 60) return `updated ${minutes} min ago`;
+  if (minutes < 24 * 60) return `updated ${Math.floor(minutes / 60)} h ago`;
+  return `updated ${date(value)}`;
+}
+
+function OfficialPr({ state, mode }) {
+  const result = state?.data;
+  const entry = result?.available ? result.modes?.[mode] : null;
+  const read = result?.updatedAt ? new Date(result.updatedAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "";
+  let value = "—";
+  let title = "Official power ranking from brawltools";
+  if (state?.loading) value = "…";
+  else if (state?.error) title = "Couldn't load the official PR";
+  else if (!result?.startggPlayerId) title = "No start.gg account linked";
+  else if (!result.available) title = "brawltools didn't answer";
+  else if (!result.found || !entry) title = `Not on brawltools, checked ${read}`;
+  else if (!entry.rank) { value = "Unranked"; title = `Unranked on brawltools, checked ${read}`; }
+  else { value = `#${entry.rank}`; title = `Official ${mode === "1" ? "1v1" : "2v2"} PR from brawltools, read ${read}`; }
+  const ranked = value.startsWith("#");
+  const updated = result?.available ? (result.stale ? `as of ${date(result.updatedAt)}` : officialPrUpdated(result.updatedAt)) : "";
+  return (
+    <div title={result?.stale ? `${title}. brawltools didn't answer, so this is the last value read.` : title}>
+      <div className="text-slate-500">Official PR</div>
+      <div className={ranked ? "text-3xl font-black text-amber-300" : "text-lg font-black text-slate-400"}>
+        {value}
+        {ranked && entry.region && <span className="ml-1.5 text-sm font-bold text-slate-400">{entry.region}</span>}
+      </div>
+      {updated && <div className={`text-xs font-bold ${result.stale ? "text-amber-500/80" : "text-slate-500"}`}>{updated}</div>}
     </div>
   );
 }
@@ -297,25 +382,25 @@ function CareerYears({ events, onBrowse }) {
   if (years.length < 2) return null;
   const busiest = Math.max(...years.map((row) => row.events));
   return (
-    <section className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-      <header className="flex items-baseline justify-between gap-2 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
-        <h2 className="text-lg font-black text-slate-950 dark:text-white">Career by year</h2>
+    <section className="overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/80">
+      <header className="flex items-baseline justify-between gap-2 border-b px-3 py-3 border-slate-800">
+        <h2 className="text-lg font-black text-white">Career by year</h2>
         <span className="text-xs font-bold text-slate-500">All recorded tournaments</span>
       </header>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-px bg-slate-200 dark:bg-slate-800">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-px bg-slate-800">
         {years.map((row) => (
-          <article key={row.year} className="bg-white px-4 py-3 dark:bg-slate-900">
+          <article key={row.year} className="px-3 py-3 bg-slate-900">
             <div className="flex items-baseline justify-between">
-              <button type="button" onClick={() => onBrowse({ year: String(row.year) })} className="text-xl font-black text-cyan-600 hover:underline dark:text-cyan-300">{row.year}</button>
-              <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{row.events} events</span>
+              <button type="button" onClick={() => onBrowse({ year: String(row.year) })} className="text-xl font-black hover:underline text-cyan-300">{row.year}</button>
+              <span className="text-sm font-bold text-slate-200">{row.events} events</span>
             </div>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"><div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-violet-500" style={{ width: `${(100 * row.events) / busiest}%` }} /></div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-violet-500" style={{ width: `${(100 * row.events) / busiest}%` }} /></div>
             <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold text-slate-500">
               <span>{row.official} official</span>
               <span><b className="text-sky-500">{row.wins}W</b>–<b className="text-rose-500">{row.losses}L</b></span>
-              {row.earnings > 0 && <span className="text-emerald-600 dark:text-emerald-400">{money(row.earnings)}</span>}
+              {row.earnings > 0 && <span className="text-emerald-400">{money(row.earnings)}</span>}
             </div>
-            <div className="mt-1 flex flex-wrap gap-x-3 text-xs font-bold text-slate-600 dark:text-slate-300">
+            <div className="mt-1 flex flex-wrap gap-x-3 text-xs font-bold text-slate-300">
               {row.modes[1] > 0 && <button type="button" onClick={() => onBrowse({ year: String(row.year), mode: "1" })} className="hover:underline">1v1 {row.modes[1]}</button>}
               {row.modes[2] > 0 && <button type="button" onClick={() => onBrowse({ year: String(row.year), mode: "2" })} className="hover:underline">2v2 {row.modes[2]}</button>}
               {row.modes.other > 0 && <button type="button" onClick={() => onBrowse({ year: String(row.year), mode: "other" })} className="hover:underline">Other {row.modes.other}</button>}
@@ -329,12 +414,17 @@ function CareerYears({ events, onBrowse }) {
 }
 
 
+function usePageParam() {
+  const [pageParam, setPageParam] = useQueryState("page", "1");
+  return [intParam(pageParam), (value) => setPageParam(String(value))];
+}
+
 function EventExplorer({ playerId, events }) {
-  const [search, setSearch] = useState("");
-  const [mode, setMode] = useState("all");
-  const [year, setYear] = useState("all");
-  const [sorting, setSorting] = useState("newest");
-  const [page, setPage] = useState(1);
+  const [search, setSearch] = useQueryState("q", "");
+  const [mode, setMode] = useQueryState("mode", "all");
+  const [year, setYear] = useQueryState("year", "all");
+  const [sorting, setSorting] = useQueryState("sort", "newest");
+  const [page, setPage] = usePageParam();
   const [selectedId, setSelectedId] = useQueryState("event", "");
   const perPage = 50;
   const years = useMemo(() => [...new Set(events.map((event) => new Date(event.starts_at).getFullYear()).filter(Number.isFinite))], [events]);
@@ -356,11 +446,11 @@ function EventExplorer({ playerId, events }) {
   const reset = (setter) => (value) => { setter(value); setPage(1); };
 
   return (
-    <div className="grid items-start gap-4 xl:grid-cols-[minmax(22rem,30rem)_minmax(0,1fr)]">
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 xl:sticky xl:top-20">
-        <div className="grid gap-2 border-b border-slate-200 p-3 dark:border-slate-800">
-          <div className="flex items-center justify-between">
-            <span className="text-lg font-black text-slate-950 dark:text-white">{filtered.length} events</span>
+    <div className="grid items-start gap-3 xl:grid-cols-[minmax(22rem,30rem)_minmax(0,1fr)]">
+      <section className="overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/80 xl:sticky xl:top-20">
+        <div className="grid gap-2 border-b p-3 border-slate-800">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-lg font-black text-white">{filtered.length} events</span>
             <span className="text-xs font-bold text-slate-500">Page {page} of {pages}</span>
           </div>
           <SearchInput value={search} onChange={reset(setSearch)} placeholder="Search by event name" />
@@ -378,26 +468,26 @@ function EventExplorer({ playerId, events }) {
                 key={`${event.event_id}:${event.entrant_id}`}
                 type="button"
                 onClick={() => setSelectedId(String(event.event_id))}
-                className={`flex w-full items-center gap-3 border-b border-slate-100 px-3 py-2 text-left transition last:border-0 dark:border-slate-800 ${active ? "bg-blue-50 dark:bg-blue-500/10" : "hover:bg-slate-50 dark:hover:bg-slate-800/50"}`}
+                className={`flex w-full items-center gap-3 border-b px-3 py-2 text-left transition last:border-0 border-slate-800 ${active ? "bg-blue-500/10" : "hover:bg-slate-800/50"}`}
               >
                 <EventImage src={event.tournament_image} name={event.tournament_name} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-black text-slate-950 dark:text-white">{event.tournament_name}</div>
+                  <div className="truncate text-sm font-black text-white">{event.tournament_name}</div>
                   <div className="truncate text-xs font-semibold text-slate-500">{event.event_name}</div>
                   <div className="text-xs font-semibold text-slate-500">{date(event.starts_at)}</div>
                 </div>
                 <div className="shrink-0 text-right">
-                  <div className={`font-black ${Number(event.placement) <= 3 && confirmed(event) ? "text-amber-500" : "text-slate-950 dark:text-white"}`}>{event.disqualified ? "DQ" : ordinal(event.placement)}</div>
+                  <div className={`font-black ${Number(event.placement) <= 3 && confirmed(event) ? "text-amber-500" : "text-white"}`}>{event.disqualified ? "DQ" : ordinal(event.placement)}</div>
                   <div className="text-[11px] font-semibold text-slate-500">of {number(event.entrant_count)}</div>
                 </div>
               </button>
             );
           })}
-          {!visible.length && <Empty>No events match.</Empty>}
+          {!visible.length && <Empty bare>No events match.</Empty>}
         </div>
         <Pagination page={page} totalPages={pages} onChange={setPage} />
       </section>
-      {selected ? <EventDetail key={selected.event_id} playerId={playerId} event={selected} /> : <Card><Empty>Pick an event.</Empty></Card>}
+      {selected ? <EventDetail key={selected.event_id} playerId={playerId} event={selected} /> : <Card><Empty>Pick an event</Empty></Card>}
     </div>
   );
 }
@@ -405,7 +495,7 @@ function EventExplorer({ playerId, events }) {
 function EventImage({ src, name, size = "h-12 w-12" }) {
   return src
     ? <img src={src} alt="" loading="lazy" className={`${size} shrink-0 rounded-xl object-cover`} />
-    : <div className={`${size} grid shrink-0 place-items-center rounded-xl bg-slate-200 text-lg font-black text-slate-600 dark:bg-slate-700 dark:text-slate-200`}>{String(name ?? "?")[0]?.toUpperCase()}</div>;
+    : <div className={`${size} grid shrink-0 place-items-center rounded-xl text-lg font-black bg-slate-700 text-slate-200`}>{String(name ?? "?")[0]?.toUpperCase()}</div>;
 }
 
 function EventDetail({ playerId, event }) {
@@ -416,16 +506,16 @@ function EventDetail({ playerId, event }) {
   const summary = data?.summary;
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-      <div className="flex flex-wrap items-center gap-4 bg-slate-100 p-4 dark:bg-slate-800">
+    <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/80">
+      <div className="flex flex-wrap items-center gap-3 p-3 bg-slate-800">
         <EventImage src={event.tournament_image} name={event.tournament_name} size="h-20 w-20" />
         <div className="min-w-0 flex-1">
-          <a href={`/esports/event/${event.event_id}`} className="text-2xl font-black text-slate-950 hover:text-blue-500 dark:text-white">{event.tournament_name}</a>
+          <a href={`/esports/event/${event.event_id}`} className="text-2xl font-black hover:text-blue-500 text-white">{event.tournament_name}</a>
           <div className="text-sm font-semibold text-slate-500">{event.event_name} · {date(event.starts_at)} · {modeName(event.game_mode)}{event.region ? ` · ${event.region}` : ""}</div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-base text-slate-700 dark:text-slate-200">
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-base text-slate-200">
             <span><b>{event.disqualified ? "DQ" : ordinal(event.placement)}</b> out of {number(event.entrant_count)}</span>
             {event.seed && <span className="font-bold">Seed {ordinal(event.seed)}</span>}
-            {Number(event.recorded_prize_usd) > 0 && <span className="font-black text-emerald-600 dark:text-emerald-400">{money(event.recorded_prize_usd)}</span>}
+            {Number(event.recorded_prize_usd) > 0 && <span className="font-black text-emerald-400">{money(event.recorded_prize_usd)}</span>}
             {event.is_official && <Badge tone="blue">Official</Badge>}
           </div>
         </div>
@@ -436,18 +526,18 @@ function EventDetail({ playerId, event }) {
           </div>
         )}
       </div>
-      {detail.error && <div className="p-4"><ErrorNote message={detail.error} /></div>}
-      {!data && detail.loading && <Loading label="Loading event..." />}
+      {detail.error && <div className="p-3"><ErrorNote message={detail.error} onRetry={detail.retry} /></div>}
+      {!data && detail.loading && <Loading bare label="Loading event…" />}
       {data && (
-        <div className="grid gap-4 p-4">
-          <div className="grid gap-4 lg:grid-cols-2">
-            <UsageGrid title="Legends played" rows={summary.legends} kind="legend" legendName={legendName} empty="No legends reported" />
-            <UsageGrid title="Stages played" rows={summary.maps} kind="map" empty="No stages reported" />
+        <div className="grid gap-3 p-3">
+          <div className="grid gap-3 lg:grid-cols-2">
+            <UsageGrid title="Legends Played" rows={summary.legends} kind="legend" legendName={legendName} empty="No legends reported" />
+            <UsageGrid title="Stages Played" rows={summary.maps} kind="map" empty="No stages reported" />
           </div>
           <div>
-            <h3 className="mb-2 text-lg font-black text-slate-950 dark:text-white">Sets</h3>
-            {!data.sets.length && <Empty>No sets recorded for this event.</Empty>}
-            <div className="grid gap-2">
+            <h3 className="mb-2 text-lg font-black text-white">Sets</h3>
+            {!data.sets.length && <Empty bare>No sets recorded for this event.</Empty>}
+            <div className="grid items-start gap-2 min-[137.5rem]:grid-cols-2">
               {data.sets.map((set) => (
                 <SetRow key={set.id} set={set} open={openSet === set.id} onToggle={() => setOpenSet(openSet === set.id ? null : set.id)} legendName={legendName} />
               ))}
@@ -461,8 +551,8 @@ function EventDetail({ playerId, event }) {
 
 function UsageGrid({ title, rows, kind, legendName, empty, onPick, picked, perspective = "mine" }) {
   return (
-    <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-950/60">
-      <h3 className="mb-2 text-base font-black text-slate-950 dark:text-white">{title}</h3>
+    <div className="rounded-xl p-3 bg-slate-950/60">
+      <h3 className="mb-2 text-base font-black text-white">{title}</h3>
       {!rows?.length && <div className="text-sm font-semibold text-slate-500">{empty}</div>}
       <div className="grid max-h-[26rem] grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-2 overflow-y-auto pr-1">
         {(rows ?? []).map((row) => {
@@ -470,9 +560,9 @@ function UsageGrid({ title, rows, kind, legendName, empty, onPick, picked, persp
           const wins = perspective === "mine" ? row.wins : row.known - row.wins;
           const body = kind === "legend" ? (
             <div className="flex items-center gap-3">
-              <img src={legendArt(row.name)} alt="" loading="lazy" onError={hide} className="h-12 w-12 shrink-0 rounded-lg bg-slate-200 object-cover dark:bg-slate-800" />
+              <img src={legendArt(row.name)} alt="" loading="lazy" onError={hide} className="h-12 w-12 shrink-0 rounded-lg object-cover bg-slate-800" />
               <div className="min-w-0 flex-1">
-                <div className="truncate font-black text-slate-950 dark:text-white">{name}</div>
+                <div className="truncate font-black text-white">{name}</div>
                 <UsageLine games={row.games} wins={wins} known={row.known} />
               </div>
             </div>
@@ -487,8 +577,8 @@ function UsageGrid({ title, rows, kind, legendName, empty, onPick, picked, persp
           );
           const active = picked && picked === row.name;
           return onPick
-            ? <button key={row.name} type="button" onClick={() => onPick(row)} className={`rounded-xl p-2 text-left transition ${active ? "bg-blue-100 ring-2 ring-blue-400 dark:bg-blue-500/15" : "bg-white hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800"}`}>{body}</button>
-            : <div key={row.name} className={kind === "legend" ? "rounded-xl bg-white p-2 dark:bg-slate-900" : ""}>{body}</div>;
+            ? <button key={row.name} type="button" onClick={() => onPick(row)} className={`rounded-xl p-2 text-left transition ${active ? "ring-2 ring-blue-400 bg-blue-500/15" : "bg-slate-900 hover:bg-slate-800"}`}>{body}</button>
+            : <div key={row.name} className={kind === "legend" ? "rounded-xl p-2 bg-slate-900" : ""}>{body}</div>;
         })}
       </div>
     </div>
@@ -510,22 +600,46 @@ function UsageLine({ games, wins, known }) {
   );
 }
 
+function TeamPicks({ players, picks, legendName, right = false }) {
+  return (
+    <div className={`grid min-w-0 gap-1 ${right ? "justify-items-end" : ""}`}>
+      {players.map((player, index) => (
+        <div key={`${player.playerId ?? player.name}:${index}`} className={`flex min-w-0 items-center gap-2 ${right ? "flex-row-reverse" : ""}`}>
+          {(picks[index] ?? []).map((legend, position) => <img key={`${legend}:${position}`} src={legendArt(legend)} title={legendName(legend)} alt={legendName(legend)} onError={hide} className="h-8 w-8 shrink-0 rounded-lg object-cover bg-slate-800" />)}
+          <span className="min-w-0 truncate text-xs font-semibold text-slate-400">{player.name}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function SetRow({ set, open, onToggle, legendName, showEvent }) {
   const opponent = set.opponent ?? {};
   const scored = (set.myScore ?? -1) >= 0 && (set.theirScore ?? -1) >= 0;
-  const legendIcon = (legend) => <img key={legend} src={legendArt(legend)} title={legendName(legend)} alt={legendName(legend)} onError={hide} className="h-10 w-10 rounded-lg bg-slate-200 object-cover dark:bg-slate-800" />;
+  const legendIcon = (legend) => <img key={legend} src={legendArt(legend)} title={legendName(legend)} alt={legendName(legend)} onError={hide} className="h-10 w-10 rounded-lg object-cover bg-slate-800" />;
   return (
-    <div className={`overflow-hidden rounded-xl border ${set.won ? "border-emerald-300/60 dark:border-emerald-500/30" : "border-rose-300/60 dark:border-rose-500/30"}`}>
-      <button type="button" onClick={onToggle} className="grid w-full grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50">
+    <div className={`overflow-hidden rounded-xl border ${set.won ? "border-emerald-500/30" : "border-rose-500/30"}`}>
+      <button type="button" onClick={onToggle} className="grid w-full grid-cols-[4.5rem_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2 text-left hover:bg-slate-800/50">
         <span className={`text-center text-xl font-black tabular-nums ${set.won ? "text-emerald-500" : "text-rose-500"}`}>
           {scored ? `${set.myScore} - ${set.theirScore}` : set.myScore === -1 || set.theirScore === -1 ? "DQ" : set.won ? "W" : "L"}
         </span>
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex shrink-0 -space-x-3">
-            {(opponent.members?.length ? opponent.members : [{ name: opponent.name }]).map((member, index) => <Avatar key={index} src={member.image} name={member.name} size="md" playerId={member.playerId} />)}
-          </div>
+        <div className={`flex min-w-0 gap-x-3 gap-y-1 ${opponent.members?.length > 1 ? "flex-col sm:flex-row sm:items-center" : "items-center"}`}>
+          {opponent.members?.length > 1 ? (
+            <div className="grid min-w-0 gap-1 sm:shrink-0">
+              {opponent.members.map((member, index) => (
+                <span key={`${member.playerId ?? member.name}:${index}`} className="flex min-w-0 items-center gap-2">
+                  <Avatar src={member.image} name={member.name} size="sm" playerId={member.playerId} />
+                  <span className="truncate font-black text-white sm:max-w-[10rem]">{member.name}</span>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div className="flex shrink-0 -space-x-3">
+              {(opponent.members?.length ? opponent.members : [{ name: opponent.name }]).map((member, index) => <Avatar key={index} src={member.image} name={member.name} size="md" playerId={member.playerId} />)}
+            </div>
+          )}
           <div className="min-w-0">
-            <div className="truncate font-black text-slate-950 dark:text-white">{opponent.name}</div>
+            {!(opponent.members?.length > 1) && <div className="truncate font-black text-white">{opponent.name}</div>}
             <div className="truncate text-xs font-semibold text-slate-500">
               {showEvent ? `${showEvent} · ` : ""}{set.roundName}
               {opponent.seed ? ` · Seed ${opponent.seed}` : ""}{opponent.placement ? ` · Placed ${ordinal(opponent.placement)}` : ""}
@@ -535,30 +649,30 @@ function SetRow({ set, open, onToggle, legendName, showEvent }) {
         <span className="text-xs font-bold text-slate-500">{set.games.length ? `${set.games.length} games ${open ? "▴" : "▾"}` : date(set.at)}</span>
       </button>
       {open && (
-        <div className="grid gap-1 border-t border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/50">
+        <div className="grid gap-1 border-t p-3 border-slate-800 bg-slate-950/50">
           {opponent.members?.some((member) => member.playerId) && (
             <div className="mb-1 flex flex-wrap gap-3 text-xs font-bold">
-              {opponent.members.filter((member) => member.playerId).map((member) => <a key={member.playerId} href={`/esports/player/id/${member.playerId}`} className="text-blue-600 hover:underline dark:text-blue-300">{member.name}'s profile →</a>)}
+              {opponent.members.filter((member) => member.playerId).map((member) => <a key={member.playerId} href={`/esports/player/id/${member.playerId}`} className="hover:underline text-blue-300">{member.name}'s profile →</a>)}
             </div>
           )}
           {set.games.map((game) => (
             <div key={game.gameNumber} className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
-              <div className="flex items-center gap-2">
-                {game.mine.map(legendIcon)}
+              <div className="flex min-w-0 items-center gap-2">
+                {game.mineByPlayer && set.team ? <TeamPicks players={set.team} picks={game.mineByPlayer} legendName={legendName} /> : game.mine.map(legendIcon)}
                 {game.won !== null && <span className={`font-mono text-2xl font-black ${game.won ? "text-emerald-500" : "text-rose-500"}`}>{game.won ? "W" : "L"}</span>}
               </div>
               <div className="text-center">
-                <div className="text-sm font-black text-slate-950 dark:text-white">Game {game.gameNumber}</div>
+                <div className="text-sm font-black text-white">Game {game.gameNumber}</div>
                 {game.map && <div className="text-xs font-semibold text-slate-500">{mapName(game.map)}</div>}
               </div>
               <div className="flex items-center justify-end gap-2">
                 {game.won !== null && <span className={`font-mono text-2xl font-black ${!game.won ? "text-emerald-500" : "text-rose-500"}`}>{!game.won ? "W" : "L"}</span>}
-                {game.theirs.map(legendIcon)}
+                {game.theirsByPlayer && opponent.members?.length > 1 ? <TeamPicks players={opponent.members} picks={game.theirsByPlayer} legendName={legendName} right /> : game.theirs.map(legendIcon)}
               </div>
             </div>
           ))}
           {!set.games.length && <div className="text-sm font-semibold text-slate-500">No game data reported.</div>}
-          <a href={`/esports/set/${set.id}`} className="mt-1 text-xs font-black text-blue-600 hover:underline dark:text-blue-300">Open match page →</a>
+          <a href={`/esports/set/${set.id}`} className="mt-1 text-xs font-black hover:underline text-blue-300">Open match page →</a>
         </div>
       )}
     </div>
@@ -567,44 +681,49 @@ function SetRow({ set, open, onToggle, legendName, showEvent }) {
 
 
 function OpponentExplorer({ playerId, playerName }) {
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [sort, setSort] = useState("sets");
-  const [order, setOrder] = useState("desc");
-  const [mode, setMode] = useState("");
-  const [selected, setSelected] = useState(null);
+  const [page, setPage] = usePageParam();
+  const [search, setSearch] = useQueryState("q", "");
+  const [sort, setSort] = useQueryState("sort", "sets");
+  const [order, setOrder] = useQueryState("order", "desc");
+  const [mode, setMode] = useQueryState("mode", "");
+  const [selectedId, setSelectedId] = useQueryState("vs", "");
+  const [selected, setSelectedState] = useState(null);
   const query = useDebounced(search.trim());
-  const list = useApi(apiUrl(`/players/${playerId}/opponents`, { page, perPage: 25, search: query || undefined, sort, order, gameMode: mode || undefined }));
+  const params = { search: query || undefined, sort, order, gameMode: mode || undefined };
+  const list = useApi(apiUrl(`/players/${playerId}/opponents`, { ...params, page, perPage: 25 }));
   const items = list.data?.items ?? [];
-  const current = selected ?? items[0] ?? null;
+  const current = selected ?? items.find((opponent) => String(opponent.player_id) === String(selectedId)) ?? items[0] ?? null;
+  const setSelected = (opponent) => { setSelectedState(opponent); setSelectedId(opponent ? String(opponent.player_id) : ""); };
   const reset = (setter) => (value) => { setter(value); setPage(1); };
 
   return (
-    <div className="grid items-start gap-4 xl:grid-cols-[minmax(22rem,30rem)_minmax(0,1fr)]">
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 xl:sticky xl:top-20">
-        <div className="grid gap-2 border-b border-slate-200 p-3 dark:border-slate-800">
+    <div className="grid items-start gap-3 xl:grid-cols-[minmax(22rem,30rem)_minmax(0,1fr)]">
+      <section className="overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/80 xl:sticky xl:top-20">
+        <div className="grid gap-2 border-b p-3 border-slate-800">
           <SearchInput value={search} onChange={reset(setSearch)} placeholder="Search opponents" />
           <div className="grid grid-cols-3 gap-2">
-            <Select label="Sort by" value={sort} onChange={reset(setSort)} options={[["sets", "Sets played"], ["winRate", "Set win rate"], ["events", "Shared events"], ["recent", "Last played"]]} />
+            <Select label="Sort by" value={sort} onChange={reset(setSort)} options={[["sets", "Sets Played"], ["winRate", "Set win rate"], ["events", "Shared events"], ["recent", "Last played"]]} />
             <Select label="Order" value={order} onChange={reset(setOrder)} options={[["desc", "Descending"], ["asc", "Ascending"]]} />
             <Select label="Gamemode" value={mode} onChange={reset(setMode)} options={[["", "All"], ["1", "1v1"], ["2", "2v2"]]} />
           </div>
-          <div className="text-xs font-bold text-slate-500">{number(list.data?.total ?? 0)} opponents</div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-bold text-slate-500">{number(list.data?.total ?? 0)} opponents</span>
+          </div>
         </div>
         <div className={`max-h-[70vh] overflow-y-auto ${list.loading ? "opacity-60" : ""}`}>
-          {!list.data && list.loading && <Loading />}
-          {list.data && !items.length && <Empty>No opponents found.</Empty>}
+          {!list.data && list.loading && <Loading bare />}
+          {list.data && !items.length && <Empty bare>No opponents found.</Empty>}
           {items.map((opponent) => {
             const wins = Number(opponent.wins);
             const losses = Number(opponent.losses);
             const active = current && current.player_id === opponent.player_id;
             return (
-              <button key={opponent.player_id} type="button" onClick={() => setSelected(opponent)} className={`block w-full border-b border-slate-100 p-3 text-left transition last:border-0 dark:border-slate-800 ${active ? "bg-blue-50 dark:bg-blue-500/10" : "hover:bg-slate-50 dark:hover:bg-slate-800/50"}`}>
+              <button key={opponent.player_id} type="button" onClick={() => setSelected(opponent)} className={`block w-full border-b p-3 text-left transition last:border-0 border-slate-800 ${active ? "bg-blue-500/10" : "hover:bg-slate-800/50"}`}>
                 <div className="flex items-center gap-3">
                   <Avatar src={opponent.image_url} name={opponent.display_name} playerId={opponent.player_id} />
                   <div className="min-w-0 flex-1">
                     {opponent.prefix && <div className="truncate text-xs font-bold text-slate-500">{opponent.prefix}</div>}
-                    <div className="flex items-center gap-1.5 truncate font-black text-slate-950 dark:text-white"><FlagIcon country={opponent.country} className="h-4 w-4" />{opponent.display_name}</div>
+                    <div className="flex items-center gap-1.5 truncate font-black text-white"><FlagIcon country={opponent.country} className="h-4 w-4" />{opponent.display_name}</div>
                     <div className="text-xs font-semibold text-slate-500">{opponent.events} events · last {date(opponent.last_played_at)}</div>
                   </div>
                 </div>
@@ -632,14 +751,14 @@ function OpponentDetail({ playerId, playerName, opponent }) {
   const eventNames = new Map((data?.events ?? []).map((event) => [event.eventId, event.tournamentName]));
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+    <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-700 bg-slate-900/80">
       <div className="relative">
         {opponent.banner_url && <img src={opponent.banner_url} alt="" className="absolute inset-0 h-full w-full object-cover opacity-30" />}
-        <div className="relative flex flex-wrap items-center gap-4 bg-slate-100/90 p-4 dark:bg-slate-800/90">
+        <div className="relative flex flex-wrap items-center gap-3 p-3 bg-slate-800/90">
           <Avatar src={opponent.image_url} name={opponent.display_name} size="lg" playerId={opponent.player_id} />
           <div className="min-w-0 flex-1">
             {opponent.prefix && <div className="text-sm font-bold text-slate-500">{opponent.prefix}</div>}
-            <a href={`/esports/player/id/${opponent.player_id}`} className="text-3xl font-black text-slate-950 hover:text-blue-500 dark:text-white">{opponent.display_name}</a>
+            <a href={`/esports/player/id/${opponent.player_id}`} className="text-3xl font-black hover:text-blue-500 text-white">{opponent.display_name}</a>
             <div className="text-xs font-bold text-slate-500">
               {playerName} vs {opponent.display_name}
             </div>
@@ -652,39 +771,39 @@ function OpponentDetail({ playerId, playerName, opponent }) {
           )}
         </div>
       </div>
-      <div className="border-b border-slate-200 p-3 dark:border-slate-800">
+      <div className="border-b p-3 border-slate-800">
         <Tabs value={view} onChange={setView} tabs={[
           { key: "legends", label: "Legend Data" }, { key: "maps", label: "Stage Data" },
           { key: "h2h", label: "Head to Head" }, { key: "sets", label: "Sets", count: data?.sets.length },
         ]} />
       </div>
-      {detail.error && <div className="p-4"><ErrorNote message={detail.error} /></div>}
-      {!data && detail.loading && <Loading label="Loading matchup..." />}
+      {detail.error && <div className="p-3"><ErrorNote message={detail.error} onRetry={detail.retry} /></div>}
+      {!data && detail.loading && <Loading bare label="Loading matchup…" />}
       {data && (
-        <div className="p-4">
+        <div className="p-3">
           {view === "legends" && (
-            <div className="grid gap-4 2xl:grid-cols-2">
+            <div className="grid gap-3 2xl:grid-cols-2">
               <UsageGrid title={`${playerName}'s legends · pick one for matchup detail`} rows={summary.legends} kind="legend" legendName={legendName} empty="No legends reported" onPick={(row) => setLegend(row.name)} picked={legend} />
               <UsageGrid title={`${opponent.display_name}'s legends`} rows={summary.opponentLegends} kind="legend" legendName={legendName} empty="No legends reported" perspective="theirs" />
               {matchup && (
-                <div className="grid gap-4 rounded-xl border border-blue-300/60 p-3 dark:border-blue-500/30 lg:grid-cols-2 2xl:col-span-2">
+                <div className="grid gap-3 rounded-xl border p-2 border-blue-500/30 lg:grid-cols-2 2xl:col-span-2">
                   <div className="flex items-center gap-3 lg:col-span-2">
-                    <img src={legendArt(matchup.name)} alt="" onError={hide} className="h-16 w-16 rounded-xl bg-slate-200 object-cover dark:bg-slate-800" />
+                    <img src={legendArt(matchup.name)} alt="" onError={hide} className="h-16 w-16 rounded-xl object-cover bg-slate-800" />
                     <div className="min-w-0 flex-1">
-                      <div className="text-xl font-black text-slate-950 dark:text-white">{legendName(matchup.name)}</div>
+                      <div className="text-xl font-black text-white">{legendName(matchup.name)}</div>
                       <UsageLine games={matchup.games} wins={matchup.wins} known={matchup.known} />
                     </div>
                   </div>
                   <UsageGrid title={`${opponent.display_name}'s legends against it`} rows={matchup.against} kind="legend" legendName={legendName} empty="No legends reported" perspective="theirs" />
-                  <UsageGrid title="Stages played" rows={matchup.maps} kind="map" empty="No stages reported" />
+                  <UsageGrid title="Stages Played" rows={matchup.maps} kind="map" empty="No stages reported" />
                 </div>
               )}
             </div>
           )}
-          {view === "maps" && <UsageGrid title="Stages played" rows={summary.maps} kind="map" empty="No stages reported" />}
+          {view === "maps" && <UsageGrid title="Stages Played" rows={summary.maps} kind="map" empty="No stages reported" />}
           {view === "h2h" && <HeadToHead data={data} playerName={playerName} opponentName={opponent.display_name} />}
           {view === "sets" && (
-            <div className="grid gap-2">
+            <div className="grid items-start gap-2 min-[137.5rem]:grid-cols-2">
               {data.sets.map((set) => (
                 <SetRow key={set.id} set={set} open={openSet === set.id} onToggle={() => setOpenSet(openSet === set.id ? null : set.id)} legendName={legendName} showEvent={eventNames.get(set.eventId)} />
               ))}
@@ -750,9 +869,9 @@ function headToHeadStats(data) {
 
 function H2HTile({ label, value, tone, detail }) {
   return (
-    <div className="rounded-xl bg-slate-100 p-3 dark:bg-slate-800/70">
+    <div className="rounded-xl p-3 bg-slate-800/70">
       <div className="text-[11px] font-black uppercase tracking-wider text-slate-500">{label}</div>
-      <div className={`mt-0.5 text-2xl font-black tabular-nums ${tone ?? "text-slate-950 dark:text-white"}`}>{value}</div>
+      <div className={`mt-0.5 text-2xl font-black tabular-nums ${tone ?? "text-white"}`}>{value}</div>
       {detail && <div className="mt-0.5 text-xs font-semibold text-slate-500">{detail}</div>}
     </div>
   );
@@ -763,7 +882,7 @@ function RecordRow({ label, wins, losses }) {
   const rate = total ? (wins / total) * 100 : 0;
   return (
     <div className="grid grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] items-center gap-3 text-sm">
-      <span className="font-black text-slate-700 dark:text-slate-200">{label}</span>
+      <span className="font-black text-slate-200">{label}</span>
       <div className="h-2.5 overflow-hidden rounded-full bg-rose-500/70"><div className="h-full bg-sky-500" style={{ width: `${rate}%` }} /></div>
       <span className="text-right font-black tabular-nums"><span className="text-sky-500">{wins}</span>–<span className="text-rose-500">{losses}</span></span>
     </div>
@@ -781,9 +900,9 @@ function HeadToHead({ data, playerName, opponentName }) {
   for (const set of data.sets) setsByEvent.set(set.eventId, [...(setsByEvent.get(set.eventId) ?? []), set]);
   const tone = (won) => (won ? "text-sky-500" : "text-rose-500");
 
-  if (!data.sets.length) return <Empty>No sets recorded between these players.</Empty>;
+  if (!data.sets.length) return <Empty bare>No sets recorded between these players.</Empty>;
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-3">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <H2HTile label="Sets" value={<><span className="text-sky-500">{summary.setWins}</span>–<span className="text-rose-500">{summary.setLosses}</span></>} detail={`${pct(summary.setWins, setTotal)} won`} />
         <H2HTile label="Games" value={<><span className="text-sky-500">{summary.gameWins}</span>–<span className="text-rose-500">{summary.gameLosses}</span></>} detail={gameTotal ? `${pct(summary.gameWins, gameTotal)} won` : "No game scores"} />
@@ -816,7 +935,7 @@ function HeadToHead({ data, playerName, opponentName }) {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-2">
         <div className="grid content-start gap-2">
           <h3 className="text-sm font-black uppercase tracking-wider text-slate-500">By year</h3>
           {stats.years.map((row) => <RecordRow key={row.key} label={row.key} wins={row.wins} losses={row.losses} />)}
@@ -827,19 +946,19 @@ function HeadToHead({ data, playerName, opponentName }) {
         </div>
       </div>
 
-      <div className="grid gap-2">
-        <h3 className="text-sm font-black uppercase tracking-wider text-slate-500">Meetings · {data.events.length} {data.events.length === 1 ? "event" : "events"}</h3>
+      <div className="grid items-start gap-2 min-[137.5rem]:grid-cols-2">
+        <h3 className="text-sm font-black uppercase tracking-wider text-slate-500 min-[137.5rem]:col-span-2">Meetings · {data.events.length} {data.events.length === 1 ? "event" : "events"}</h3>
         {data.events.map((event) => {
           const sets = [...(setsByEvent.get(event.eventId) ?? [])].sort((left, right) => (left.setOrder ?? 0) - (right.setOrder ?? 0) || String(left.at).localeCompare(String(right.at)));
           const mine = Number(event.myPlacement) || null;
           const theirs = Number(event.theirPlacement) || null;
           const better = mine && theirs ? (mine < theirs ? "mine" : mine > theirs ? "theirs" : null) : null;
           return (
-            <div key={event.eventId} className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+            <div key={event.eventId} className="rounded-xl border p-2 border-slate-800">
               <div className="flex items-center gap-3">
                 <EventImage src={event.image} name={event.tournamentName} />
                 <div className="min-w-0 flex-1">
-                  <a href={`/esports/event/${event.eventId}`} className="block truncate font-black text-slate-950 hover:text-blue-500 dark:text-white">{event.tournamentName}</a>
+                  <a href={`/esports/event/${event.eventId}`} className="block truncate font-black hover:text-blue-500 text-white">{event.tournamentName}</a>
                   <div className="truncate text-xs font-semibold text-slate-500">
                     {[event.eventName && event.eventName !== event.tournamentName ? event.eventName : null, modeName(event.gameMode), date(event.lastAt)].filter(Boolean).join(" · ")}
                   </div>
@@ -849,7 +968,7 @@ function HeadToHead({ data, playerName, opponentName }) {
               {(mine || theirs) && (
                 <div className="mt-2 grid grid-cols-2 gap-2 text-xs font-bold">
                   {[[playerName, mine, better === "mine"], [opponentName, theirs, better === "theirs"]].map(([name, place, ahead]) => (
-                    <div key={name} className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1 ${ahead ? "bg-amber-400/15 text-amber-700 dark:text-amber-300" : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
+                    <div key={name} className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1 ${ahead ? "bg-amber-400/15 text-amber-300" : "bg-slate-800 text-slate-300"}`}>
                       <span className="truncate">{name}</span>
                       <span className="shrink-0 tabular-nums">{place ? ordinal(place) : "–"}</span>
                     </div>
@@ -863,9 +982,9 @@ function HeadToHead({ data, playerName, opponentName }) {
                     <a
                       key={set.id}
                       href={`/esports/set/${set.id}`}
-                      className={`flex items-center gap-2 rounded-lg border px-2 py-1 text-xs font-bold transition hover:border-blue-400 ${set.won ? "border-sky-300/60 dark:border-sky-500/30" : "border-rose-300/60 dark:border-rose-500/30"}`}
+                      className={`flex items-center gap-2 rounded-lg border px-2 py-1 text-xs font-bold transition hover:border-blue-400 ${set.won ? "border-sky-500/30" : "border-rose-500/30"}`}
                     >
-                      <span className="text-slate-600 dark:text-slate-300">{roundLabel(set.roundName)}</span>
+                      <span className="text-slate-300">{roundLabel(set.roundName)}</span>
                       <span className={`font-black tabular-nums ${tone(set.won)}`}>{scored ? `${set.myScore}–${set.theirScore}` : set.won ? "W" : "L"}</span>
                     </a>
                   );
@@ -895,16 +1014,16 @@ function mergeUsage(rows) {
 
 function CareerUsage({ legacy, cmode }) {
   const legendName = useLegendNames();
-  if ((legacy.loading || cmode.loading) && !legacy.data && !cmode.data) return <Loading label="Loading game history..." />;
+  if ((legacy.loading || cmode.loading) && !legacy.data && !cmode.data) return <Loading label="Loading game history…" />;
   const legends = mergeUsage([...(legacy.data?.characters ?? []), ...(cmode.data?.legends ?? [])]);
   const maps = mergeUsage([...(legacy.data?.stages ?? []), ...(cmode.data?.maps ?? [])]);
   const games = Number(legacy.data?.gamesPlayed ?? 0) + Number(cmode.data?.gamesPlayed ?? 0);
   return (
-    <div className="grid gap-4">
-      <p className="text-sm font-semibold text-slate-500">
-        {number(games)} recorded games across start.gg and Challengermode. Both providers report game winners when a match's games were reported; for Challengermode sets with only a set score, sweeps and each set's deciding game still count.
+    <div className="grid gap-3">
+      <p className="max-w-prose text-sm font-semibold text-slate-500">
+        {number(games)} recorded games from start.gg and Challengermode. Challengermode sets with only a set score count the sweeps and each set's deciding game.
       </p>
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-3 xl:grid-cols-2">
         <UsageGrid title="Legends" rows={legends} kind="legend" legendName={legendName} empty="No legends reported" />
         <UsageGrid title="Stages" rows={maps} kind="map" empty="No stages reported" />
       </div>
@@ -920,22 +1039,23 @@ function Rankings({ playerId, latest, history }) {
   const regional = boards.find((entry) => entry.region !== "ALL") ?? boards[0];
   const [selected, setSelected] = useState(regional ? `${regional.region}:${regional.game_mode}` : "NA:1");
   const [region, mode] = selected.split(":");
+  const ownRegions = [...latest, ...history].map((entry) => entry.region);
   const series = history
     .filter((entry) => entry.source_filter === "all" && entry.region === region && String(entry.game_mode) === mode)
     .sort((left, right) => new Date(left.generated_at) - new Date(right.generated_at));
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-3">
       {boards.length > 0 ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] gap-3">
           {boards.map((entry) => {
             const key = `${entry.region}:${entry.game_mode}`;
             return (
-              <button key={key} type="button" onClick={() => setSelected(key)} className={`rounded-xl border p-4 text-left transition ${selected === key ? "border-blue-400 bg-blue-50 dark:bg-blue-500/10" : "border-slate-200 bg-white hover:border-blue-300 dark:border-slate-800 dark:bg-slate-900"}`}>
+              <button key={key} type="button" onClick={() => setSelected(key)} className={`rounded-xl border p-3 text-left transition ${selected === key ? "border-blue-400 bg-blue-500/10" : "hover:border-blue-300 border-slate-800 bg-slate-900"}`}>
                 <div className="text-[11px] font-black uppercase tracking-wider text-slate-500">{regionName(entry.region)} · {modeName(entry.game_mode)}{entry.provisional ? " · provisional" : ""}</div>
                 <div className="mt-1 flex items-baseline gap-2">
-                  <span className="text-3xl font-black text-slate-950 dark:text-white">#{entry.rank}</span>
-                  <span className="text-sm font-semibold text-slate-500">{Number(entry.points).toFixed(3)} pts</span>
+                  <span className="text-3xl font-black text-white">#{entry.rank}</span>
+                  <span className="text-sm font-semibold text-slate-500">{points(entry.points)} pts</span>
                 </div>
                 {entry.previous_rank != null && <RankChange rank={entry.rank} previous={entry.previous_rank} />}
               </button>
@@ -943,15 +1063,15 @@ function Rankings({ playerId, latest, history }) {
           })}
         </div>
       ) : <Card><Empty>Not ranked in the current season.</Empty></Card>}
-      <div className="grid items-start gap-4 2xl:grid-cols-2">
+      <div className="grid items-start gap-3 2xl:grid-cols-2">
         <Card title={`Rank over time · ${regionName(region)} ${modeName(mode)}`}><RankChart series={series} /></Card>
-        <SeasonRankings playerId={playerId} region={region} mode={mode} />
+        <SeasonRankings playerId={playerId} region={region} mode={mode} ownRegions={ownRegions} />
       </div>
     </div>
   );
 }
 
-function SeasonRankings({ playerId, region: initialRegion, mode: initialMode }) {
+function SeasonRankings({ playerId, region: initialRegion, mode: initialMode, ownRegions = [] }) {
   const [region, setRegion] = useState(initialRegion);
   const [mode, setMode] = useState(initialMode);
   const [presetId, setPresetId] = useState("current");
@@ -962,20 +1082,20 @@ function SeasonRankings({ playerId, region: initialRegion, mode: initialMode }) 
   return (
     <Card title="Rankings over time">
       <div className="mb-3 flex flex-wrap items-end gap-3">
-        <Select label="Region" value={region} onChange={setRegion} options={[["NA", "North America"], ["EU", "Europe"], ["SA", "South America"], ["SEA", "Southeast Asia"], ["AUS", "Australia"], ["MENA", "Middle East"]]} />
+        <Select label="Region" value={region} onChange={setRegion} options={officialRegions(initialRegion, ownRegions)} />
         <Select label="Format" value={mode} onChange={setMode} options={[["1", "1v1"], ["2", "2v2"]]} />
         <Select label="Preset" value={presetId} onChange={setPresetId} options={(presets.data?.presets ?? [{ id: "current", latest: "Current" }]).map((preset) => [preset.id, preset.current ? `Current · ${preset.latest}` : preset.latest])} />
       </div>
-      {season.error && <ErrorNote message={season.error} />}
+      {season.error && <ErrorNote message={season.error} onRetry={season.retry} />}
       {!data && season.loading && <Loading />}
       {data && (
         <>
-          <div className="mb-3 flex flex-wrap items-baseline gap-4">
-            <span className="text-4xl font-black text-slate-950 dark:text-white">{data.rank ? `#${data.rank}` : "Unranked"}</span>
+          <div className="mb-3 flex flex-wrap items-baseline gap-3">
+            <span className="text-4xl font-black text-white">{data.rank ? `#${data.rank}` : "Unranked"}</span>
             {data.rank && <span className="text-sm font-bold text-slate-500">{points(data.points)} pts · {data.eventCount} events</span>}
             {data.rank && data.previousRank != null && <RankChange rank={data.rank} previous={data.previousRank} />}
           </div>
-          {data.rank && <ContributionList contributions={data.contributions ?? []} asOf={data.preset?.current ? undefined : data.preset?.asOf} />}
+          {data.rank && <ContributionList contributions={data.contributions ?? []} mode={mode} asOf={data.preset?.current ? undefined : data.preset?.asOf} />}
         </>
       )}
     </Card>
@@ -993,7 +1113,7 @@ function RankChart({ series }) {
   const path = series.map((entry, index) => `${index ? "L" : "M"}${x(index).toFixed(1)},${y(entry.rank).toFixed(1)}`).join(" ");
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="h-56 w-full" role="img" aria-label="Rank over time">
-      <line x1="32" x2={width - 24} y1={y(1)} y2={y(1)} className="stroke-slate-200 dark:stroke-slate-800" strokeDasharray="4 4" />
+      <line x1="32" x2={width - 24} y1={y(1)} y2={y(1)} className="stroke-slate-800" strokeDasharray="4 4" />
       <path d={path} fill="none" className="stroke-blue-500" strokeWidth="2.5" strokeLinejoin="round" />
       {series.map((entry, index) => (
         <circle key={entry.snapshot_id ?? index} cx={x(index)} cy={y(entry.rank)} r="3.5" className="fill-blue-500">
@@ -1009,14 +1129,14 @@ function RankChart({ series }) {
 }
 
 
-function Appearances({ events, initial }) {
-  const [mode, setMode] = useState(initial.mode ?? "all");
-  const [scope, setScope] = useState("all");
-  const [year, setYear] = useState(initial.year ?? "all");
-  const [finish, setFinish] = useState(initial.finish ?? "all");
-  const [prize, setPrize] = useState("all");
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
+function Appearances({ events }) {
+  const [mode, setMode] = useQueryState("mode", "all");
+  const [scope, setScope] = useQueryState("type", "all");
+  const [year, setYear] = useQueryState("year", "all");
+  const [finish, setFinish] = useQueryState("finish", "all");
+  const [prize, setPrize] = useQueryState("prize", "all");
+  const [search, setSearch] = useQueryState("q", "");
+  const [page, setPage] = usePageParam();
   const perPage = 100;
   const years = useMemo(() => [...new Set(events.map((event) => new Date(event.starts_at).getFullYear()).filter(Number.isFinite))], [events]);
   const term = search.trim().toLowerCase();
@@ -1024,7 +1144,7 @@ function Appearances({ events, initial }) {
     .filter((event) => mode === "all" || modeKey(event.game_mode) === mode)
     .filter((event) => scope === "all" || (scope === "official") === Boolean(event.is_official))
     .filter((event) => year === "all" || new Date(event.starts_at).getFullYear() === Number(year))
-    .filter((event) => finish === "all" || (confirmed(event) && FINISHES[finish](Number(event.placement))))
+    .filter((event) => finish === "all" || !FINISHES[finish] || (confirmed(event) && FINISHES[finish](Number(event.placement))))
     .filter((event) => prize === "all" || Number(event.recorded_prize_usd) > 0)
     .filter((event) => !term || `${event.tournament_name} ${event.event_name}`.toLowerCase().includes(term));
   const visible = filtered.slice((page - 1) * perPage, page * perPage);
@@ -1032,7 +1152,7 @@ function Appearances({ events, initial }) {
 
   return (
     <Card padded={false}>
-      <div className="grid gap-3 border-b border-slate-200 p-4 dark:border-slate-800 sm:grid-cols-3 xl:grid-cols-[minmax(14rem,2fr)_repeat(5,minmax(8rem,1fr))]">
+      <div className="grid gap-3 border-b p-3 border-slate-800 sm:grid-cols-3 xl:grid-cols-[minmax(14rem,2fr)_repeat(5,minmax(8rem,1fr))]">
         <label className="flex flex-col gap-1">
           <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">Search</span>
           <SearchInput value={search} onChange={reset(setSearch)} placeholder="Find a tournament" />
@@ -1043,53 +1163,55 @@ function Appearances({ events, initial }) {
         <Select label="Finish" value={finish} onChange={reset(setFinish)} options={[["all", "Any finish"], ["gold", "Gold"], ["silver", "Silver"], ["bronze", "Bronze"], ["top8", "Top 8"], ["top16", "Top 16"], ["top32", "Top 32"]]} />
         <Select label="Prize" value={prize} onChange={reset(setPrize)} options={[["all", "Any"], ["won", "Won prize money"]]} />
       </div>
-      <div className="px-4 py-2 text-xs font-bold text-slate-500">{number(filtered.length)} of {number(events.length)} events</div>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+        <span className="text-xs font-bold text-slate-500">{number(filtered.length)} of {number(events.length)} events</span>
+      </div>
       {!filtered.length && <Empty>No results match these filters.</Empty>}
       {filtered.length > 0 && (
-        <div className="overflow-x-auto">
+        <ScrollX>
           <table className="w-full min-w-[820px] text-sm">
             <thead>
-              <tr className="border-y border-slate-200 text-left text-[11px] font-black uppercase tracking-wider text-slate-500 dark:border-slate-800">
-                <th className="px-4 py-2">Date</th>
+              <tr className="border-y text-left text-[11px] font-black uppercase tracking-wider text-slate-500 border-slate-800">
+                <th className="px-3 py-2">Date</th>
                 <th className="w-14" />
                 <th className="px-2 py-2">Tournament</th>
                 <th className="px-2 py-2">Format</th>
                 <th className="px-2 py-2 text-right">Seed</th>
                 <th className="px-2 py-2 text-right">Place</th>
                 <th className="px-2 py-2 text-right">Sets</th>
-                <th className="px-4 py-2 text-right">Prize</th>
+                <th className="px-3 py-2 text-right">Prize</th>
               </tr>
             </thead>
             <tbody>
               {visible.map((event) => (
-                <tr key={`${event.event_id}:${event.entrant_id}`} className="border-b border-slate-100 last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40">
-                  <td className="whitespace-nowrap px-4 py-2.5 font-semibold text-slate-500">{date(event.starts_at)}</td>
+                <tr key={`${event.event_id}:${event.entrant_id}`} className="border-b last:border-0 border-slate-800 hover:bg-slate-800/40">
+                  <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-slate-500">{date(event.starts_at)}</td>
                   <td className="w-14 py-2"><EventImage src={event.tournament_image} name={event.tournament_name} size="h-10 w-10" /></td>
                   <td className="max-w-xl px-2 py-2.5">
-                    <a href={`/esports/event/${event.event_id}`} className="block truncate font-black text-slate-950 hover:text-blue-500 dark:text-white">{event.tournament_name}</a>
+                    <a href={`/esports/event/${event.event_id}`} className="block truncate font-black hover:text-blue-500 text-white">{event.tournament_name}</a>
                     <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
                       {event.event_name !== event.tournament_name && <span className="truncate">{event.event_name}</span>}
                       {event.is_official && <Badge tone="blue">Official</Badge>}
-                      {event.game_mode === 2 && event.entrant_name && <span className="truncate">Team: {event.entrant_name.replace(/'s party$/i, "")}</span>}
+                      {event.game_mode === 2 && event.entrant_name && <span className="truncate">Team: {cleanEntrantName(event.entrant_name)}</span>}
                     </div>
                   </td>
-                  <td className="px-2 py-2.5 font-bold text-slate-600 dark:text-slate-300">{modeName(event.game_mode)}{event.region ? ` · ${event.region}` : ""}</td>
+                  <td className="px-2 py-2.5 font-bold text-slate-300">{modeName(event.game_mode)}{event.region ? ` · ${event.region}` : ""}</td>
                   <td className="px-2 py-2.5 text-right font-semibold text-slate-500">{event.seed ?? "—"}</td>
                   <td className="whitespace-nowrap px-2 py-2.5 text-right">
-                    <span className={`font-black ${Number(event.placement) <= 3 && confirmed(event) ? "text-amber-500" : "text-slate-950 dark:text-white"}`}>{event.disqualified ? "DQ" : ordinal(event.placement)}</span>
+                    <span className={`font-black ${Number(event.placement) <= 3 && confirmed(event) ? "text-amber-500" : "text-white"}`}>{event.disqualified ? "DQ" : ordinal(event.placement)}</span>
                     {event.entrant_count > 0 && <span className="text-xs font-semibold text-slate-500"> / {number(event.entrant_count)}</span>}
                   </td>
-                  <td className="whitespace-nowrap px-2 py-2.5 text-right font-bold tabular-nums text-slate-600 dark:text-slate-300">
+                  <td className="whitespace-nowrap px-2 py-2.5 text-right font-bold tabular-nums text-slate-300">
                     {event.setStats?.playedSets ? `${event.setStats.wins}–${event.setStats.losses}` : "—"}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2.5 text-right font-black tabular-nums text-emerald-600 dark:text-emerald-400">
+                  <td className="whitespace-nowrap px-3 py-2.5 text-right font-black tabular-nums text-emerald-400">
                     {Number(event.recorded_prize_usd) > 0 ? money(event.recorded_prize_usd) : ""}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollX>
       )}
       <Pagination page={page} totalPages={Math.ceil(filtered.length / perPage)} onChange={setPage} />
     </Card>

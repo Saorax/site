@@ -5,7 +5,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Copy,
   Download,
   Eye,
   EyeOff,
@@ -15,11 +14,9 @@ import {
   Layers3,
   LoaderCircle,
   Maximize2,
-  Menu,
   Pause,
   Play,
   RefreshCw,
-  Search,
   Shuffle,
   SkipBack,
   SkipForward,
@@ -32,6 +29,27 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Card,
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageHeader,
+  PageShell,
+  Pill,
+  SearchInput,
+  Section,
+  SelectInput,
+  Spinner,
+  Tabs,
+  Toggle,
+  DataViewToggle,
+  RawData,
+  cx,
+  matchesWords,
+  useDataView,
+  useDebounced,
+} from "../../../../components/ui";
 
 const ANIMATION_FPS = 24;
 const TABS = [
@@ -41,16 +59,25 @@ const TABS = [
   ["swaps", "Swaps", Sparkles],
   ["raw", "Raw", FolderTree],
 ];
+const SIMPLE_TABS = new Set(["overview", "combat"]);
+const CAST_LABELS = {
+  TargetMethod: "Targeting",
+  Hurtbox: "Hurtbox",
+  CastTime: "Cast timing",
+  BaseDamage: "Damage",
+  FixedRecoverTime: "Fixed recovery",
+  RecoverTime: "Recovery",
+  CooldownTime: "Cooldown",
+  SpeedLimit: "Speed limit",
+  FireImpulseMaxX: "Max forward push",
+  AllowLeaveGround: "Can leave the ground",
+};
 const BACKGROUNDS = {
   checker:
     "bg-[linear-gradient(45deg,#172033_25%,transparent_25%),linear-gradient(-45deg,#172033_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#172033_75%),linear-gradient(-45deg,transparent_75%,#172033_75%)] bg-[length:24px_24px] bg-[position:0_0,0_12px,12px_-12px,-12px_0px] bg-slate-950",
   dark: "bg-slate-950",
   light: "bg-slate-100",
 };
-
-function classes(...values) {
-  return values.filter(Boolean).join(" ");
-}
 
 async function jsonRequest(url, options) {
   const response = await fetch(url, options);
@@ -63,15 +90,6 @@ async function jsonRequest(url, options) {
     throw new Error(message);
   }
   return response.json();
-}
-
-function useDebounced(value, delay = 180) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(value), delay);
-    return () => window.clearTimeout(timer);
-  }, [value, delay]);
-  return debounced;
 }
 
 function titleCase(value) {
@@ -109,11 +127,11 @@ function IconButton({ label, active, disabled, onClick, children, className = ""
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className={classes(
-        "inline-flex h-9 min-w-9 shrink-0 items-center justify-center rounded-lg border px-2 text-sm font-black transition",
+      className={cx(
+        "inline-flex h-9 min-w-9 shrink-0 items-center justify-center rounded-xl border px-2 text-sm font-bold transition",
         active
           ? "border-blue-400 bg-blue-500 text-white"
-          : "border-slate-700 bg-slate-900 text-slate-200 hover:border-slate-500 hover:bg-slate-800",
+          : "border-slate-700 bg-slate-950 text-slate-200 hover:border-slate-500",
         disabled && "cursor-not-allowed opacity-40",
         className,
       )}
@@ -123,51 +141,37 @@ function IconButton({ label, active, disabled, onClick, children, className = ""
   );
 }
 
-function Loading({ compact = false }) {
-  return (
-    <div className={classes("flex items-center justify-center text-blue-300", compact ? "h-16" : "min-h-64")}>
-      <div className="relative h-11 w-11">
-        <div className="absolute inset-0 rounded-full border-4 border-slate-700" />
-        <div className="absolute inset-0 animate-spin rounded-full border-4 border-transparent border-t-blue-400" />
-      </div>
-    </div>
-  );
-}
+const BADGE_TONES = { cyan: "sky", red: "rose", green: "emerald" };
 
 function Badge({ children, tone = "slate" }) {
-  const tones = {
-    slate: "border-slate-700 bg-slate-900 text-slate-300",
-    blue: "border-blue-500/50 bg-blue-500/15 text-blue-300",
-    cyan: "border-cyan-500/50 bg-cyan-500/15 text-cyan-300",
-    red: "border-red-500/50 bg-red-500/15 text-red-300",
-    green: "border-emerald-500/50 bg-emerald-500/15 text-emerald-300",
-    amber: "border-amber-500/50 bg-amber-500/15 text-amber-200",
-  };
-  return <span className={classes("rounded-md border px-2 py-1 text-[10px] font-black", tones[tone])}>{children}</span>;
+  return <Pill tone={BADGE_TONES[tone] || tone}>{children}</Pill>;
+}
+
+function PanelHeading({ children, className = "" }) {
+  return <div className={cx("mb-2 text-xs font-bold uppercase tracking-wide text-blue-200", className)}>{children}</div>;
 }
 
 function Field({ label, value, mono = false }) {
   if (value === undefined || value === null || value === "") return null;
   return (
-    <div className="rounded-lg border border-slate-800 bg-slate-950/65 px-3 py-2">
-      <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">{label}</div>
-      <div className={classes("mt-1 break-words text-sm text-slate-100", mono && "font-mono")}>
+    <Card className="px-3 py-2">
+      <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400">{label}</div>
+      <div className={cx("mt-1 break-words text-sm text-slate-100", mono && "font-mono")}>
         {typeof value === "object" ? JSON.stringify(value) : String(value)}
       </div>
-    </div>
+    </Card>
   );
 }
 
+function animationSearchText(entry) {
+  return [entry.label, entry.folderLabel, entry.rigLabel, entry.legend, entry.ownerName, entry.folder, entry.rig, entry.animation, entry.power];
+}
+
 function animationTree(catalog, query, hitboxesOnly) {
-  const wanted = query.trim().toLowerCase();
   const tree = {};
   for (const entry of catalog.animations) {
     if (hitboxesOnly && !entry.hasHitbox) continue;
-    const folderMatches = entry.folder.toLowerCase().includes(wanted);
-    const rigMatches = entry.rig.toLowerCase().includes(wanted);
-    const animationMatches = entry.animation.toLowerCase().includes(wanted);
-    const ownerMatches = String(entry.ownerName || '').toLowerCase().includes(wanted);
-    if (wanted && !folderMatches && !rigMatches && !animationMatches && !ownerMatches) continue;
+    if (query.trim() && !matchesWords(query, animationSearchText(entry))) continue;
     tree[entry.folder] ??= {};
     tree[entry.folder][entry.rig] ??= [];
     tree[entry.folder][entry.rig].push(entry);
@@ -176,17 +180,33 @@ function animationTree(catalog, query, hitboxesOnly) {
 }
 
 function matchingAnimations(catalog, query, hitboxesOnly) {
-  const wanted = query.trim().toLowerCase();
   return (catalog?.animations || []).filter((entry) => {
     if (hitboxesOnly && !entry.hasHitbox) return false;
-    if (!wanted) return true;
-    return [entry.folder, entry.rig, entry.animation, entry.ownerName]
-      .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(wanted));
+    return matchesWords(query, animationSearchText(entry));
   });
 }
 
-function AnimationNode({ entry, selected, onSelect }) {
+function folderLabel(rigs, folder, playerNames) {
+  return (playerNames && Object.values(rigs || {})[0]?.[0]?.folderLabel) || folder;
+}
+
+const PLAYER_NAMES_KEY = "anim-player-names";
+
+function readPlayerNames() {
+  try {
+    return typeof window !== "undefined" && window.localStorage.getItem(PLAYER_NAMES_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function savePlayerNames(value) {
+  try {
+    window.localStorage.setItem(PLAYER_NAMES_KEY, value ? "1" : "0");
+  } catch {}
+}
+
+function AnimationNode({ entry, selected, onSelect, playerNames }) {
   const active = selected?.id === entry.id;
   const buttonRef = useRef(null);
 
@@ -200,10 +220,10 @@ function AnimationNode({ entry, selected, onSelect }) {
         ref={buttonRef}
         type="button"
         onClick={() => onSelect(entry)}
-        className={classes(
+        className={cx(
           "flex w-full items-center rounded-md px-2 py-0.5 text-left text-xs transition",
           active
-            ? "bg-sky-600 text-white"
+            ? "bg-blue-500 text-white"
             : "text-slate-300 hover:bg-slate-800/70 hover:text-white",
         )}
       >
@@ -216,13 +236,13 @@ function AnimationNode({ entry, selected, onSelect }) {
             loading="lazy"
           />
         )}
-        <span className="truncate">{entry.animation}</span>
+        <span className="truncate" title={playerNames ? entry.animation : entry.label || undefined}>{playerNames ? entry.label || entry.animation : entry.animation}</span>
       </button>
     </li>
   );
 }
 
-function RigNode({ folder, rig, animations, selected, onSelect, forceOpen }) {
+function RigNode({ folder, rig, animations, selected, onSelect, forceOpen, playerNames }) {
   const active = selected?.folder === folder && selected?.rig === rig;
   const [open, setOpen] = useState(active || forceOpen);
 
@@ -235,20 +255,20 @@ function RigNode({ folder, rig, animations, selected, onSelect, forceOpen }) {
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className={classes(
+        className={cx(
           "flex w-full items-center gap-1 rounded-md px-2 py-1 text-left text-xs transition hover:bg-slate-800/70",
-          active && "bg-slate-800 text-sky-300",
+          active && "bg-slate-800 text-blue-200",
         )}
       >
         <span className="grid h-3 w-3 shrink-0 place-items-center">
           {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         </span>
-        <span className="truncate">{rig}</span>
+        <span className="truncate" title={playerNames ? rig : undefined}>{(playerNames && animations[0]?.rigLabel) || rig}</span>
       </button>
       {open && (
         <ul className="mt-0.5 space-y-0.5 pl-4">
           {animations.map((entry) => (
-            <AnimationNode key={entry.id} entry={entry} selected={selected} onSelect={onSelect} />
+            <AnimationNode key={entry.id} entry={entry} selected={selected} onSelect={onSelect} playerNames={playerNames} />
           ))}
         </ul>
       )}
@@ -256,7 +276,7 @@ function RigNode({ folder, rig, animations, selected, onSelect, forceOpen }) {
   );
 }
 
-function FolderNode({ folder, rigs, selected, onSelect, forceOpen }) {
+function FolderNode({ folder, rigs, selected, onSelect, forceOpen, playerNames }) {
   const active = selected?.folder === folder;
   const [open, setOpen] = useState(active || forceOpen);
 
@@ -269,15 +289,15 @@ function FolderNode({ folder, rigs, selected, onSelect, forceOpen }) {
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className={classes(
+        className={cx(
           "flex w-full items-center gap-1 rounded-md px-2 py-1 text-left text-xs transition hover:bg-slate-800/70",
-          active && "bg-slate-800 text-sky-300",
+          active && "bg-slate-800 text-blue-200",
         )}
       >
         <span className="grid h-3 w-3 shrink-0 place-items-center">
           {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
         </span>
-        <span className="truncate">{folder}</span>
+        <span className="truncate" title={playerNames ? folder : undefined}>{folderLabel(rigs, folder, playerNames)}</span>
       </button>
       {open && (
         <ul className="mt-0.5 space-y-0.5 pl-4">
@@ -290,6 +310,7 @@ function FolderNode({ folder, rigs, selected, onSelect, forceOpen }) {
               selected={selected}
               onSelect={onSelect}
               forceOpen={forceOpen}
+              playerNames={playerNames}
             />
           ))}
         </ul>
@@ -298,10 +319,12 @@ function FolderNode({ folder, rigs, selected, onSelect, forceOpen }) {
   );
 }
 
-function AnimationBrowser({ catalog, selected, onSelect, onRandom, query, setQuery, hitboxesOnly, setHitboxesOnly }) {
-  const deferredQuery = useDebounced(query);
+function AnimationBrowser({ catalog, selected, onSelect, onRandom, query, setQuery, hitboxesOnly, setHitboxesOnly, playerNames, setPlayerNames }) {
+  const deferredQuery = useDebounced(query, 180);
   const tree = useMemo(() => animationTree(catalog, deferredQuery, hitboxesOnly), [catalog, deferredQuery, hitboxesOnly]);
-  const folders = Object.keys(tree).sort();
+  const folders = playerNames
+    ? Object.keys(tree).sort((left, right) => folderLabel(tree[left], left, true).localeCompare(folderLabel(tree[right], right, true), undefined, { numeric: true, sensitivity: "base" }))
+    : Object.keys(tree).sort();
   const resultCount = useMemo(
     () => folders.reduce(
       (total, folder) => total + Object.values(tree[folder]).reduce((count, entries) => count + entries.length, 0),
@@ -312,33 +335,29 @@ function AnimationBrowser({ catalog, selected, onSelect, onRandom, query, setQue
   const searching = Boolean(deferredQuery.trim());
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0 border-b border-slate-800 bg-slate-900/80 px-3 py-2">
-        <div className="mb-2 flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-          <span>Animations</span>
-          <span className="text-sky-300">{resultCount.toLocaleString()}</span>
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div className="shrink-0 space-y-2">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-xl font-bold text-white">Animations</h2>
+          <span className="text-sm text-slate-400">{resultCount.toLocaleString()}</span>
         </div>
-        <input
-          type="text"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search filename, index, animation..."
-          className="w-full rounded-md border border-slate-700 bg-slate-950/80 px-2 py-1 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-sky-500"
-        />
-        <label className="mt-2 flex cursor-pointer items-center justify-between gap-3 rounded-md border border-slate-700 bg-slate-950/70 px-2.5 py-2 text-xs font-black text-slate-200">
-          <span>Has hitbox data</span>
-          <input type="checkbox" checked={hitboxesOnly} onChange={(event) => setHitboxesOnly(event.target.checked)} className="h-4 w-4 rounded border-slate-600 bg-slate-950" />
-        </label>
-        <button
-          type="button"
-          onClick={onRandom}
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-sky-500/35 bg-sky-500/10 px-3 py-1.5 text-xs font-black text-sky-200 transition hover:border-sky-400 hover:bg-sky-500/20"
-        >
-          <Shuffle className="h-3.5 w-3.5" />
-          Random animation
-        </button>
+        <SearchInput value={query} onChange={setQuery} placeholder="File, clip, move or legend" label="Search animations" />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <Toggle label="Has hitbox data" checked={hitboxesOnly} onChange={setHitboxesOnly} />
+            <Toggle label="Player names" checked={playerNames} onChange={setPlayerNames} />
+          </div>
+          <button
+            type="button"
+            onClick={onRandom}
+            className="inline-flex items-center gap-2 rounded-lg bg-slate-800 px-3 py-1.5 text-sm font-bold text-slate-200 transition hover:bg-slate-700"
+          >
+            <Shuffle className="h-3.5 w-3.5" />
+            Random
+          </button>
+        </div>
       </div>
-      <div className="app-scrollbar min-h-0 flex-1 overflow-y-auto bg-slate-950/80 px-1 py-1">
+      <div className="app-scrollbar min-h-0 flex-1 overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900/80 p-1">
         {folders.length ? (
           <ul className="space-y-1 pb-3">
             {folders.map((folder) => (
@@ -349,11 +368,18 @@ function AnimationBrowser({ catalog, selected, onSelect, onRandom, query, setQue
                 selected={selected}
                 onSelect={onSelect}
                 forceOpen={searching}
+                playerNames={playerNames}
               />
             ))}
           </ul>
         ) : (
-          <div className="px-3 py-2 text-xs text-slate-500">No animations match your search.</div>
+          <EmptyState
+            bare
+            title="No animations match"
+            action={(query || hitboxesOnly) && (
+              <button type="button" onClick={() => { setQuery(""); setHitboxesOnly(false); }} className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm font-bold text-slate-200 hover:bg-slate-700">Clear filters</button>
+            )}
+          />
         )}
       </div>
     </div>
@@ -368,7 +394,7 @@ function sourceImage(source) {
 function SourceSelect({ selections, onChange, sources, label = "Definitive art sources" }) {
   const [query, setQuery] = useState("");
   const [groupLimits, setGroupLimits] = useState({});
-  const deferredQuery = useDebounced(query);
+  const deferredQuery = useDebounced(query, 180);
   const grouped = useMemo(() => {
     const result = new Map();
     for (const source of sources) {
@@ -382,16 +408,13 @@ function SourceSelect({ selections, onChange, sources, label = "Definitive art s
   useEffect(() => setGroupLimits({}), [sources, deferredQuery]);
   return (
     <div>
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <span className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</span>
+      <div className="flex items-start justify-between gap-2">
+        <PanelHeading>{label}</PanelHeading>
         {Object.keys(selections).length > 0 && (
-          <button type="button" onClick={() => onChange({})} className="text-xs font-black text-sky-300 hover:text-sky-200">Clear all</button>
+          <button type="button" onClick={() => onChange({})} className="rounded-lg bg-slate-800 px-2 py-1 text-xs font-bold text-slate-200 hover:bg-slate-700">Clear all</button>
         )}
       </div>
-      <div className="relative mb-2">
-        <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-500" />
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Find an art source..." className="h-9 w-full rounded-lg border border-slate-700 bg-slate-950 pl-8 pr-3 text-[11px] text-white outline-none focus:border-sky-400" />
-      </div>
+      <SearchInput value={query} onChange={setQuery} placeholder="Find an art source" shortcut={false} className="mb-2" />
       <div className="app-scrollbar max-h-[45dvh] space-y-2 overflow-y-auto pr-1">
         {[...grouped.entries()].map(([group, entries]) => {
           const selectedKey = selections[group];
@@ -414,7 +437,7 @@ function SourceSelect({ selections, onChange, sources, label = "Definitive art s
           const shownCount = Math.min(prioritizedEntries.length, limit);
           const remaining = Math.max(0, entries.length - shownCount);
           return (
-            <details key={group} open className="overflow-hidden rounded-lg border border-slate-800 bg-slate-950/65">
+            <details key={group} open className="overflow-hidden rounded-xl border border-slate-700 bg-slate-950/60">
               <summary className="flex cursor-pointer list-none items-center gap-2 px-2 py-2">
                 {selected ? (
                   <img src={sourceImage(selected)} alt="" className="h-8 w-8 shrink-0 object-contain" />
@@ -422,8 +445,8 @@ function SourceSelect({ selections, onChange, sources, label = "Definitive art s
                   <div className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-slate-800 text-[10px] text-slate-500">{entries.length}</div>
                 )}
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-black text-white">{group}</div>
-                  <div className="truncate text-xs text-slate-500">
+                  <div className="text-sm font-bold text-white">{group}</div>
+                  <div className="truncate text-xs text-slate-400">
                     {selected?.name || `Showing ${shownCount} of ${entries.length}`}
                   </div>
                 </div>
@@ -436,13 +459,13 @@ function SourceSelect({ selections, onChange, sources, label = "Definitive art s
                     key={source.key}
                     type="button"
                     onClick={() => onChange({ ...selections, [group]: source.key })}
-                    className={classes(
+                    className={cx(
                       "flex min-w-0 flex-col items-center rounded-md border p-1.5 text-center [content-visibility:auto] [contain-intrinsic-size:86px]",
-                      selectedKey === source.key ? "border-sky-400 bg-sky-500/15" : "border-slate-800 bg-slate-900 hover:border-slate-600",
+                      selectedKey === source.key ? "border-blue-400 bg-blue-500/15" : "border-slate-800 bg-slate-900 hover:border-slate-600",
                     )}
                   >
                     {source.icon ? <img src={sourceImage(source)} alt="" loading="lazy" className="h-14 w-full shrink-0 object-contain" /> : <div className="h-14 w-full shrink-0 rounded bg-slate-800" />}
-                    <span className="mt-1 line-clamp-2 min-h-8 text-[10px] font-black leading-tight text-white">{source.name}</span>
+                    <span className="mt-1 line-clamp-2 min-h-8 text-[10px] font-bold leading-tight text-white">{source.name}</span>
                   </button>
                 ))}
               </div>
@@ -450,7 +473,7 @@ function SourceSelect({ selections, onChange, sources, label = "Definitive art s
                 <button
                   type="button"
                   onClick={() => setGroupLimits((current) => ({ ...current, [group]: limit + 48 }))}
-                  className="w-full border-t border-slate-800 px-3 py-2 text-xs font-black text-sky-300 hover:bg-sky-500/10 hover:text-sky-200"
+                  className="w-full border-t border-slate-800 px-3 py-2 text-xs font-bold text-blue-200 hover:bg-blue-500/10"
                 >
                   Show {Math.min(48, remaining)} more
                 </button>
@@ -473,43 +496,46 @@ function castSeriesValue(value, index) {
 }
 
 function CastDatum({ label, value, active = false }) {
+  const { full } = useDataView();
   if (value === undefined || value === null || value === "") return null;
+  const plain = CAST_LABELS[label];
   return (
-    <div className={classes("min-w-0 rounded-md border px-2 py-1.5", active ? "border-rose-400/60 bg-rose-500/10" : "border-slate-800 bg-slate-950/75")}>
-      <div className="text-[9px] font-black uppercase tracking-wide text-slate-500">{label}</div>
+    <div className={cx("min-w-0 rounded-md border px-2 py-1.5", active ? "border-rose-400/60 bg-rose-500/10" : "border-slate-800 bg-slate-950/75")}>
+      <div className="text-[9px] font-black uppercase tracking-wide text-slate-500">{plain ? (full && plain !== label ? `${plain} (${label})` : plain) : label}</div>
       <div className="break-words font-mono text-[10px] font-black text-slate-200">{String(value)}</div>
     </div>
   );
 }
 
 function CastTimeline({ combat, frameCount, currentFrame }) {
+  const { full } = useDataView();
   const timeline = combat?.timeline || [];
   if (!timeline.length) return null;
   return (
     <section className="flex shrink-0 flex-col border-t border-slate-800 bg-slate-950/95">
       <header className="flex items-center justify-between px-3 py-1.5 text-xs font-black text-slate-300">
-        <span>PowerType cast timeline</span>
-        <span className="font-mono text-[11px] text-slate-500">Frame {currentFrame} / {Math.max(0, frameCount - 1)} / {timeline.length} PowerTypes</span>
+        <span>{full ? "PowerType cast timeline" : "Hit timing"}</span>
+        <span className="font-mono text-[11px] text-slate-500">Frame {currentFrame} / {Math.max(0, frameCount - 1)}{full ? ` / ${timeline.length} PowerTypes` : ""}</span>
       </header>
       <div className="app-scrollbar overflow-x-auto border-t border-slate-800 p-1.5">
         <div className="flex w-max min-w-full items-start gap-2">
           {timeline.map((power) => {
             const powerActive = combat.activeEvents?.some((active) => active.powerName === power.powerName);
-            const linked = [
+            const linked = !full ? [] : [
               power.data.ComboName && `ComboName: ${power.data.ComboName}`,
               power.data.ComboOverrideIfHit && `ComboOverrideIfHit: ${power.data.ComboOverrideIfHit}`,
               power.data.ComboOverrideIfRelease && `ComboOverrideIfRelease: ${power.data.ComboOverrideIfRelease}`,
               power.data.BGPowerOnFire && `BGPowerOnFire: ${power.data.BGPowerOnFire}`,
             ].filter(Boolean);
             return (
-            <article key={power.powerName} className={classes("w-[min(27rem,84vw)] shrink-0 rounded-lg border bg-slate-900/80 p-1.5", powerActive ? "border-rose-400/70 shadow-[0_0_0_1px_rgba(251,113,133,.18)]" : "border-slate-800")}>
+            <article key={power.powerName} className={cx("w-[min(27rem,84vw)] shrink-0 rounded-lg border bg-slate-900/80 p-1.5", powerActive ? "border-rose-400/70 shadow-[0_0_0_1px_rgba(251,113,133,.18)]" : "border-slate-800")}>
               <header className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="break-words font-mono text-xs font-black text-white">{power.powerName}</div>
-                  <div className="font-mono text-[9px] text-slate-500">{power.via}{power.parent ? ` <- ${power.parent}` : ""}</div>
+                  {full && <div className="font-mono text-[9px] text-slate-500">{power.via}{power.parent ? ` <- ${power.parent}` : ""}</div>}
                 </div>
                 <div className="flex shrink-0 gap-1">
-                  {power.data.PowerID && <Badge tone="blue">PowerID {power.data.PowerID}</Badge>}
+                  {full && power.data.PowerID && <Badge tone="blue">PowerID {power.data.PowerID}</Badge>}
                   <Badge tone={powerActive ? "red" : "slate"}>{power.branch}</Badge>
                 </div>
               </header>
@@ -524,21 +550,21 @@ function CastTimeline({ combat, frameCount, currentFrame }) {
                   return (
                     <div
                       key={`${power.powerName}-${event.index}`}
-                      title={`Cast ${event.index + 1}: ${event.raw}`}
-                      className={classes("absolute inset-y-1 rounded-sm border", active ? "border-rose-200 bg-rose-400" : "border-sky-400/50 bg-sky-500/50")}
+                      title={full ? `Cast ${event.index + 1}: ${event.raw}` : `Cast ${event.index + 1}: frames ${event.startFrame}-${event.endFrame}`}
+                      className={cx("absolute inset-y-1 rounded-sm border", active ? "border-rose-200 bg-rose-400" : "border-sky-400/50 bg-sky-500/50")}
                       style={{ left: `${left}%`, width: `${width}%` }}
                     />
                   );
                 })}
               </div>
-              <div className="mt-1.5 text-[9px] font-black uppercase tracking-wide text-slate-500">Power info</div>
+              <div className="mt-1.5 text-[9px] font-black uppercase tracking-wide text-slate-500">{full ? "Power info" : "Move"}</div>
               <div className="mt-1 grid grid-cols-2 gap-1.5">
                 <CastDatum label="TargetMethod" value={power.data.TargetMethod} />
                 <CastDatum label="Hurtbox" value={power.data.Hurtbox} />
               </div>
-              <div className="mt-1.5 text-[9px] font-black uppercase tracking-wide text-slate-500">Power cast data</div>
+              <div className="mt-1.5 text-[9px] font-black uppercase tracking-wide text-slate-500">{full ? "Power cast data" : "Timing and damage"}</div>
               <div className="mt-1 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                <CastDatum label="CastTime" value={power.data.CastTime} />
+                {full && <CastDatum label="CastTime" value={power.data.CastTime} />}
                 <CastDatum label="BaseDamage" value={power.data.BaseDamage} />
                 <CastDatum label="FixedRecoverTime" value={power.data.FixedRecoverTime} />
                 <CastDatum label="RecoverTime" value={power.data.RecoverTime} />
@@ -547,17 +573,17 @@ function CastTimeline({ combat, frameCount, currentFrame }) {
                 <CastDatum label="FireImpulseMaxX" value={power.data.FireImpulseMaxX} />
                 <CastDatum label="AllowLeaveGround" value={power.data.AllowLeaveGround} />
               </div>
-              <div className="mt-1.5 text-[9px] font-black uppercase tracking-wide text-slate-500">Cast info</div>
+              <div className="mt-1.5 text-[9px] font-black uppercase tracking-wide text-slate-500">{full ? "Cast info" : "Casts"}</div>
               <div className="app-scrollbar mt-1 flex gap-1 overflow-x-auto pb-1">
                 {power.events.map((event) => {
                   const active = currentFrame >= event.startFrame && currentFrame <= event.endFrame;
                   return (
-                    <section key={event.index} className={classes("w-44 shrink-0 rounded-md border p-2", active ? "border-rose-400/70 bg-rose-500/10" : "border-slate-800 bg-slate-950/70")}>
+                    <section key={event.index} className={cx("w-44 shrink-0 rounded-md border p-2", active ? "border-rose-400/70 bg-rose-500/10" : "border-slate-800 bg-slate-950/70")}>
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[11px] font-black text-white">Cast {event.index + 1}</span>
                         {active && <span className="text-[9px] font-black uppercase text-rose-300">Active</span>}
                       </div>
-                      <div className="mt-0.5 break-words font-mono text-[10px] font-black text-sky-300">{event.raw}</div>
+                      {full && <div className="mt-0.5 break-words font-mono text-[10px] font-black text-sky-300">{event.raw}</div>}
                       <div className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-0.5 text-[9px] text-slate-500">
                         <span>Animation</span><span className="text-right font-mono text-slate-300">{event.startFrame}-{event.endFrame}</span>
                         <span>Game ticks</span><span className="text-right font-mono text-slate-300">{event.gameStart}-{event.gameEnd}</span>
@@ -565,7 +591,7 @@ function CastTimeline({ combat, frameCount, currentFrame }) {
                       </div>
                       {castSeriesValue(power.data.BaseDamage, event.index) && (
                         <div className="mt-2 flex justify-between gap-2 border-t border-slate-800 pt-2 font-mono text-[10px] text-slate-400">
-                          <span>BaseDamage</span>
+                          <span>{full ? "BaseDamage" : "Damage"}</span>
                           <span className="text-slate-200">{castSeriesValue(power.data.BaseDamage, event.index)}</span>
                         </div>
                       )}
@@ -630,7 +656,7 @@ function CombatOverlay({ frame, showHitboxes, showHurtboxes }) {
       </svg>
       {hovered && (
         <div className="pointer-events-none absolute z-30 w-48 rounded-lg border border-slate-600 bg-slate-950/95 p-2 shadow-2xl" style={{ left: hovered.x, top: hovered.y }}>
-          <div className={classes("text-[10px] font-black uppercase", hovered.type === "Hitbox" ? "text-rose-300" : "text-cyan-300")}>{hovered.type}</div>
+          <div className={cx("text-[10px] font-black uppercase", hovered.type === "Hitbox" ? "text-rose-300" : "text-cyan-300")}>{hovered.type}</div>
           <div className="mt-0.5 truncate font-mono text-[10px] font-black text-white">{hovered.data.powerName || hovered.data.name}</div>
           {hovered.type === "Hitbox" ? (
             <div className="mt-1 grid grid-cols-2 gap-x-2 text-[9px] text-slate-400">
@@ -712,19 +738,17 @@ function AnimationStage({
   };
 
   return (
-    <div className={classes("relative flex min-h-0 flex-1 items-center justify-center overflow-auto", BACKGROUNDS[background] || BACKGROUNDS.checker)}>
+    <div className={cx("relative flex min-h-0 flex-1 items-center justify-center overflow-auto", BACKGROUNDS[background] || BACKGROUNDS.checker)}>
       {!selected && (
-        <div className="max-w-md p-8 text-center">
-          <Sparkles className="mx-auto h-12 w-12 text-blue-400" />
-          <div className="mt-4 text-xl font-black text-white">Select an animation</div>
-          <div className="mt-2 text-sm text-slate-400">Browse every extracted rig, then inspect, recolor, swap, compare, and export it here.</div>
-        </div>
+        <EmptyState bare icon={<Sparkles className="h-10 w-10 text-blue-400" />} title="No animation selected">
+          Pick one from the Animations list.
+        </EmptyState>
       )}
-      {selected && loading && <div className="absolute inset-0 z-30 grid place-items-center bg-slate-950/60 backdrop-blur-sm"><Loading /></div>}
-      {selected && !loading && !frame && <div className="text-sm font-bold text-slate-500">This frame has no renderable GFX.</div>}
+      {selected && loading && <div className="absolute inset-0 z-30 grid place-items-center bg-slate-950/60 backdrop-blur-sm"><LoadingState inline label="Rendering" /></div>}
+      {selected && !loading && !frame && <EmptyState bare title="Nothing to draw on this frame" />}
       {frame && (
         <div
-          className="relative m-auto flex h-full w-full items-center justify-center p-4 transition-transform duration-100"
+          className="relative m-auto flex h-full w-full items-center justify-center p-3 transition-transform duration-100"
           style={{ transform: `scale(${zoom})`, transformOrigin: "center" }}
         >
           <div className="relative flex h-full w-full items-center justify-center">
@@ -751,55 +775,63 @@ function AnimationStage({
 }
 
 function OverviewPanel({ metadata, frame, sourceSelections, setSourceSelections, sources, colors, colorScheme, setColorScheme, compare, setCompare, compareSourceSelections, setCompareSourceSelections, preserveCanvas, setPreserveCanvas }) {
-  if (!metadata) return <div className="p-4 text-xs text-slate-500">Select an animation to inspect it.</div>;
+  const { full } = useDataView();
+  if (!metadata) return <EmptyState bare title="No animation selected" />;
   return (
     <div className="space-y-3 p-3">
       <ColorSchemeSelect colors={colors} colorScheme={colorScheme} setColorScheme={setColorScheme} />
       <SourceSelect selections={sourceSelections} onChange={setSourceSelections} sources={sources} />
-      <label className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950/65 px-3 py-2 text-xs font-bold text-slate-200">
-        Compare definitive source
-        <input type="checkbox" checked={compare} onChange={(event) => setCompare(event.target.checked)} className="h-4 w-4 accent-blue-500" />
-      </label>
+      <Card className="px-3 py-2">
+        <Toggle label="Compare definitive source" checked={compare} onChange={setCompare} />
+      </Card>
       {compare && <SourceSelect selections={compareSourceSelections} onChange={setCompareSourceSelections} sources={sources} label="Comparison sources" />}
       <div className="grid grid-cols-2 gap-2">
         <Field label="Frames" value={metadata.frameCount} />
-        <Field label="Bones" value={metadata.bones?.length} />
-        <Field label="Loop start" value={metadata.loopStart} />
-        <Field label="Recovery" value={metadata.recoveryStart} />
-        <Field label="Preview" value={metadata.previewFrame} />
-        <Field label="Current layers" value={frame?.bones?.length || 0} />
-        <Field label="Maximum layers" value={metadata.maxBonesPerFrame} />
+        <Field label="Recovery starts" value={metadata.recoveryStart} />
+        {full && (
+          <>
+            <Field label="Bones" value={metadata.bones?.length} />
+            <Field label="Loop start" value={metadata.loopStart} />
+            <Field label="Preview" value={metadata.previewFrame} />
+            <Field label="Current layers" value={frame?.bones?.length || 0} />
+            <Field label="Maximum layers" value={metadata.maxBonesPerFrame} />
+          </>
+        )}
       </div>
-      <Field label="Animation" value={metadata.animation} mono />
+      {full && <Field label="Animation" value={metadata.animation} mono />}
       {metadata.swap && (
-        <div className="rounded-lg border border-cyan-500/35 bg-cyan-500/10 p-3">
+        <div className="rounded-xl border border-sky-400/40 bg-sky-500/10 p-2">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="cyan">{metadata.swap.ownerType} swap</Badge>
-            <span className="text-sm font-black text-white">{metadata.swap.owner}</span>
+            <span className="text-sm font-bold text-white">{metadata.swap.owner}</span>
           </div>
           <div className="mt-2 text-xs text-slate-300">
             Uses combat data from{" "}
-            <span className="font-mono font-bold text-cyan-200">
-              {metadata.swap.baseAnimations?.join(", ") || metadata.animation}
+            <span className={cx("font-bold text-sky-200", full && "font-mono")}>
+              {full ? metadata.swap.baseAnimations?.join(", ") || metadata.animation : "the base move"}
             </span>
-            {" "}with its swap-specific animation and GFX.
+            {" "}with its own animation and art.
           </div>
         </div>
       )}
-      <Field label="Rig" value={metadata.rig} mono />
-      <Field label="Source file" value={metadata.folder} mono />
-      <Field label="Manifest" value={metadata.manifest} mono />
+      {full && (
+        <>
+          <Field label="Rig" value={metadata.rig} mono />
+          <Field label="Source file" value={metadata.folder} mono />
+          <Field label="Manifest" value={metadata.manifest} mono />
+        </>
+      )}
       {metadata.references?.length > 0 && (
         <div>
-          <div className="mb-2 text-[10px] font-black uppercase tracking-wide text-slate-500">Used by</div>
+          <PanelHeading>Used by</PanelHeading>
           <div className="space-y-1">
             {metadata.references.map((reference) => {
               const Component = reference.url ? "a" : "div";
               return (
-              <Component key={`${reference.kind}-${reference.id}-${reference.name}`} href={reference.url || undefined} className={classes("flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/65 px-3 py-2", reference.url && "hover:border-blue-400 hover:bg-blue-500/10")}>
+              <Component key={`${reference.kind}-${reference.id}-${reference.name}`} href={reference.url || undefined} className={cx("flex items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2", reference.url && "hover:border-blue-400 hover:bg-blue-500/10")}>
                 <div className="min-w-0">
-                  <div className="truncate text-xs font-black text-white">{reference.name}</div>
-                  <div className="truncate text-[10px] text-slate-500">{reference.detail}</div>
+                  <div className="truncate text-xs font-bold text-white">{reference.name}</div>
+                  <div className="truncate text-[10px] text-slate-400">{reference.detail}</div>
                 </div>
                 <Badge tone="blue">{reference.kind}</Badge>
               </Component>
@@ -816,15 +848,15 @@ function LayersPanel({ frame, selectedBone, setSelectedBone, hiddenBones, setHid
   const layers = frame?.bones || [];
   return (
     <div className="grid grid-cols-2 gap-2 p-3">
-      {!layers.length && <div className="col-span-2 text-xs text-slate-500">No layers exist on this frame.</div>}
+      {!layers.length && <EmptyState bare title="No layers on this frame" className="col-span-2" />}
       {layers.map((bone, index) => {
         const hidden = hiddenBones.has(bone.name);
         const selected = selectedBone === bone.name;
         return (
-          <div key={`${bone.id}-${index}`} className={classes("rounded-lg border p-2", selected ? "border-blue-400 bg-blue-500/10" : "border-slate-800 bg-slate-950/60")}>
+          <div key={`${bone.id}-${index}`} className={cx("rounded-xl border p-2", selected ? "border-blue-400 bg-blue-500/10" : "border-slate-700 bg-slate-950/60")}>
             <button type="button" onClick={() => setSelectedBone(bone.name)} className="w-full text-left">
               <div className="flex items-center justify-between gap-2">
-                <span className="min-w-0 truncate text-xs font-black text-white">{bone.name}</span>
+                <span className="min-w-0 truncate text-xs font-bold text-white">{bone.name}</span>
                 <span className="text-[10px] text-slate-500">#{bone.layer}</span>
               </div>
               <div className="mt-1 grid grid-cols-3 gap-1 font-mono text-[9px] text-slate-400">
@@ -840,7 +872,7 @@ function LayersPanel({ frame, selectedBone, setSelectedBone, hiddenBones, setHid
                 else next.add(bone.name);
                 return next;
               })}>{hidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}</IconButton>
-              <button type="button" onClick={() => setSoloBone((current) => current === bone.name ? "" : bone.name)} className={classes("rounded-lg border px-2 text-[10px] font-black", soloBone === bone.name ? "border-cyan-400 bg-cyan-500/20 text-cyan-200" : "border-slate-700 text-slate-400 hover:text-white")}>SOLO</button>
+              <button type="button" onClick={() => setSoloBone((current) => current === bone.name ? "" : bone.name)} className={cx("rounded-xl border px-2 text-[10px] font-bold", soloBone === bone.name ? "border-sky-400 bg-sky-500/20 text-sky-200" : "border-slate-700 text-slate-400 hover:text-white")}>Solo</button>
             </div>
           </div>
         );
@@ -866,25 +898,25 @@ function CombatPanel({
   const combat = frame?.combat;
   return (
     <div className="space-y-3 p-3">
-      <label className="block">
-        <span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">PowerType</span>
-        <select value={powerName} onChange={(event) => setPowerName(event.target.value)} className="h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-sm font-bold text-white">
-          <option value="">Automatic animation match</option>
-          {powers.map((power) => <option key={power.PowerName} value={power.PowerName}>{power.PowerName}</option>)}
-        </select>
-      </label>
+      <SelectInput
+        label="PowerType"
+        inline={false}
+        value={powerName}
+        onChange={setPowerName}
+        options={[{ value: "", label: "Automatic animation match" }, ...powers.map((power) => ({ value: power.PowerName, label: power.PowerName }))]}
+      />
       <div className="grid grid-cols-2 gap-2">
-        <button type="button" onClick={() => setShowHitboxes(!showHitboxes)} className={classes("rounded-lg border p-3 text-xs font-black", showHitboxes ? "border-rose-400 bg-rose-500/15 text-rose-200" : "border-slate-700 text-slate-400")}>Hitboxes</button>
-        <button type="button" onClick={() => setShowHurtboxes(!showHurtboxes)} className={classes("rounded-lg border p-3 text-xs font-black", showHurtboxes ? "border-cyan-400 bg-cyan-500/15 text-cyan-200" : "border-slate-700 text-slate-400")}>Hurtboxes</button>
+        <button type="button" aria-pressed={showHitboxes} onClick={() => setShowHitboxes(!showHitboxes)} className={cx("rounded-xl border p-3 text-sm font-bold", showHitboxes ? "border-rose-400 bg-rose-500/15 text-rose-200" : "border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500")}>Hitboxes</button>
+        <button type="button" aria-pressed={showHurtboxes} onClick={() => setShowHurtboxes(!showHurtboxes)} className={cx("rounded-xl border p-3 text-sm font-bold", showHurtboxes ? "border-sky-400 bg-sky-500/15 text-sky-200" : "border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500")}>Hurtboxes</button>
       </div>
-      {!powers.length && !combat?.power && <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">No PowerType directly references this animation. Hurtboxes can still resolve through their AnimClass and AnimName.</div>}
+      {!powers.length && !combat?.power && <div className="rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-xs text-amber-100">No move uses this animation directly. Hurtboxes may still show.</div>}
       {combat?.activeTiming && (
-        <div className="rounded-lg border border-slate-700 bg-slate-950 p-3">
-          <div className="text-xs font-black uppercase text-slate-500">Active cast</div>
-          <div className="mt-1 text-sm font-black text-white">{combat.activeTiming.powerName} / Cast {combat.activeTiming.index + 1}</div>
+        <Card>
+          <PanelHeading className="mb-0">Active cast</PanelHeading>
+          <div className="mt-1 text-sm font-bold text-white">{combat.activeTiming.powerName} / Cast {combat.activeTiming.index + 1}</div>
           <div className="mt-1 font-mono text-xs text-blue-300">{combat.activeTiming.raw}</div>
           <div className="mt-2 text-xs text-slate-400">Animation frames {combat.activeTiming.startFrame}-{combat.activeTiming.endFrame}</div>
-        </div>
+        </Card>
       )}
       <div className="grid grid-cols-2 gap-2">
         <Field label="Hitboxes" value={combat?.hitboxes?.length || 0} />
@@ -892,12 +924,12 @@ function CombatPanel({
       </div>
       {metadata?.followUps?.length > 0 && (
         <div>
-          <div className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Follow-up animations</div>
+          <PanelHeading>Follow-up animations</PanelHeading>
           <div className="space-y-1">
             {metadata.followUps.map((followUp) => (
-              <button key={`${followUp.path}:${followUp.powerName}:${followUp.branch}`} type="button" onClick={() => { setFollowUpPath(followUp.path); setPlayMode("all"); }} className={classes("w-full rounded-lg border p-2 text-left", followUpPath === followUp.path ? "border-amber-400 bg-amber-500/15" : "border-slate-800 bg-slate-950/70 hover:border-amber-400 hover:bg-amber-500/10")}>
-                <div className="text-xs font-black text-white">{titleCase(followUp.animation)}</div>
-                <div className="mt-1 font-mono text-[10px] text-slate-500">
+              <button key={`${followUp.path}:${followUp.powerName}:${followUp.branch}`} type="button" onClick={() => { setFollowUpPath(followUp.path); setPlayMode("all"); }} className={cx("w-full rounded-xl border p-2 text-left", followUpPath === followUp.path ? "border-amber-400 bg-amber-500/15" : "border-slate-700 bg-slate-950/60 hover:border-amber-400 hover:bg-amber-500/10")}>
+                <div className="text-xs font-bold text-white">{titleCase(followUp.animation)}</div>
+                <div className="mt-1 font-mono text-[10px] text-slate-400">
                   Starts after frame {Number(followUp.startAfterFrame || 0)}
                   {followUp.parentPowerId ? ` / PowerID ${followUp.parentPowerId}` : ""}
                   {` / ${followUp.automatic ? "Automatic" : titleCase(followUp.branch || followUp.via)}`}
@@ -915,34 +947,32 @@ function SwapsPanel({ metadata, selectedBone, setSelectedBone, gfxQuery, setGfxQ
   const selectedSwap = swaps.find((swap) => swap.target === selectedBone);
   return (
     <div className="space-y-3 p-3">
-      <label className="block">
-        <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">Target bone</span>
-        <select value={selectedBone} onChange={(event) => setSelectedBone(event.target.value)} className="h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-xs font-bold text-white">
-          <option value="">Select a rendered bone</option>
-          {(metadata?.bones || []).map((bone) => <option key={bone.id} value={bone.name}>{bone.name}</option>)}
-        </select>
-      </label>
+      <SelectInput
+        label="Target bone"
+        inline={false}
+        value={selectedBone}
+        onChange={setSelectedBone}
+        options={[{ value: "", label: "Select a rendered bone" }, ...(metadata?.bones || []).map((bone) => ({ value: bone.name, label: bone.name }))]}
+      />
       {selectedBone && (
         <>
-          <div className="relative">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
-            <input value={gfxQuery} onChange={(event) => setGfxQuery(event.target.value)} placeholder={`Find a replacement for ${selectedBone}`} className="h-10 w-full rounded-lg border border-slate-700 bg-slate-950 pl-9 pr-3 text-xs text-white outline-none focus:border-blue-400" />
-          </div>
+          <SearchInput value={gfxQuery} onChange={setGfxQuery} placeholder={`Find a replacement for ${selectedBone}`} shortcut={false} />
           {selectedSwap && (
-            <div className="flex items-center justify-between gap-2 rounded-lg border border-blue-500/40 bg-blue-500/10 p-2">
+            <div className="flex items-center justify-between gap-2 rounded-xl border border-blue-400/40 bg-blue-500/10 p-2">
               <div className="min-w-0">
-                <div className="truncate text-xs font-black text-blue-200">{selectedSwap.bone}</div>
+                <div className="truncate text-xs font-bold text-blue-200">{selectedSwap.bone}</div>
                 <div className="truncate text-[10px] text-slate-400">{selectedSwap.folder}</div>
               </div>
               <IconButton label="Remove swap" onClick={() => removeSwap(selectedBone)}><X className="h-4 w-4" /></IconButton>
             </div>
           )}
           <div className="app-scrollbar max-h-[48dvh] space-y-1 overflow-y-auto">
-            {gfxLoading && <Loading compact />}
+            {gfxLoading && <LoadingState inline label="Searching" className="p-3" />}
+            {!gfxLoading && !gfxResults.length && <EmptyState bare title="No matching graphics" />}
             {!gfxLoading && gfxResults.map((entry) => (
-              <button key={`${entry.folder}/${entry.bone}`} type="button" onClick={() => addSwap({ target: selectedBone, folder: entry.folder, bone: entry.bone })} className="w-full rounded-lg border border-slate-800 bg-slate-950/70 p-2 text-left hover:border-blue-400 hover:bg-blue-500/10">
-                <div className="truncate text-xs font-black text-white">{entry.bone}</div>
-                <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-slate-500">
+              <button key={`${entry.folder}/${entry.bone}`} type="button" onClick={() => addSwap({ target: selectedBone, folder: entry.folder, bone: entry.bone })} className="w-full rounded-xl border border-slate-700 bg-slate-950/60 p-2 text-left hover:border-blue-400 hover:bg-blue-500/10">
+                <div className="truncate text-xs font-bold text-white">{entry.bone}</div>
+                <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-slate-400">
                   <span className="truncate">{entry.folder}</span>
                   <span>{entry.frames} frame{entry.frames === 1 ? "" : "s"}</span>
                 </div>
@@ -953,11 +983,11 @@ function SwapsPanel({ metadata, selectedBone, setSelectedBone, gfxQuery, setGfxQ
       )}
       {swaps.length > 0 && (
         <div>
-          <div className="mb-2 text-[10px] font-black uppercase tracking-wide text-slate-500">Applied overrides</div>
+          <PanelHeading>Applied overrides</PanelHeading>
           <div className="space-y-1">
             {swaps.map((swap) => (
-              <button key={swap.target} type="button" onClick={() => setSelectedBone(swap.target)} className="w-full rounded-lg border border-slate-800 bg-slate-950 p-2 text-left text-[10px]">
-                <span className="font-black text-cyan-300">{swap.target}</span>
+              <button key={swap.target} type="button" onClick={() => setSelectedBone(swap.target)} className="w-full rounded-xl border border-slate-700 bg-slate-950/60 p-2 text-left text-[10px] hover:border-slate-500">
+                <span className="font-bold text-sky-300">{swap.target}</span>
                 <span className="mx-2 text-slate-600">→</span>
                 <span className="text-white">{swap.bone}</span>
               </button>
@@ -970,30 +1000,42 @@ function SwapsPanel({ metadata, selectedBone, setSelectedBone, gfxQuery, setGfxQ
 }
 
 function RawPanel({ metadata, frame }) {
+  const frameData = useMemo(() => {
+    if (!frame) return null;
+    try {
+      return JSON.parse(JSON.stringify(frame, (key, value) => key === "svg" && typeof value === "string" ? `[SVG: ${value.length.toLocaleString()} characters]` : value));
+    } catch {
+      return null;
+    }
+  }, [frame]);
+  const name = String(metadata?.animation || "animation").replace(/[^\w-]+/g, "-");
   return (
     <div className="space-y-3 p-3">
-      <details className="rounded-lg border border-slate-800 bg-slate-950/65">
-        <summary className="cursor-pointer px-3 py-2 text-xs font-black text-white">Animation metadata</summary>
-        <pre className="app-scrollbar max-h-80 overflow-auto border-t border-slate-800 p-3 text-[10px] text-slate-300">{JSON.stringify(metadata, null, 2)}</pre>
-      </details>
-      <details className="rounded-lg border border-slate-800 bg-slate-950/65">
-        <summary className="cursor-pointer px-3 py-2 text-xs font-black text-white">Rendered frame</summary>
-        <pre className="app-scrollbar max-h-96 overflow-auto border-t border-slate-800 p-3 text-[10px] text-slate-300">{JSON.stringify(frame, (key, value) => key === "svg" ? `[SVG: ${value.length.toLocaleString()} characters]` : value, 2)}</pre>
-      </details>
+      <RawData data={metadata} title="Animation metadata" filename={`${name}-metadata`} />
+      <RawData data={frameData} title="Rendered frame" filename={`${name}-frame`} />
     </div>
   );
 }
 
 function Inspector(props) {
-  const { tab, setTab } = props;
+  const { tab: requestedTab, setTab } = props;
+  const { full } = useDataView();
+  const tab = full || SIMPLE_TABS.has(requestedTab) ? requestedTab : "overview";
+  const tabs = full ? TABS : TABS.filter(([value]) => SIMPLE_TABS.has(value));
   return (
-    <div className="flex h-full min-h-0 flex-col bg-slate-900">
-      <div className="app-scrollbar flex shrink-0 overflow-x-auto border-b border-slate-800 p-2">
-        {TABS.map(([key, label, Icon]) => (
-          <button key={key} type="button" onClick={() => setTab(key)} className={classes("flex min-w-fit items-center gap-1.5 rounded-lg px-2.5 py-2 text-[10px] font-black transition", tab === key ? "bg-blue-500 text-white" : "text-slate-400 hover:bg-slate-800 hover:text-white")}>
-            <Icon className="h-3.5 w-3.5" />{label}
-          </button>
-        ))}
+    <Section
+      padded={false}
+      className="flex min-h-0 flex-col xl:sticky xl:top-20 xl:max-h-[calc(100dvh-6rem)]"
+      bodyClassName="flex min-h-0 flex-1 flex-col"
+    >
+      <div className="shrink-0 border-b border-slate-800 p-3">
+        <Tabs
+          variant="small"
+          label="Animation details"
+          value={tab}
+          onChange={setTab}
+          items={tabs.map(([value, label, Icon]) => ({ value, label, icon: <Icon className="h-3.5 w-3.5" /> }))}
+        />
       </div>
       <div className="app-scrollbar min-h-0 flex-1 overflow-y-auto">
         {tab === "overview" && <OverviewPanel {...props} />}
@@ -1002,7 +1044,7 @@ function Inspector(props) {
         {tab === "swaps" && <SwapsPanel {...props} />}
         {tab === "raw" && <RawPanel {...props} />}
       </div>
-    </div>
+    </Section>
   );
 }
 
@@ -1034,22 +1076,20 @@ function ColorSchemeSelect({ colors, colorScheme, setColorScheme }) {
   const selected = colors.find((color) => Number(color.ColorSchemeID) === Number(colorScheme));
   const swatches = selected ? colorSwatches(selected) : ["#f8fafc", "#94a3b8", "#334155"];
   return (
-    <label className="block rounded-lg border border-slate-800 bg-slate-950/65 p-2.5">
-      <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-500">Color scheme</span>
+    <Card className="p-2.5">
+      <PanelHeading>Color Scheme</PanelHeading>
       <div className="flex items-center gap-2">
-        <div className="flex h-9 w-14 shrink-0 overflow-hidden rounded-md border border-slate-700">
+        <div className="flex h-9 w-14 shrink-0 overflow-hidden rounded-md border border-slate-700" aria-hidden="true">
           {swatches.map((color) => <span key={color} className="h-full min-w-1 flex-1" style={{ backgroundColor: color }} />)}
         </div>
-        <select value={colorScheme} onChange={(event) => setColorScheme(Number(event.target.value))} className="h-9 min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-2 text-xs font-black text-white">
-          <option value="0">Default colors</option>
-          {colors.map((color) => (
-            <option key={color.ColorSchemeID} value={color.ColorSchemeID}>
-              {color.DisplayName || color.ColorSchemeName}
-            </option>
-          ))}
-        </select>
+        <SelectInput
+          className="flex-1 [&>select]:w-full"
+          value={colorScheme}
+          onChange={(value) => setColorScheme(Number(value))}
+          options={[{ value: 0, label: "Default Colors" }, ...colors.map((color) => ({ value: color.ColorSchemeID, label: color.DisplayName || color.ColorSchemeName }))]}
+        />
       </div>
-    </label>
+    </Card>
   );
 }
 
@@ -1085,6 +1125,8 @@ export default function AnimationViewer() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState(initialParams.get("q") || "");
   const [hitboxesOnly, setHitboxesOnly] = useState(initialParams.get("hitboxes") === "1");
+  const [playerNames, setPlayerNames] = useState(false);
+  useEffect(() => { setPlayerNames(readPlayerNames()); }, []);
   const [frame, setFrame] = useState(Number(initialParams.get("frame") || 0));
   const [playing, setPlaying] = useState(false);
   const [playMode, setPlayMode] = useState("all");
@@ -1093,6 +1135,7 @@ export default function AnimationViewer() {
   const [zoom, setZoom] = useState(1);
   const [background, setBackground] = useState("checker");
   const [tab, setTab] = useState("overview");
+  const { full: dataFull } = useDataView();
   const [sourceSelections, setSourceSelections] = useState(() =>
     sourceSelectionsFromQuery(initialParams.get("sources") || initialParams.get("source"))
   );
@@ -1108,14 +1151,16 @@ export default function AnimationViewer() {
   const [gfxLoading, setGfxLoading] = useState(false);
   const [powerName, setPowerName] = useState(initialParams.get("power") || "");
   const [followUpPath, setFollowUpPath] = useState(initialParams.get("followUp") || "");
+  const [startPlace, setStartPlace] = useState(initialParams.get("start") === "ledge" ? "ledge" : "");
   const [colorScheme, setColorScheme] = useState(Number(initialParams.get("color") || 0) || 0);
   const [showHitboxes, setShowHitboxes] = useState(false);
   const [showHurtboxes, setShowHurtboxes] = useState(false);
   const [preserveCanvas, setPreserveCanvas] = useState(false);
   const [exportMode, setExportMode] = useState("svg");
   const [exporting, setExporting] = useState(false);
-  const [leftOpen, setLeftOpen] = useState(false);
-  const [rightOpen, setRightOpen] = useState(false);
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
+  const [retryAttempt, setRetryAttempt] = useState({ detail: 0, power: 0, gfx: 0 });
+  const failedAction = useRef("");
   const currentPlaybackConfigKey = JSON.stringify({
     animation: selected?.id || "",
     sourceSelections,
@@ -1125,6 +1170,7 @@ export default function AnimationViewer() {
     preserveCanvas,
     playMode,
     followUpPath,
+    startPlace,
   });
   const [favorites, setFavorites] = useState(() => {
     if (typeof window === "undefined") return new Set();
@@ -1137,7 +1183,7 @@ export default function AnimationViewer() {
   const resumePlayback = useRef(false);
   playbackConfig.current = currentPlaybackConfigKey;
   const stageRef = useRef(null);
-  const debouncedGfxQuery = useDebounced(gfxQuery);
+  const debouncedGfxQuery = useDebounced(gfxQuery, 180);
   const matchingCatalogAnimations = useMemo(
     () => matchingAnimations(catalog, query, hitboxesOnly),
     [catalog, query, hitboxesOnly],
@@ -1145,6 +1191,8 @@ export default function AnimationViewer() {
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError("");
     jsonRequest(`${host}/game/animations/catalog`).then((catalogData) => {
       if (!active) return;
       setCatalog(catalogData);
@@ -1158,7 +1206,7 @@ export default function AnimationViewer() {
       setLoading(false);
     });
     return () => { active = false; };
-  }, []);
+  }, [catalogAttempt]);
 
   useEffect(() => {
     let active = true;
@@ -1207,6 +1255,7 @@ export default function AnimationViewer() {
       initialOffset,
       initialVelocity,
       preserveCanvas,
+      ...(startPlace === "ledge" ? { scenario: { map: "SmallBrawlhaven", start: "ledge" } } : {}),
     };
   };
 
@@ -1308,11 +1357,11 @@ export default function AnimationViewer() {
         setFrame(initialFrame);
       })
       .catch((requestError) => {
-        if (requestError.name !== "AbortError") setError(requestError.message);
+        if (requestError.name !== "AbortError") { failedAction.current = "detail"; setError(requestError.message); }
       })
       .finally(() => setRenderLoading(false));
     return () => controller.abort();
-  }, [selected]);
+  }, [selected, retryAttempt.detail]);
 
   useEffect(() => {
     if (!selected || !metadata || String(metadata.selectedPowerName || "") === powerName) return;
@@ -1332,10 +1381,10 @@ export default function AnimationViewer() {
           : data.followUps?.find((entry) => entry.automatic)?.path || ""
       ));
     }).catch((requestError) => {
-      if (requestError.name !== "AbortError") setError(requestError.message);
+      if (requestError.name !== "AbortError") { failedAction.current = "power"; setError(requestError.message); }
     }).finally(() => setRenderLoading(false));
     return () => controller.abort();
-  }, [selected, powerName, metadata?.selectedPowerName]);
+  }, [selected, powerName, metadata?.selectedPowerName, retryAttempt.power]);
 
   useEffect(() => {
     if (!selected || !metadata) return;
@@ -1378,11 +1427,11 @@ export default function AnimationViewer() {
     jsonRequest(`${host}/game/animations/gfx?bone=${encodeURIComponent(selectedBone)}&query=${encodeURIComponent(debouncedGfxQuery)}&limit=120`, { signal: controller.signal })
       .then((data) => setGfxResults(data.matches || []))
       .catch((requestError) => {
-        if (requestError.name !== "AbortError") setError(requestError.message);
+        if (requestError.name !== "AbortError") { failedAction.current = "gfx"; setError(requestError.message); }
       })
       .finally(() => setGfxLoading(false));
     return () => controller.abort();
-  }, [selectedBone, debouncedGfxQuery]);
+  }, [selectedBone, debouncedGfxQuery, retryAttempt.gfx]);
 
   useEffect(() => {
     if (
@@ -1428,10 +1477,11 @@ export default function AnimationViewer() {
     if (selectedSources.length) params.set("sources", selectedSources.join(",")); else params.delete("sources");
     if (powerName) params.set("power", powerName); else params.delete("power");
     if (followUpPath) params.set("followUp", followUpPath); else params.delete("followUp");
+    if (startPlace) params.set("start", startPlace); else params.delete("start");
     if (colorScheme) params.set("color", String(colorScheme)); else params.delete("color");
     params.delete("source");
     window.history.replaceState({}, "", `${window.location.pathname}?${params}`);
-  }, [selected, frame, query, hitboxesOnly, JSON.stringify(sourceSelections), powerName, followUpPath, colorScheme]);
+  }, [selected, frame, query, hitboxesOnly, JSON.stringify(sourceSelections), powerName, followUpPath, startPlace, colorScheme]);
 
   const loadPlayback = async (autoPlay = true) => {
     if (!selected) return;
@@ -1491,7 +1541,7 @@ export default function AnimationViewer() {
     } catch (requestError) {
       if (requestError.name === "AbortError") return;
       if (preloadedConfig.current === requestedConfigKey) preloadedConfig.current = "";
-      if (playbackRequest.current === requestId) setError(requestError.message);
+      if (playbackRequest.current === requestId) { failedAction.current = "playback"; setError(requestError.message); }
     } finally {
       if (renderController.current === controller) renderController.current = null;
       if (playbackRequest.current === requestId) setRenderLoading(false);
@@ -1520,7 +1570,6 @@ export default function AnimationViewer() {
 
   const selectAnimation = (entry) => {
     setSelected(entry);
-    setLeftOpen(false);
     setSourceSelections({});
     setCompareSourceSelections({});
     try {
@@ -1607,14 +1656,11 @@ export default function AnimationViewer() {
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (requestError) {
+      failedAction.current = "export";
       setError(requestError.message);
     } finally {
       setExporting(false);
     }
-  };
-
-  const copyLink = async () => {
-    await navigator.clipboard.writeText(window.location.href);
   };
 
   const selectedFollowUp = metadata?.followUps?.find((entry) => entry.path === followUpPath);
@@ -1661,8 +1707,34 @@ export default function AnimationViewer() {
     return { x, y, width: right - x, height: bottom - y };
   })();
 
-  if (loading) return <div className="min-h-[calc(100dvh-4rem)] bg-slate-950"><Loading /></div>;
-  if (!catalog) return <div className="min-h-[calc(100dvh-4rem)] bg-slate-950 p-8 text-center text-red-300">{error || "The animation catalog could not be loaded."}</div>;
+  const retryAfterError = async () => {
+    const action = failedAction.current;
+    failedAction.current = "";
+    setError("");
+    if (action === "export") return downloadExport();
+    if (action === "detail" || action === "power" || action === "gfx") {
+      setRetryAttempt((current) => ({ ...current, [action]: current[action] + 1 }));
+      return undefined;
+    }
+    if (selected && metadata) {
+      preloadedConfig.current = "";
+      return loadPlayback(false);
+    }
+    return undefined;
+  };
+
+  if (loading || !catalog) {
+    return (
+      <PageShell>
+        <PageHeader title="Animations" />
+        {loading ? (
+          <LoadingState label="Loading animations" rows={4} />
+        ) : (
+          <ErrorState message="The animation list didn't load." detail={error} onRetry={() => setCatalogAttempt((value) => value + 1)} />
+        )}
+      </PageShell>
+    );
+  }
 
   const colorableSources = sources.some((source) => source.kind === "skin" || source.kind === "weapon");
   const inspectorProps = {
@@ -1675,135 +1747,184 @@ export default function AnimationViewer() {
     followUpPath, setFollowUpPath,
     setPlayMode,
   };
+  const errorMessages = {
+    detail: "Couldn't load this animation.",
+    power: "Couldn't load that move.",
+    gfx: "Couldn't search the graphics.",
+    playback: "Couldn't play this animation.",
+    export: "Couldn't finish the export.",
+  };
+
+  const library = ({ close }) => (
+    <AnimationBrowser
+      catalog={catalog}
+      selected={selected}
+      onSelect={(entry) => { selectAnimation(entry); close(); }}
+      onRandom={() => {
+        if (!matchingCatalogAnimations.length) return;
+        selectAnimation(matchingCatalogAnimations[Math.floor(Math.random() * matchingCatalogAnimations.length)]);
+        close();
+      }}
+      query={query}
+      setQuery={setQuery}
+      hitboxesOnly={hitboxesOnly}
+      setHitboxesOnly={setHitboxesOnly}
+      playerNames={playerNames}
+      setPlayerNames={(value) => { setPlayerNames(value); savePlayerNames(value); }}
+    />
+  );
 
   return (
-    <div className="flex min-h-[calc(100dvh-4rem)] flex-col bg-slate-950 text-slate-100" style={{ fontFamily: "BHLatinBold" }}>
-      <header className="z-40 flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b border-slate-800 bg-slate-900 px-2 py-2 sm:px-4">
-        <IconButton label="Open animation library" onClick={() => setLeftOpen(true)} className="xl:hidden"><Menu className="h-4 w-4" /></IconButton>
-        <div className="mr-auto min-w-0">
-          <div className="truncate text-sm font-black text-white sm:text-lg">{selected ? selected.animation : "Animation Viewer"}</div>
-          <div className="hidden truncate text-[10px] text-slate-500 sm:block">{selected?.path || `${catalog.stats.animations.toLocaleString()} animations across ${catalog.stats.folders} files`}</div>
-        </div>
-        {selected && (
-          <div className="flex items-center gap-1">
-            <IconButton label="Favorite" active={favorites.has(selected.id)} onClick={() => toggleFavorite(selected.id)}><Star className={classes("h-4 w-4", favorites.has(selected.id) && "fill-current")} /></IconButton>
-            <IconButton label="Copy share link" onClick={copyLink}><Copy className="h-4 w-4" /></IconButton>
-            <select value={exportMode} onChange={(event) => setExportMode(event.target.value)} aria-label="Export format" className="hidden h-9 rounded-lg border border-slate-700 bg-slate-950 px-2 text-[10px] font-black text-white sm:block">
-              <option value="svg">Current SVG</option>
-              <option value="png">Current PNG</option>
-              <option value="apng:loop">Loop APNG</option>
-              <option value="apng:full">Full APNG</option>
-            </select>
+    <PageShell title="Animations" subtitle={selected?.label || selected?.animation} sidebarLabel="Animations" sidebarTitle="Animation list" sidebar={library}>
+      <PageHeader
+        eyebrow={selected ? [selected.folderLabel, selected.rigLabel !== selected.folderLabel && selected.rigLabel].filter(Boolean).join(" · ") || undefined : undefined}
+        title={<span className="break-words">{selected ? selected.label || selected.animation : "Animations"}</span>}
+        meta={selected ? (dataFull ? <span className="break-all font-mono text-xs">{selected.path}</span> : undefined) : <span className="break-all">{`${catalog.stats.animations.toLocaleString()} animations in ${catalog.stats.folders} files`}</span>}
+        actions={selected && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <DataViewToggle size="sm" />
+            <IconButton label="Favorite" active={favorites.has(selected.id)} onClick={() => toggleFavorite(selected.id)}><Star className={cx("h-4 w-4", favorites.has(selected.id) && "fill-current")} /></IconButton>
+            <SelectInput
+              label="Export"
+              value={exportMode}
+              onChange={setExportMode}
+              options={[
+                { value: "svg", label: "Current SVG" },
+                { value: "png", label: "Current PNG" },
+                { value: "apng:loop", label: "Loop APNG" },
+                { value: "apng:full", label: "Full APNG" },
+              ]}
+            />
             <IconButton label="Export animation" disabled={!frameData || exporting} onClick={downloadExport}>{exporting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}</IconButton>
             <IconButton label="Fullscreen stage" onClick={() => stageRef.current?.requestFullscreen?.()}><Fullscreen className="h-4 w-4" /></IconButton>
           </div>
         )}
-        <IconButton label="Open inspector" onClick={() => setRightOpen(true)} className="xl:hidden"><SlidersHorizontal className="h-4 w-4" /></IconButton>
-      </header>
+      />
 
       {error && (
-        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-red-500/40 bg-red-500/10 px-4 py-2 text-xs text-red-200">
-          <span>{error}</span>
-          <button type="button" onClick={() => setError("")}><X className="h-4 w-4" /></button>
+        <div className="flex items-start gap-2">
+          <ErrorState className="min-w-0 flex-1" message={errorMessages[failedAction.current] || "Couldn't load this."} detail={error} onRetry={retryAfterError} />
+          <IconButton label="Dismiss" onClick={() => { failedAction.current = ""; setError(""); }}><X className="h-4 w-4" /></IconButton>
         </div>
       )}
 
-      <div className="grid flex-1 items-start xl:grid-cols-[320px_minmax(0,1fr)_390px]">
-        <aside className={classes("fixed bottom-0 left-0 top-16 z-50 min-h-0 w-[min(90vw,340px)] overflow-hidden border-r border-slate-800 bg-slate-900 transition-transform xl:sticky xl:top-16 xl:z-auto xl:h-[calc(100dvh-4rem)] xl:w-auto xl:translate-x-0", leftOpen ? "translate-x-0" : "-translate-x-full")}>
-          <div className="flex h-12 items-center justify-between border-b border-slate-800 px-3 xl:hidden"><span className="text-sm font-black">Animation Library</span><IconButton label="Close library" onClick={() => setLeftOpen(false)}><X className="h-4 w-4" /></IconButton></div>
-          <AnimationBrowser
-            catalog={catalog}
-            selected={selected}
-            onSelect={selectAnimation}
-            onRandom={() => {
-              if (!matchingCatalogAnimations.length) return;
-              selectAnimation(matchingCatalogAnimations[Math.floor(Math.random() * matchingCatalogAnimations.length)]);
-            }}
-            query={query}
-            setQuery={setQuery}
-            hitboxesOnly={hitboxesOnly}
-            setHitboxesOnly={setHitboxesOnly}
-          />
-        </aside>
-
-        <main ref={stageRef} className="flex min-w-0 flex-col border-slate-800 bg-slate-950 xl:border-x">
-          <div className="flex h-[calc(100dvh-8rem)] min-h-[32rem]">
-            <div className={classes("min-h-0 min-w-0 flex-1", compare ? "grid grid-cols-1 lg:grid-cols-2" : "flex")}>
-              <AnimationStage frame={frameData} loading={renderLoading} selected={selected} selectedBone={selectedBone} setSelectedBone={setSelectedBone} hiddenBones={hiddenBones} soloBone={soloBone} zoom={zoom} background={background} showHitboxes={showHitboxes} showHurtboxes={showHurtboxes} viewport={sharedViewport} />
-              {compare && <div className="relative flex min-h-64 min-w-0 border-t border-slate-700 lg:min-h-0 lg:border-l lg:border-t-0"><div className="absolute left-3 top-3 z-20"><Badge tone="cyan"><GitCompare className="mr-1 inline h-3 w-3" />Comparison</Badge></div><AnimationStage frame={compareFrame} loading={renderLoading && !compareFrame} selected={selected} selectedBone="" setSelectedBone={() => {}} hiddenBones={new Set()} soloBone="" zoom={zoom} background={background} showHitboxes={showHitboxes} showHurtboxes={showHurtboxes} viewport={sharedViewport} /></div>}
+      <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_24rem] min-[112.5rem]:grid-cols-[minmax(0,1fr)_28rem] min-[137.5rem]:grid-cols-[minmax(0,1fr)_36rem]">
+        <div ref={stageRef} className="min-w-0 bg-slate-950">
+          <Section padded={false} className="overflow-hidden" bodyClassName="flex min-w-0 flex-col">
+            <div className={cx("flex lg:h-[calc(100dvh-14rem)] lg:min-h-[28rem]", selected ? "h-[55dvh] min-h-[20rem]" : "h-56")}>
+              <div className={cx("min-h-0 min-w-0 flex-1", compare ? "grid grid-cols-1 lg:grid-cols-2" : "flex")}>
+                <AnimationStage frame={frameData} loading={renderLoading} selected={selected} selectedBone={selectedBone} setSelectedBone={setSelectedBone} hiddenBones={hiddenBones} soloBone={soloBone} zoom={zoom} background={background} showHitboxes={showHitboxes} showHurtboxes={showHurtboxes} viewport={sharedViewport} />
+                {compare && <div className="relative flex min-h-64 min-w-0 border-t border-slate-700 lg:min-h-0 lg:border-l lg:border-t-0"><div className="absolute left-3 top-3 z-20"><Badge tone="cyan"><GitCompare className="h-3 w-3" />Comparison</Badge></div><AnimationStage frame={compareFrame} loading={renderLoading && !compareFrame} selected={selected} selectedBone="" setSelectedBone={() => {}} hiddenBones={new Set()} soloBone="" zoom={zoom} background={background} showHitboxes={showHitboxes} showHurtboxes={showHurtboxes} viewport={sharedViewport} /></div>}
+              </div>
             </div>
-          </div>
 
-          {selected && metadata && (
-            <>
-              <div className="shrink-0 border-t border-slate-800 bg-slate-900/95 p-2 sm:p-3">
-                <div className="app-scrollbar mb-2 overflow-x-auto pb-1">
-                  <div className="flex w-max min-w-full items-center gap-1.5">
-                    <IconButton label="First frame" onClick={() => { setPlaying(false); setFrame(0); }}><SkipBack className="h-4 w-4" /></IconButton>
-                    <IconButton label="Previous frame" onClick={() => step(-1)}><ChevronLeft className="h-4 w-4" /></IconButton>
-                    <IconButton label={playing ? "Pause" : "Play"} active={playing} onClick={loadPlayback}>{renderLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}</IconButton>
-                    <IconButton label="Next frame" onClick={() => step(1)}><ChevronRight className="h-4 w-4" /></IconButton>
-                    <IconButton label="Last frame" onClick={() => { setPlaying(false); setFrame(Math.max(0, effectiveFrameCount - 1)); }}><SkipForward className="h-4 w-4" /></IconButton>
-                    <div className="mx-1 h-7 w-px shrink-0 bg-slate-700" />
-                    <select value={playMode} onChange={(event) => { setPlayMode(event.target.value); setPlaybackFrames([]); setPlaying(false); }} className="h-9 shrink-0 rounded-lg border border-slate-700 bg-slate-950 px-2 text-[11px] font-black text-white">
-                      <option value="all">Full animation</option>
-                      <option value="loop">Loop segment</option>
-                      <option value="pingpong">Ping-pong</option>
-                    </select>
-                    {metadata.followUps?.length > 0 && (
-                      <select value={followUpPath} onChange={(event) => { setFollowUpPath(event.target.value); if (event.target.value) setPlayMode("all"); }} aria-label="Follow-up animation" className="h-9 max-w-52 shrink-0 rounded-lg border border-amber-500/40 bg-slate-950 px-2 text-[11px] font-black text-amber-100">
-                        <option value="">No follow-up</option>
-                        {metadata.followUps.map((followUp) => <option key={`${followUp.path}:${followUp.powerName}:${followUp.branch}`} value={followUp.path}>Then: {titleCase(followUp.animation)} ({followUp.automatic ? "automatic" : titleCase(followUp.branch || followUp.via)}) after frame {Number(followUp.startAfterFrame || 0)}</option>)}
-                      </select>
-                    )}
-                    <select value={speed} onChange={(event) => setSpeed(Number(event.target.value))} className="h-9 shrink-0 rounded-lg border border-slate-700 bg-slate-950 px-2 text-[11px] font-black text-white">
-                      {[0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4].map((value) => <option key={value} value={value}>{value}x</option>)}
-                    </select>
-                    <IconButton label="Reverse direction" active={direction < 0} onClick={() => setDirection((current) => -current)}><RefreshCw className="h-4 w-4" /></IconButton>
-                    <div className="mx-1 h-7 w-px shrink-0 bg-slate-700" />
-                    <IconButton label="Zoom out" onClick={() => setZoom((current) => Math.max(0.25, current - 0.25))}><ZoomOut className="h-4 w-4" /></IconButton>
-                    <button type="button" onClick={() => setZoom(1)} className="h-9 min-w-14 shrink-0 rounded-lg border border-slate-700 bg-slate-950 px-2 text-[10px] font-black text-slate-300">{Math.round(zoom * 100)}%</button>
-                    <IconButton label="Zoom in" onClick={() => setZoom((current) => Math.min(5, current + 0.25))}><ZoomIn className="h-4 w-4" /></IconButton>
-                    <IconButton label="Fit stage" onClick={() => setZoom(1)}><Maximize2 className="h-4 w-4" /></IconButton>
-                    <select value={background} onChange={(event) => setBackground(event.target.value)} className="h-9 shrink-0 rounded-lg border border-slate-700 bg-slate-950 px-2 text-[11px] font-black text-white">
-                      <option value="checker">Transparent</option>
-                      <option value="dark">Dark</option>
-                      <option value="light">Light</option>
-                    </select>
+            {selected && metadata && (
+              <>
+                <div className="shrink-0 border-t border-slate-800 p-2 sm:p-3">
+                  <div className="mb-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <IconButton label="First frame" onClick={() => { setPlaying(false); setFrame(0); }}><SkipBack className="h-4 w-4" /></IconButton>
+                      <IconButton label="Previous frame" onClick={() => step(-1)}><ChevronLeft className="h-4 w-4" /></IconButton>
+                      <IconButton label={playing ? "Pause" : "Play"} active={playing} onClick={loadPlayback}>{renderLoading ? <Spinner className="h-4 w-4" /> : playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}</IconButton>
+                      <IconButton label="Next frame" onClick={() => step(1)}><ChevronRight className="h-4 w-4" /></IconButton>
+                      <IconButton label="Last frame" onClick={() => { setPlaying(false); setFrame(Math.max(0, effectiveFrameCount - 1)); }}><SkipForward className="h-4 w-4" /></IconButton>
+                      <div className="mx-1 hidden h-7 w-px shrink-0 bg-slate-700 lg:block" />
+                      <SelectInput
+                        label="Play"
+                        className="shrink-0"
+                        value={playMode}
+                        onChange={(value) => { setPlayMode(value); setPlaybackFrames([]); setPlaying(false); }}
+                        options={[
+                          { value: "all", label: "Full animation" },
+                          { value: "loop", label: "Loop segment" },
+                          { value: "pingpong", label: "Ping-pong" },
+                        ]}
+                      />
+                      {metadata.followUps?.length > 0 && (
+                        <SelectInput
+                          label="Then"
+                          className="max-w-72 shrink-0"
+                          value={followUpPath}
+                          onChange={(value) => { setFollowUpPath(value); if (value) setPlayMode("all"); }}
+                          options={[
+                            { value: "", label: "No follow-up" },
+                            ...metadata.followUps.map((followUp) => ({
+                              value: followUp.path,
+                              label: `${titleCase(followUp.animation)} (${followUp.automatic ? "automatic" : titleCase(followUp.branch || followUp.via)}) after frame ${Number(followUp.startAfterFrame || 0)}`,
+                            })),
+                          ]}
+                        />
+                      )}
+                      <SelectInput
+                        label="Start"
+                        className="shrink-0"
+                        value={startPlace}
+                        onChange={(value) => {
+                          setStartPlace(value);
+                          setPlaybackFrames([]);
+                          setPlaying(false);
+                          const selectedFollowUp = metadata.followUps?.find((entry) => entry.path === followUpPath);
+                          if (value === "ledge" && selectedFollowUp && !selectedFollowUp.automatic) setFollowUpPath("");
+                        }}
+                        options={[
+                          { value: "", label: "Flat floor" },
+                          { value: "ledge", label: "Ledge" },
+                        ]}
+                      />
+                      <SelectInput
+                        label="Speed"
+                        className="shrink-0"
+                        value={speed}
+                        onChange={(value) => setSpeed(Number(value))}
+                        options={[0.1, 0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4].map((value) => ({ value, label: `${value}x` }))}
+                      />
+                      <IconButton label="Reverse direction" active={direction < 0} onClick={() => setDirection((current) => -current)}><RefreshCw className="h-4 w-4" /></IconButton>
+                      <div className="mx-1 hidden h-7 w-px shrink-0 bg-slate-700 lg:block" />
+                      <IconButton label="Zoom out" onClick={() => setZoom((current) => Math.max(0.25, current - 0.25))}><ZoomOut className="h-4 w-4" /></IconButton>
+                      <button type="button" onClick={() => setZoom(1)} className="h-9 min-w-14 shrink-0 rounded-xl border border-slate-700 bg-slate-950 px-2 text-xs font-bold text-slate-300 hover:border-slate-500">{Math.round(zoom * 100)}%</button>
+                      <IconButton label="Zoom in" onClick={() => setZoom((current) => Math.min(5, current + 0.25))}><ZoomIn className="h-4 w-4" /></IconButton>
+                      <IconButton label="Fit stage" onClick={() => setZoom(1)}><Maximize2 className="h-4 w-4" /></IconButton>
+                      <SelectInput
+                        label="Background"
+                        className="shrink-0"
+                        value={background}
+                        onChange={setBackground}
+                        options={[
+                          { value: "checker", label: "Transparent" },
+                          { value: "dark", label: "Dark" },
+                          { value: "light", label: "Light" },
+                        ]}
+                      />
+                    </div>
+                  </div>
+                  <div className="relative pt-4">
+                    <input type="range" aria-label="Frame" min="0" max={Math.max(0, effectiveFrameCount - 1)} value={Math.min(frame, Math.max(0, effectiveFrameCount - 1))} onChange={(event) => { setPlaying(false); setFrame(Number(event.target.value)); }} className="h-2 w-full cursor-pointer accent-blue-500" />
+                    {timelineMarkers(metadata, effectiveFrameCount, followUpStart).map((marker) => (
+                      <div key={marker.value} className="pointer-events-none absolute top-0 -translate-x-1/2" style={{ left: `${(marker.value / Math.max(1, effectiveFrameCount - 1)) * 100}%` }}>
+                        <div className="whitespace-nowrap text-[8px] font-bold text-slate-400">{marker.labels.join(" / ")}</div>
+                        <div className="mx-auto flex h-3 w-1.5 overflow-hidden">
+                          {marker.colors.map((color, index) => <span key={`${color}-${index}`} className={cx("h-full flex-1", color)} />)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 text-xs text-slate-400">
+                    <span>Frame {frame} / {Math.max(0, effectiveFrameCount - 1)}</span>
+                    <span>{ANIMATION_FPS} FPS / {(elapsedPlaybackMs / 1000).toFixed(2)}s of {(totalPlaybackMs / 1000).toFixed(2)}s</span>
                   </div>
                 </div>
-                <div className="relative pt-4">
-                  <input type="range" min="0" max={Math.max(0, effectiveFrameCount - 1)} value={Math.min(frame, Math.max(0, effectiveFrameCount - 1))} onChange={(event) => { setPlaying(false); setFrame(Number(event.target.value)); }} className="h-2 w-full cursor-pointer accent-blue-500" />
-                  {timelineMarkers(metadata, effectiveFrameCount, followUpStart).map((marker) => (
-                    <div key={marker.value} className="pointer-events-none absolute top-0 -translate-x-1/2" style={{ left: `${(marker.value / Math.max(1, effectiveFrameCount - 1)) * 100}%` }}>
-                      <div className="whitespace-nowrap text-[8px] font-black text-slate-400">{marker.labels.join(" / ")}</div>
-                      <div className="mx-auto flex h-3 w-1.5 overflow-hidden">
-                        {marker.colors.map((color, index) => <span key={`${color}-${index}`} className={classes("h-full flex-1", color)} />)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-1 flex items-center justify-between text-[10px] font-black text-slate-500">
-                  <span>Frame {frame} / {Math.max(0, effectiveFrameCount - 1)}</span>
-                  <span>{ANIMATION_FPS} FPS / {(elapsedPlaybackMs / 1000).toFixed(2)}s of {(totalPlaybackMs / 1000).toFixed(2)}s</span>
-                </div>
-              </div>
-              <CastTimeline
-                combat={frameData?.combat}
-                frameCount={frameData?.segmentFrameCount || metadata.frameCount}
-                currentFrame={frameData?.sourceIndex ?? frame}
-              />
-            </>
-          )}
-        </main>
+                <CastTimeline
+                  combat={frameData?.combat}
+                  frameCount={frameData?.segmentFrameCount || metadata.frameCount}
+                  currentFrame={frameData?.sourceIndex ?? frame}
+                />
+              </>
+            )}
+          </Section>
+        </div>
 
-        <aside className={classes("fixed bottom-0 right-0 top-16 z-50 min-h-0 w-[min(94vw,410px)] overflow-hidden border-l border-slate-800 bg-slate-900 transition-transform xl:sticky xl:top-16 xl:z-auto xl:h-[calc(100dvh-4rem)] xl:w-auto xl:translate-x-0", rightOpen ? "translate-x-0" : "translate-x-full")}>
-          <div className="flex h-12 items-center justify-between border-b border-slate-800 px-3 xl:hidden"><span className="text-sm font-black">Inspector</span><IconButton label="Close inspector" onClick={() => setRightOpen(false)}><X className="h-4 w-4" /></IconButton></div>
-          <Inspector {...inspectorProps} />
-        </aside>
+        <Inspector {...inspectorProps} />
       </div>
-
-      {(leftOpen || rightOpen) && <button type="button" aria-label="Close panel" onClick={() => { setLeftOpen(false); setRightOpen(false); }} className="fixed inset-x-0 bottom-0 top-16 z-40 bg-black/65 xl:hidden" />}
-    </div>
+    </PageShell>
   );
 }

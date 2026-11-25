@@ -1,0 +1,29 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import RaybotSession from '../../../components/raybot/RaybotSession.jsx';
+import { host } from '../../../stuff';
+const raw = Astro.params.id ?? '';
+const id = /^\d{1,15}$/.test(raw) ? Number(raw) : NaN;
+if (!Number.isSafeInteger(id) || id <= 0) return Astro.redirect('/raybot/queue', 302);
+let name = '';
+let queue = '';
+let hidden = false;
+try {
+  const response = await fetch(`${host}/v2/raybot/queue/sessions/${id}?perPage=1`, { signal: AbortSignal.timeout(2500) });
+  if (response.ok) {
+    const data = await response.json();
+    const members = Array.isArray(data?.members) ? data.members.map((member) => String(member?.name ?? '').trim()).filter(Boolean) : [];
+    name = members.length === 2 ? members.join(' + ') : String(data?.name ?? '').trim();
+    const mode = data?.gameMode === 'rotating' ? 'Rotating' : data?.gameMode ?? '';
+    queue = [String(data?.region ?? '').toUpperCase(), mode].filter(Boolean).join(' ');
+  } else if (response.status === 404) Astro.response.status = 404;
+  else if (response.status === 403) hidden = true;
+} catch {}
+const title = name ? `${name}: ${queue} Ranked Session` : hidden ? 'Private profile' : 'Brawlhalla Ranked Session';
+const description = name
+  ? `${name}'s ${queue} ranked session: rating change, games, wins and every 5-minute snapshot.`
+  : 'A Brawlhalla ranked session: rating change, games, wins and every 5-minute snapshot.';
+---
+<Layout title={title} description={description} canonical={`/raybot/session/${id}`} noindex={hidden}>
+  <RaybotSession client:load id={id} />
+</Layout>

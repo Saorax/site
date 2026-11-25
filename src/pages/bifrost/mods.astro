@@ -1,6 +1,7 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import { highlight } from "../../components/bifrost/highlight.js";
+import { toolText } from "../../data/head.js";
 
 const filters = [
   { key: "all", label: "All" },
@@ -13,11 +14,11 @@ const filters = [
 
 const caps = [
   {
-    c: "look", kind: "Skins", visual: true, title: "Recoloured skins",
-    one: "Copy an existing skin and change its colours.",
+    c: "look", kind: "Skins", visual: true, title: "Recolored skins",
+    one: "Copy an existing skin and change its colors.",
     rows: [
-      ["How", "Copy an existing skin in costumeTypes, give it a new CostumeName, use @id for its IDs and set new colours."],
-      ["In game", "Character select, next to that legend's other skins. You own it right away. Mods > ADDED ITEMS has a preview."],
+      ["How", "Copy an existing skin in costumeTypes, give it a new CostumeName, use @id for its IDs and set new colors."],
+      ["In Game", "Character select, next to that legend's other skins. You own it right away. Mods > ADDED ITEMS has a preview."],
       ["Note", "You can't pick IDs yourself. @id takes the next free one, and it comes out the same on every PC with the same mods."],
     ],
     file: "sample-skin",
@@ -32,9 +33,9 @@ const caps = [
     c: "look", kind: "Skins", visual: true, title: "Skins with custom art",
     one: "New art, weapons, signature effects and sounds. Added as a new skin, the original stays.",
     rows: [
-      ["How", "An art-only SWF loaded through assets, plus MasterFileList and BoneSources rows. palette makes colour schemes work on it, animationAliases borrows lock-in animations, soundBanks adds its sounds."],
+      ["How", "An art-only SWF loaded through assets, plus MasterFileList and BoneSources rows. palette makes color schemes work on it, animationAliases borrows lock-in animations, soundBanks adds its sounds."],
       ["From a .bmod", "Drop a community .bmod skin into the mods folder and the game converts it. It becomes a new skin instead of replacing the original."],
-      ["In game", "Character select, with its weapons and signatures. People who don't have the mod see the skin it was copied from."],
+      ["In Game", "Character select, with its weapons and signatures. People who don't have the mod see the skin it was copied from."],
     ],
     file: "mod.json (parts)",
     code: `"assets": { "bones/Bones_MySkin.swf": "bones/Bones_MySkin.swf" },
@@ -44,11 +45,11 @@ const caps = [
   "colours": { "3a7bd5": ["1a8c82", 0.016, -0.067, -0.02] } }`,
   },
   {
-    c: "look", kind: "Colours", visual: true, title: "Colour schemes",
-    one: "Extra colours in the colour picker.",
+    c: "look", kind: "Colors", visual: true, title: "Color Schemes",
+    one: "Extra color schemes in the color picker.",
     rows: [
-      ["How", "ColorSchemeTypes rows. The in-game Colour editor can write these for you."],
-      ["In game", "The colour picker, for every legend. Bifrost allows up to 1024 colour schemes (the game stops at 160)."],
+      ["How", "ColorSchemeTypes rows. Mods > COLOUR EDITOR in Bifrost can write these for you."],
+      ["In Game", "The color picker, for every legend. Bifrost allows up to 1024 color schemes (the game stops at 160)."],
       ["Note", "The game is strict about this table. Copy a full existing row and edit that."],
     ],
     file: "sample-tables",
@@ -64,7 +65,7 @@ const caps = [
     one: "Also emojis, sidekicks, KO effects, borders and titles. Each one starts as a copy of a game item.",
     rows: [
       ["How", "Rows in weaponSkinTypes, avatarTypes, TauntTypes, EmojiTypes, SpawnBotTypes, TrailEffectTypes, SeasonBorderTypes or MonikerTypes."],
-      ["In game", "The normal loadout and podium pickers, already owned. Added podiums, player themes and companions are owned too."],
+      ["In Game", "The normal loadout and podium pickers, already owned. Added podiums, player themes and companions are owned too."],
       ["Note", "Emotes, sidekicks, KO effects and borders can go up to ID 1023."],
     ],
     file: "sample-items",
@@ -81,7 +82,7 @@ const caps = [
     one: "A new playable legend with its own name, stats, stances and default skin.",
     rows: [
       ["How", "A HeroTypes row (stats have to add up to 22), a default skin in costumeTypes, ten RuneTypes stance rows, and default weaponSkinTypes for both weapons."],
-      ["In game", "The character select roster."],
+      ["In Game", "The character select roster."],
       ["Limits", "For now a new legend uses another legend's animations, weapons, portrait and sounds. tools/check_legend_mod.py runs the game's checks on it before you start the game."],
     ],
     file: "sample-legend",
@@ -97,7 +98,7 @@ const caps = [
     rows: [
       ["How", "A stance row in RuneTypes for one legend's stance, or a StatTypes copy for a stat value."],
       ["Editor", "The Move editor's LEGEND and STAT POINTS tabs do the same and save a mod."],
-      ["In game", "Any match with that legend, and the stance panel in the loadout window."],
+      ["In Game", "Any match with that legend, and the stance panel in the loadout window."],
     ],
     file: "mod.json",
     code: `"RuneTypes": [ { "stance": "Viking", "index": 0,
@@ -124,7 +125,7 @@ const caps = [
     one: "New modes for Couch Party and custom rooms, based on an existing mode's rules.",
     rows: [
       ["How", "A ScoringTypes row and a GameModeTypes row, usually copies of an existing mode. You can change lives, score to win, teams, items, timers, maps, icon, name and description."],
-      ["In game", "The mode list in Couch Party and custom rooms."],
+      ["In Game", "The mode list in Couch Party and custom rooms."],
       ["Bots", "Bots know how to play King of the Hill style modes. Other new modes get normal bots."],
     ],
     file: "sample-mode: King of the Hill",
@@ -170,7 +171,7 @@ const caps = [
     one: "Different art for the game's existing maps. Each player picks what they want per map.",
     rows: [
       ["How", "A mapArt block: your art files (at the same paths as the game's), which maps they're for, and thumbnails."],
-      ["In game", "Mods > MAP ART. For each map pick the game's art, a mod's, shuffle (random each time) or mass (every piece random). Thumbnails and loading screens match."],
+      ["In Game", "Mods > MAP ART. For each map pick the game's art, a mod's, shuffle (random each time) or mass (every piece random). Thumbnails and loading screens match."],
       ["Note", "No restart needed to turn it on or off."],
     ],
     file: "mod.json",
@@ -186,7 +187,7 @@ const caps = [
     rows: [
       ["How", "A music block with your tracks (title and volume are optional) and what they replace. *battle means every map."],
       ["Tool", "tools/make_music_pack.py makes a music mod from a folder of MP3s."],
-      ["In game", "Mods > AUDIO lists every change and whether it's active. No restart needed."],
+      ["In Game", "Mods > AUDIO lists every change and whether it's active. No restart needed."],
     ],
     file: "sample-music",
     code: `"music": {
@@ -215,7 +216,7 @@ const caps = [
     one: "Change menu text, item names and descriptions, or add text for your own items.",
     rows: [
       ["How", "strings, per language, using the game's text keys."],
-      ["In game", "Anywhere the game uses that key."],
+      ["In Game", "Anywhere the game uses that key."],
     ],
     file: "sample-strings",
     code: `"strings": {
@@ -257,7 +258,7 @@ const firstMod = `{
 
 const samples = [
   ["sample-strings", "Text", "Changes the text of the main menu's Offline button."],
-  ["sample-tables", "Colours", "Adds a teal colour scheme and renames Bödvar on character select."],
+  ["sample-tables", "Colors", "Adds a teal color scheme and renames Bödvar on character select."],
   ["sample-language", "Language", "Adds Pirate, a copy of English with menu text reworded."],
   ["sample-skin", "Skin", "Adds Sample Tealbear, a teal and gold Bödvar skin based on Bear."],
   ["sample-items", "Items", "Adds a hammer, avatar, emote, emoji, sidekick, KO effect, border and title."],
@@ -276,7 +277,7 @@ const editors = [
     out: "mods\\my-colors",
   },
   {
-    title: "Move editor", where: "Training > Settings > PRACTICE",
+    title: "Move Editor", where: "Training > Settings > PRACTICE",
     points: ["The common columns of a move, grouped, or all 184", "Hitboxes shown on the legend, drag to move or resize, step through frames", "Stance stats and stat points", "Changes apply right away in Training"],
     out: "mods\\my-moves or mods\\moves-<name>",
   },
@@ -305,7 +306,7 @@ const fields = [
   ["strings", "Text, per language."],
   ["files", "XML files such as map layouts."],
   ["assets", "The game reads your file instead of one of its own."],
-  ["palette", "Shade-preserving colour schemes for a skin with its own art: each drawn shade (hex) lists its anchor colour (one of the skin's Define colours, hex) and its hue, lightness and saturation offsets from it."],
+  ["palette", "Shade-preserving color schemes for a skin with its own art: each drawn shade (hex) lists its anchor color (one of the skin's Define colors, hex) and its hue, lightness and saturation offsets from it."],
   ["animationAliases", "Share another skin's lock-in and select animations."],
   ["soundBanks", "Wwise sound banks in the mod folder."],
   ["mapArt, music, sounds", "Art for existing maps, tracks, sound effects."],
@@ -358,83 +359,118 @@ const heroCode = `{
   "strings": { "English": { "BHSample_Tealbear_DisplayName": "Tealbear" } }
 }`;
 
-const card = "rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900";
-const label = "text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400";
-const pre = "overflow-x-auto rounded-xl bg-slate-950 p-4 text-[13px] leading-relaxed text-slate-200 ring-1 ring-slate-800";
+const pageSections = [
+  ["start", "Getting started"],
+  ["catalogue", "What you can change"],
+  ["examples", "Example mods"],
+  ["tools", "Editors and tools"],
+  ["reference", "mod.json reference"],
+  ["report", "Load report and settings"],
+  ["bmod", ".bmod files"],
+  ["sharing", "Sharing mods"],
+  ["online", "Mods online"],
+  ["limits", "Limits"],
+];
+
+const card = "rounded-xl border border-slate-700 bg-slate-950/60";
+const box = "scroll-mt-32 grid gap-3 rounded-2xl border border-slate-700 bg-slate-900/80 p-3 shadow-sm";
+const title = "text-lg font-bold text-white";
+const label = "text-xs font-bold uppercase tracking-wide text-slate-400";
+const pill = "inline-flex items-center gap-1 whitespace-nowrap rounded-lg border px-2 py-0.5 text-xs font-bold";
+const visualPill = `${pill} border-emerald-300/40 bg-emerald-500/20 text-emerald-100`;
+const gameplayPill = `${pill} border-amber-300/40 bg-amber-500/20 text-amber-100`;
+const pre = "overflow-x-auto rounded-xl bg-slate-950 p-3 text-[13px] leading-relaxed text-slate-200 ring-1 ring-slate-800";
 ---
 
-<Layout title="Bifrost Mod Kit">
-  <div class="mx-auto max-w-7xl px-3 py-6 sm:px-4 lg:px-6">
+<Layout title="Mod Kit · Bifrost" description={toolText("/bifrost/mods")}>
+  <div class="min-h-screen bg-slate-950 text-slate-100">
+  <div class="space-y-3 p-2 sm:p-3">
 
-    <section class="grid items-center gap-6 lg:grid-cols-[1.05fr_1fr]">
-      <div class="grid gap-4">
-                <h1 class="text-4xl font-black tracking-tight sm:text-5xl">Bifrost Mod Kit</h1>
-        <p class="max-w-2xl text-lg text-slate-600 dark:text-slate-300">Bifrost mods are folders in the game's <code class="rounded bg-slate-200 px-1 text-base dark:bg-slate-800">mods</code> folder. Each one has a <code class="rounded bg-slate-200 px-1 text-base dark:bg-slate-800">mod.json</code> that lists what it adds or changes: game data rows, text, art, music or sounds. They load when the game starts. Below is what you can change, with examples from the sample mods.</p>
-        <div class="flex flex-wrap gap-2 text-sm font-black">
-          <a href="#start" class="rounded-xl bg-blue-500 px-4 py-2 text-white hover:bg-blue-600">Getting started</a>
-          <a href="#catalogue" class="rounded-xl border border-slate-300 px-4 py-2 hover:border-blue-400 hover:text-blue-500 dark:border-slate-700">What you can change</a>
-          <a href="https://github.com/Saorax/bifrost" class="rounded-xl border border-slate-300 px-4 py-2 hover:border-blue-400 hover:text-blue-500 dark:border-slate-700">Bifrost on GitHub</a>
+    <a href="/bifrost" class="-my-2 inline-flex py-2.5 text-sm font-bold text-blue-300 hover:text-blue-200">← Bifrost</a>
+
+    <div class="grid gap-3 xl:grid-cols-[13rem_minmax(0,1fr)]">
+    <nav aria-label="On this page" class="-mx-2 overflow-x-auto px-2 sm:-mx-3 sm:px-3 xl:sticky xl:top-20 xl:mx-0 xl:max-h-[calc(100dvh-6rem)] xl:self-start xl:overflow-y-auto xl:px-0 app-scrollbar">
+      <p class={`${label} mb-2 hidden xl:block`}>On this page</p>
+      <ul class="flex gap-2 xl:grid xl:gap-0.5">
+        {pageSections.map(([id, name]) => (
+          <li class="shrink-0"><a href={`#${id}`} data-kit-jump={id} class="block whitespace-nowrap rounded-xl border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-200 hover:border-slate-500 xl:rounded-lg xl:border-transparent xl:bg-transparent xl:px-2 xl:font-bold xl:hover:bg-slate-800/70 aria-[current=true]:border-blue-400 aria-[current=true]:bg-blue-500/15 aria-[current=true]:text-white">{name}</a></li>
+        ))}
+      </ul>
+    </nav>
+    <div class="min-w-0 space-y-3">
+
+    <header class="grid items-center gap-3 rounded-2xl border border-slate-700 bg-slate-900 p-3 shadow-sm lg:grid-cols-[1.05fr_1fr]">
+      <div class="grid gap-3">
+        <div>
+          <div class="text-xs font-bold uppercase tracking-wide text-blue-300">Bifrost</div>
+          <h1 class="mt-1 text-2xl font-bold text-white sm:text-3xl">Mod Kit</h1>
+        </div>
+        <p class="max-w-2xl text-base text-slate-200">Bifrost mods are folders in the game's <code class="rounded bg-slate-800 px-1">mods</code> folder. Each one has a <code class="rounded bg-slate-800 px-1">mod.json</code> that lists what it adds or changes: game data rows, text, art, music or sounds. They load when the game starts.</p>
+        <div class="flex flex-wrap gap-2 text-sm font-bold">
+          <a href="#start" class="rounded-xl border border-blue-400 bg-blue-500 px-3 py-2 text-white hover:bg-blue-400">Getting started</a>
+          <a href="#catalogue" class="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-300 hover:border-slate-500">What you can change</a>
+          <a href="https://github.com/Saorax/bifrost" class="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-300 hover:border-slate-500">Bifrost on GitHub</a>
         </div>
       </div>
       <div class="min-w-0">
         <p class={`${label} mb-2`}>mods\sample-skin\mod.json</p>
         <pre class={pre}><code set:html={highlight(heroCode)} /></pre>
       </div>
-    </section>
+    </header>
 
-    <section id="start" class="mt-10 grid gap-4">
+    <section id="start" class={box}>
       <div>
-        <h2 class="text-3xl font-black">Getting started</h2>
+        <h2 class={title}>Getting started</h2>
       </div>
-      <div class="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-        <ol class="grid gap-3 sm:grid-cols-2">
+      <div class="grid gap-3 lg:grid-cols-[1.2fr_1fr]">
+        <ol class="grid gap-3 sm:grid-cols-2 min-[137.5rem]:grid-cols-4">
           {steps.map(([t, b], i) => (
-            <li class={`${card} grid gap-1 p-4`}>
-              <span class="text-3xl font-black text-blue-500">{i + 1}</span>
-              <p class="font-black">{t}</p>
-              <p class="text-sm text-slate-600 dark:text-slate-300">{b}</p>
+            <li class={`${card} grid gap-1 p-3`}>
+              <span class="text-2xl font-bold text-blue-300">{i + 1}</span>
+              <p class="font-bold text-white">{t}</p>
+              <p class="text-sm text-slate-300">{b}</p>
             </li>
           ))}
         </ol>
         <div class="min-w-0">
           <p class={`${label} mb-2`}>mods\my-first-mod\mod.json</p>
           <pre class={pre}><code set:html={highlight(firstMod)} /></pre>
-          <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">After a restart, the Offline button on the main menu says "Practice".</p>
+          <p class="mt-2 text-sm text-slate-300">After a restart, the Offline button on the main menu says "Practice".</p>
         </div>
       </div>
     </section>
 
-    <section id="catalogue" class="mt-10 grid gap-4">
+    <section id="catalogue" class={box}>
       <div class="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 class="text-3xl font-black">What you can change</h2>
+          <h2 class={title}>What you can change</h2>
         </div>
-        <p class="max-w-2xl text-sm text-slate-600 dark:text-slate-300">Click a card for details and an example. <b class="text-emerald-600 dark:text-emerald-400">Visual</b> mods are fine online. <b class="text-amber-600 dark:text-amber-400">Gameplay</b> mods only work offline and in custom rooms where everyone has the same mods.</p>
+        <p class="max-w-2xl text-sm text-slate-300"><b class="text-emerald-300">Visual</b> mods are fine online. <b class="text-amber-300">Gameplay</b> mods only work offline and in custom rooms where everyone has the same mods.</p>
       </div>
       <div class="flex flex-wrap gap-2" role="group" aria-label="Filter the catalogue">
         {filters.map((f, i) => (
           <button type="button" data-kit-filter={f.key} aria-pressed={i === 0 ? "true" : "false"}
-            class="rounded-xl border border-slate-300 px-3 py-1.5 text-sm font-black text-slate-700 transition hover:border-blue-400 aria-pressed:border-blue-500 aria-pressed:bg-blue-500 aria-pressed:text-white dark:border-slate-700 dark:text-slate-200">{f.label}</button>
+            class="rounded-lg bg-slate-800 px-2.5 py-1 text-xs font-bold text-slate-300 transition hover:bg-slate-700 aria-pressed:bg-blue-500 aria-pressed:text-white">{f.label}</button>
         ))}
       </div>
-      <div class="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div class="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 min-[137.5rem]:grid-cols-5">
         {caps.map((cap) => (
-          <details data-kit-card={cap.c} class={`${card} group open:col-span-full open:border-blue-500`}>
-            <summary class="grid cursor-pointer list-none gap-1.5 p-4 marker:hidden">
+          <details data-kit-card={cap.c} class={`${card} group open:col-span-full open:border-blue-400`}>
+            <summary class="grid cursor-pointer list-none gap-1.5 p-3 marker:hidden">
               <span class="flex items-center justify-between gap-2">
                 <span class={label}>{cap.kind}</span>
-                <span class:list={["rounded-full px-2.5 py-0.5 text-xs font-black uppercase", cap.visual ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-amber-500/15 text-amber-700 dark:text-amber-400"]}>{cap.visual ? "Visual" : "Gameplay"}</span>
+                <span class={cap.visual ? visualPill : gameplayPill}>{cap.visual ? "Visual" : "Gameplay"}</span>
               </span>
-              <span class="text-xl font-black">{cap.title}</span>
-              <span class="text-sm text-slate-600 dark:text-slate-300">{cap.one}</span>
-              <span class="text-xs font-black uppercase tracking-wider text-blue-500 group-open:hidden">Details</span>
+              <span class="text-lg font-bold text-white">{cap.title}</span>
+              <span class="max-w-prose text-sm text-slate-300">{cap.one}</span>
+              <span class="text-xs font-bold uppercase tracking-wider text-blue-300 group-open:hidden">Details</span>
             </summary>
-            <div class="grid gap-4 px-4 pb-4 lg:grid-cols-[1fr_1.15fr]">
+            <div class="grid gap-3 px-3 pb-4 lg:grid-cols-[1fr_1.15fr]">
               <dl class="grid content-start gap-3">
                 {cap.rows.map(([k, v]) => (
                   <div>
-                    <dt class="text-xs font-black uppercase tracking-wider text-blue-500">{k}</dt>
-                    <dd class="text-sm">{v}</dd>
+                    <dt class="text-xs font-bold uppercase tracking-wider text-blue-300">{k}</dt>
+                    <dd class="max-w-prose text-sm">{v}</dd>
                   </div>
                 ))}
               </dl>
@@ -446,77 +482,77 @@ const pre = "overflow-x-auto rounded-xl bg-slate-950 p-4 text-[13px] leading-rel
           </details>
         ))}
       </div>
-      <p class="text-sm text-slate-600 dark:text-slate-300">Other data tables work the same way (map lists, custom game types, music, effect swaps and so on).</p>
+      <p class="max-w-prose text-sm text-slate-300">Other data tables work the same way (map lists, custom game types, music, effect swaps and so on).</p>
     </section>
 
-    <section class="mt-10 grid gap-4">
+    <section id="examples" class={box}>
       <div>
-        <h2 class="text-3xl font-black">Example mods</h2>
-        <p class="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-300">These come with Bifrost in <code>examples/mods</code>. Copying one into your <code>mods</code> folder is a good way to start.</p>
+        <h2 class={title}>Example mods</h2>
+        <p class="mt-1 max-w-3xl text-sm text-slate-400">These come with Bifrost in <code>examples/mods</code>. Copying one into your <code>mods</code> folder is a good way to start.</p>
       </div>
-      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 min-[137.5rem]:grid-cols-5">
         {samples.map(([name, kind, about]) => (
-          <div class={`${card} grid gap-1 p-4`}>
+          <div class={`${card} grid gap-1 p-3`}>
             <span class="flex items-center justify-between gap-2">
-              <code class="font-bold text-blue-500">{name}</code>
+              <code class="font-bold text-blue-300">{name}</code>
               <span class={label}>{kind}</span>
             </span>
-            <p class="text-sm text-slate-600 dark:text-slate-300">{about}</p>
+            <p class="text-sm text-slate-300">{about}</p>
           </div>
         ))}
       </div>
     </section>
 
-    <section class="mt-10 grid gap-4">
+    <section id="tools" class={box}>
       <div>
-        <h2 class="text-3xl font-black">Editors and tools</h2>
-        <p class="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-300">The editors save normal mod folders, so you can turn them off or share them like any other mod.</p>
+        <h2 class={title}>Editors and tools</h2>
+        <p class="mt-1 max-w-3xl text-sm text-slate-400">The editors save normal mod folders, so you can turn them off or share them like any other mod.</p>
       </div>
       <div class="grid gap-3 md:grid-cols-3">
         {editors.map((e) => (
-          <div class={`${card} grid content-start gap-2 p-4`}>
-            <p class="text-xl font-black">{e.title}</p>
-            <p class="text-sm font-bold text-slate-500 dark:text-slate-400">{e.where}</p>
+          <div class={`${card} grid content-start gap-2 p-3`}>
+            <p class="text-lg font-bold text-white">{e.title}</p>
+            <p class="text-sm font-bold text-slate-400">{e.where}</p>
             <ul class="grid list-disc gap-1 pl-5 text-sm">{e.points.map((p) => <li>{p}</li>)}</ul>
-            <p class="font-mono text-xs text-blue-500">→ {e.out}</p>
+            <p class="font-mono text-xs text-blue-300">→ {e.out}</p>
           </div>
         ))}
       </div>
-      <div class={`${card} overflow-x-auto`}>
+      <div class={`${card} max-w-4xl overflow-x-auto`}>
         <table class="w-full text-left text-sm">
-          <thead><tr class={label}><th class="px-4 py-3">Creator tool</th><th class="px-4 py-3">What it does</th></tr></thead>
+          <thead><tr class={label}><th class="px-3 py-3">Creator tool</th><th class="px-3 py-3">What it does</th></tr></thead>
           <tbody>
             {tools.map(([t, d]) => (
-              <tr class="border-t border-slate-200 dark:border-slate-800"><td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-blue-500">{t}</td><td class="px-4 py-2">{d}</td></tr>
+              <tr class="border-t border-slate-800"><td class="whitespace-nowrap px-3 py-2 font-mono text-xs text-blue-300">{t}</td><td class="px-3 py-2">{d}</td></tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p class="text-sm text-slate-600 dark:text-slate-300">The Python tools are in Bifrost's source code. They read the game data from your own install.</p>
+      <p class="max-w-prose text-sm text-slate-300">The Python tools are in Bifrost's source code. They read the game data from your own install.</p>
     </section>
 
-    <section class="mt-10 grid gap-4">
+    <section id="reference" class={box}>
       <div>
-        <h2 class="text-3xl font-black">mod.json reference</h2>
-        <p class="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-300">Mods load in a fixed order, requirements first and then by id, so the same mods give the same result on every PC.</p>
+        <h2 class={title}>mod.json reference</h2>
+        <p class="mt-1 max-w-3xl text-sm text-slate-400">Mods load in a fixed order, requirements first and then by id, so the same mods give the same result on every PC.</p>
       </div>
-      <div class="grid gap-4 lg:grid-cols-2">
-        <div class={`${card} overflow-x-auto`}>
+      <div class="grid gap-3 lg:grid-cols-2">
+        <div class={`${card} max-w-4xl overflow-x-auto`}>
           <table class="w-full text-left text-sm">
-            <thead><tr class={label}><th class="px-4 py-3">Field</th><th class="px-4 py-3">Does</th></tr></thead>
+            <thead><tr class={label}><th class="px-3 py-3">Field</th><th class="px-3 py-3">Does</th></tr></thead>
             <tbody>
               {fields.map(([f, d]) => (
-                <tr class="border-t border-slate-200 dark:border-slate-800"><td class="px-4 py-2 font-mono text-xs text-blue-500">{f}</td><td class="px-4 py-2">{d}</td></tr>
+                <tr class="border-t border-slate-800"><td class="px-3 py-2 font-mono text-xs text-blue-300">{f}</td><td class="px-3 py-2">{d}</td></tr>
               ))}
             </tbody>
           </table>
         </div>
-        <div class={`${card} overflow-x-auto`}>
+        <div class={`${card} max-w-4xl overflow-x-auto`}>
           <table class="w-full text-left text-sm">
-            <thead><tr class={label}><th class="px-4 py-3">In a table</th><th class="px-4 py-3">Means</th></tr></thead>
+            <thead><tr class={label}><th class="px-3 py-3">In a table</th><th class="px-3 py-3">Means</th></tr></thead>
             <tbody>
               {forms.map(([f, d]) => (
-                <tr class="border-t border-slate-200 dark:border-slate-800"><td class="px-4 py-2 font-mono text-xs text-blue-500">{f}</td><td class="px-4 py-2">{d}</td></tr>
+                <tr class="border-t border-slate-800"><td class="px-3 py-2 font-mono text-xs text-blue-300">{f}</td><td class="px-3 py-2">{d}</td></tr>
               ))}
             </tbody>
           </table>
@@ -524,33 +560,33 @@ const pre = "overflow-x-auto rounded-xl bg-slate-950 p-4 text-[13px] leading-rel
       </div>
     </section>
 
-    <section class="mt-10 grid gap-4 lg:grid-cols-2">
+    <section id="report" class={`${box} lg:grid-cols-2`}>
       <div class="grid content-start gap-3">
         <div>
-          <h2 class="text-3xl font-black">Load report</h2>
-          <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">Each start writes <code>Documents\Bifrost\bh-mods.txt</code>. Lines start with one of these.</p>
+          <h2 class={title}>Load report</h2>
+          <p class="mt-1 text-sm text-slate-400">Each start writes <code>Documents\Bifrost\bh-mods.txt</code>. Lines start with one of these.</p>
         </div>
-        <div class={`${card} overflow-x-auto`}>
+        <div class={`${card} max-w-3xl overflow-x-auto`}>
           <table class="w-full text-left text-sm">
             <tbody>
               {report.map(([k, d], i) => (
-                <tr class:list={[i > 0 && "border-t border-slate-200 dark:border-slate-800"]}><td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-blue-500">{k}</td><td class="px-4 py-2">{d}</td></tr>
+                <tr class:list={[i > 0 && "border-t border-slate-800"]}><td class="whitespace-nowrap px-3 py-2 font-mono text-xs text-blue-300">{k}</td><td class="px-3 py-2">{d}</td></tr>
               ))}
             </tbody>
           </table>
         </div>
-        <p class="text-sm text-slate-600 dark:text-slate-300">If the game stops while loading, a row probably failed one of the game's checks: a missing field, stats that don't add up to 22, a legend with fewer than ten stances, or a map with no background or bot paths. Copying full rows and running the checker tools catches most of these.</p>
+        <p class="max-w-prose text-sm text-slate-300">If the game stops while loading, a row probably failed one of the game's checks: a missing field, stats that don't add up to 22, a legend with fewer than ten stances, or a map with no background or bot paths. Copying full rows and running the checker tools catches most of these.</p>
       </div>
       <div class="grid content-start gap-3">
         <div>
-          <h2 class="text-3xl font-black">Mod settings</h2>
-          <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">In <code>Documents\Bifrost\bh-mod-settings.json</code>. Most of these are set from the Mods screen.</p>
+          <h2 class={title}>Mod settings</h2>
+          <p class="mt-1 text-sm text-slate-400">In <code>Documents\Bifrost\bh-mod-settings.json</code>. Most of these are set from the Mods screen.</p>
         </div>
-        <div class={`${card} overflow-x-auto`}>
+        <div class={`${card} max-w-3xl overflow-x-auto`}>
           <table class="w-full text-left text-sm">
             <tbody>
               {settings.map(([k, d], i) => (
-                <tr class:list={[i > 0 && "border-t border-slate-200 dark:border-slate-800"]}><td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-blue-500">{k}</td><td class="px-4 py-2">{d}</td></tr>
+                <tr class:list={[i > 0 && "border-t border-slate-800"]}><td class="whitespace-nowrap px-3 py-2 font-mono text-xs text-blue-300">{k}</td><td class="px-3 py-2">{d}</td></tr>
               ))}
             </tbody>
           </table>
@@ -558,30 +594,30 @@ const pre = "overflow-x-auto rounded-xl bg-slate-950 p-4 text-[13px] leading-rel
       </div>
     </section>
 
-    <section id="bmod" class="mt-10 grid gap-4">
+    <section id="bmod" class={box}>
       <div>
-        <h2 class="text-3xl font-black">.bmod files</h2>
-        <p class="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-300">Community .bmod files are turned into normal Bifrost mods by the game itself. A skin from a .bmod is added as a new skin next to the one it was made for, so the original stays.</p>
+        <h2 class={title}>.bmod files</h2>
+        <p class="mt-1 max-w-3xl text-sm text-slate-400">Community .bmod files are turned into normal Bifrost mods by the game itself. A skin from a .bmod is added as a new skin next to the one it was made for, so the original stays.</p>
       </div>
       <ol class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[["Add it", "Drop the .bmod into the mods folder, or press IMPORT .BMOD on the Mods screen and pick it."],
           ["Converted", "At the main menu the game converts it into a mod folder and moves the .bmod inside it. A popup lists what was added."],
           ["Restart", "Map art works straight away. Skins, weapon skins and avatars show up after the game restarts."],
           ["Remove", "Delete the mod's folder, or turn it off in the Installed tab like any other mod."]].map(([t, b], i) => (
-          <li class={`${card} grid content-start gap-1 p-4`}>
-            <span class="text-3xl font-black text-blue-500">{i + 1}</span>
-            <p class="font-black">{t}</p>
-            <p class="text-sm text-slate-600 dark:text-slate-300">{b}</p>
+          <li class={`${card} grid content-start gap-1 p-3`}>
+            <span class="text-2xl font-bold text-blue-300">{i + 1}</span>
+            <p class="font-bold text-white">{t}</p>
+            <p class="text-sm text-slate-300">{b}</p>
           </li>
         ))}
       </ol>
-      <p class="text-sm text-slate-600 dark:text-slate-300">Works for skins, weapon skins, avatars and map art. Sound banks that come as loose .bnk files next to the .bmod aren't converted in game; tools/bmod_import.py still handles those. A file that can't be read stays in the mods folder and isn't tried again until it changes. Adding the same .bmod twice just says it's already imported.</p>
+      <p class="max-w-prose text-sm text-slate-300">Works for skins, weapon skins, avatars and map art. Sound banks that come as loose .bnk files next to the .bmod aren't converted in game; tools/bmod_import.py still handles those. A file that can't be read stays in the mods folder and isn't tried again until it changes. Adding the same .bmod twice just says it's already imported.</p>
     </section>
 
-    <section class="mt-10 grid gap-4">
+    <section id="sharing" class={box}>
       <div>
-        <h2 class="text-3xl font-black">Sharing mods</h2>
-        <p class="mt-1 max-w-3xl text-sm text-slate-600 dark:text-slate-300">Bifrost servers have a mod library. Mods are only uploaded when you send them, and public ones have to be approved by the server's reviewers first.</p>
+        <h2 class={title}>Sharing mods</h2>
+        <p class="mt-1 max-w-3xl text-sm text-slate-400">Bifrost servers have a mod library. Mods are only uploaded when you send them, and public ones have to be approved by the server's reviewers first.</p>
       </div>
       <ol class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {[["Upload", "Send a mod from the Mods screen, private or public. You need to be signed in with Discord."],
@@ -589,58 +625,63 @@ const pre = "overflow-x-auto rounded-xl bg-slate-950 p-4 text-[13px] leading-rel
           ["Review", "Public mods wait until a reviewer tries them and approves or rejects them."],
           ["Community tab", "Approved mods show up for everyone, sorted by likes and downloads."],
           ["Updates", "People who got it from the Community tab get new versions automatically."]].map(([t, b], i) => (
-          <li class={`${card} grid content-start gap-1 p-4`}>
-            <span class="text-3xl font-black text-blue-500">{i + 1}</span>
-            <p class="font-black">{t}</p>
-            <p class="text-sm text-slate-600 dark:text-slate-300">{b}</p>
+          <li class={`${card} grid content-start gap-1 p-3`}>
+            <span class="text-2xl font-bold text-blue-300">{i + 1}</span>
+            <p class="font-bold text-white">{t}</p>
+            <p class="text-sm text-slate-300">{b}</p>
           </li>
         ))}
       </ol>
-      <p class="text-sm text-slate-600 dark:text-slate-300">Servers only accept data, images, audio and art-only SWFs (no code). Limits: 64 MB per mod, 30 mods or 512 MB per account.</p>
+      <p class="max-w-prose text-sm text-slate-300">Servers only accept data, images, audio and art-only SWFs (no code). Limits: 64 MB per mod, 30 mods or 512 MB per account.</p>
     </section>
 
-    <section class="mt-10 grid gap-4">
-      <div>
-        <h2 class="text-3xl font-black">Mods online</h2>
-      </div>
-      <div class="grid gap-3 md:grid-cols-2">
-        <div class={`${card} grid content-start gap-2 p-4`}>
-          <p class="flex flex-wrap items-center gap-2 text-xl font-black"><span class="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs uppercase text-emerald-600 dark:text-emerald-400">Visual</span>Fine anywhere</p>
-          <ul class="grid list-disc gap-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
-            <li>Skins, colours, weapon skins, avatars, emotes, emojis, sidekicks, borders, KO effects, titles</li>
-            <li>Text, languages, map art, music and sounds</li>
-            <li>Other players see your item if they have the mod, otherwise the game item it was copied from</li>
-          </ul>
+    <div class="grid gap-3 min-[112.5rem]:grid-cols-2">
+      <section id="online" class={`${box} min-w-0 content-start`}>
+        <div>
+          <h2 class={title}>Mods online</h2>
         </div>
-        <div class={`${card} grid content-start gap-2 p-4`}>
-          <p class="flex flex-wrap items-center gap-2 text-xl font-black"><span class="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs uppercase text-amber-700 dark:text-amber-400">Gameplay</span>Custom rooms</p>
-          <ul class="grid list-disc gap-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
-            <li>Legends, stats, moves, game modes, maps, animations, any other table</li>
-            <li>Blocked in casual and ranked queues</li>
-            <li>In custom rooms everyone needs the same gameplay mods. The host can send theirs to the room</li>
-            <li>Shared replays remember their mods and offer to download them</li>
-          </ul>
+        <div class="grid gap-3 md:grid-cols-2">
+          <div class={`${card} grid content-start gap-2 p-3`}>
+            <p class="flex flex-wrap items-center gap-2 text-lg font-bold text-white"><span class={visualPill}>Visual</span>Fine anywhere</p>
+            <ul class="grid list-disc gap-1 pl-5 text-sm text-slate-300">
+              <li>Skins, colors, weapon skins, avatars, emotes, emojis, sidekicks, borders, KO effects, titles</li>
+              <li>Text, languages, map art, music and sounds</li>
+              <li>Other players see your item if they have the mod, otherwise the game item it was copied from</li>
+            </ul>
+          </div>
+          <div class={`${card} grid content-start gap-2 p-3`}>
+            <p class="flex flex-wrap items-center gap-2 text-lg font-bold text-white"><span class={gameplayPill}>Gameplay</span>Custom rooms</p>
+            <ul class="grid list-disc gap-1 pl-5 text-sm text-slate-300">
+              <li>Legends, stats, moves, game modes, maps, animations, any other table</li>
+              <li>Blocked in casual and ranked queues</li>
+              <li>In custom rooms everyone needs the same gameplay mods. The host can send theirs to the room</li>
+              <li>Shared replays remember their mods and offer to download them</li>
+            </ul>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="mt-10 grid gap-4 pb-6">
-      <div>
-        <h2 class="text-3xl font-black">Limits</h2>
-      </div>
-      <ul class="grid gap-2 md:grid-cols-2">
-        {[["New mods need a restart.", "Map art, music and sounds don't, and F8 reloads map files."],
-          ["IDs are picked for you.", "Use @id and every PC gets the same number."],
-          ["When two mods change the same thing,", "the one that loads later wins. The report lists these."],
-          ["New legends reuse existing art.", "Animations, weapons, portrait and sounds come from the legend you copied."],
-          ["Music has to be MP3.", "The welcome announcer line can't be replaced."],
-          ["Mods can't contain code.", "New screens or new game rules need changes to Bifrost itself."],
-          ["Only in Bifrost.", "The Official client doesn't support mods."],
-          ["Mod items are unlocked.", "Anything a mod adds is owned as soon as it loads."]].map(([a, b]) => (
-          <li class={`${card} p-3 text-sm`}><b>{a}</b> <span class="text-slate-600 dark:text-slate-300">{b}</span></li>
-        ))}
-      </ul>
-    </section>
+      <section id="limits" class={`${box} min-w-0 content-start`}>
+        <div>
+          <h2 class={title}>Limits</h2>
+        </div>
+        <ul class="grid gap-2 md:grid-cols-2">
+          {[["New mods need a restart.", "Map art, music and sounds don't, and F8 reloads map files."],
+            ["IDs are picked for you.", "Use @id and every PC gets the same number."],
+            ["When two mods change the same thing,", "the one that loads later wins. The report lists these."],
+            ["New legends reuse existing art.", "Animations, weapons, portrait and sounds come from the legend you copied."],
+            ["Music has to be MP3.", "The welcome announcer line can't be replaced."],
+            ["Mods can't contain code.", "New screens or new game rules need changes to Bifrost itself."],
+            ["Only in Bifrost.", "The Official client doesn't support mods."],
+            ["Mod items are unlocked.", "Anything a mod adds is owned as soon as it loads."]].map(([a, b]) => (
+            <li class={`${card} p-3 text-sm`}><b>{a}</b> <span class="text-slate-300">{b}</span></li>
+          ))}
+        </ul>
+      </section>
+    </div>
+    </div>
+    </div>
+  </div>
   </div>
 
   <script>
@@ -651,5 +692,14 @@ const pre = "overflow-x-auto rounded-xl bg-slate-950 p-4 text-[13px] leading-rel
       cards.forEach((c) => (c.hidden = !(filter === "all" || c.dataset.kitCard === filter)));
     }
     buttons.forEach((b) => b.addEventListener("click", () => show(b.dataset.kitFilter ?? "all")));
+    const jumps = Array.from(document.querySelectorAll<HTMLAnchorElement>("[data-kit-jump]"));
+    const targets = jumps.map((a) => document.getElementById(a.dataset.kitJump ?? "")).filter((node): node is HTMLElement => Boolean(node));
+    const seen = new Set<string>();
+    const spy = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => (entry.isIntersecting ? seen.add(entry.target.id) : seen.delete(entry.target.id)));
+      const current = targets.find((node) => seen.has(node.id))?.id;
+      if (current) jumps.forEach((a) => a.setAttribute("aria-current", String(a.dataset.kitJump === current)));
+    }, { rootMargin: "-80px 0px -55% 0px" });
+    targets.forEach((node) => spy.observe(node));
   </script>
 </Layout>

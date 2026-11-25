@@ -1,34 +1,78 @@
 ---
 import Layout from '../../../layouts/Layout.astro';
-import { PageShell, Empty } from '../../../components/esports/ui.jsx';
+import FindForms from '../../../components/FindForms.astro';
+import { PageShell } from '../../../components/esports/ui.jsx';
 import { host } from '../../../stuff';
 
-const reference = Astro.params.smashId ?? '';
+const reference = (Astro.params.smashId ?? '').trim();
 
-async function byStartggId(id) {
+async function byProvider(provider, id) {
   try {
-    const response = await fetch(`${host}/v2/esports/players/by-provider/startgg/${encodeURIComponent(id)}`);
+    const response = await fetch(`${host}/v2/esports/players/by-provider/${provider}/${encodeURIComponent(id)}`);
     return response.ok ? await response.json() : null;
   } catch {
     return null;
   }
 }
 
-let player = /^\d+$/.test(reference) ? await byStartggId(reference) : null;
-if (!player) {
+async function bySlug(slug) {
   try {
-    const response = await fetch(`${host}/player/user/${encodeURIComponent(reference)}`);
+    const response = await fetch(`${host}/player/user/${encodeURIComponent(slug)}`);
     const user = response.ok ? await response.json() : null;
-    if (user?.id) player = await byStartggId(String(user.id));
+    return user?.id ? await byProvider('startgg', `user:${user.id}`) : null;
+  } catch {
+    return null;
+  }
+}
+
+const userId = /^(?:user:)?(\d{1,16})$/i.exec(reference)?.[1];
+const playerId = /^player:(\d{1,16})$/i.exec(reference)?.[1] ?? userId;
+const challengermode = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(reference);
+const slug = /^(?:user:)?([0-9a-f]{8})$/i.exec(reference)?.[1];
+
+let player = null;
+if (userId) player = await byProvider('startgg', `user:${userId}`);
+if (!player && playerId) player = await byProvider('startgg', `player:${playerId}`);
+if (!player && challengermode) player = await byProvider('challengermode', reference.toLowerCase());
+if (!player && slug) player = await bySlug(slug);
+if (player?.player_id) return Astro.redirect(`/esports/player/id/${player.player_id}${Astro.url.search}`, 301);
+
+const searchable = !playerId && !challengermode && reference.length >= 2;
+let matches = [];
+if (searchable) {
+  try {
+    const response = await fetch(`${host}/v2/esports/players?search=${encodeURIComponent(reference)}&perPage=8`);
+    matches = response.ok ? ((await response.json())?.items ?? []) : [];
   } catch {}
 }
-if (player?.player_id) return Astro.redirect(`/esports/player/id/${player.player_id}${Astro.url.search}`, 301);
+Astro.response.status = 404;
+const events = (count) => `${Number(count ?? 0).toLocaleString('en-US')} ${Number(count) === 1 ? 'event' : 'events'}`;
 ---
-<Layout title="Player not found · Brawlhalla Esports">
+<Layout title="Player Not Found" description="No player matches this link." noindex>
   <PageShell back={{ href: '/esports/player', label: 'Players' }}>
-    <Empty>
-      This player isn't in the esports database yet.
-      <a href={`/esports/player?search=${encodeURIComponent(reference)}`} class="ml-1 text-blue-500 hover:underline">Search players</a>
-    </Empty>
+    <section class="grid max-w-6xl gap-3 rounded-2xl border border-slate-700 bg-slate-900 p-3 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:items-start">
+      <div>
+        <h1 class="text-2xl font-bold text-white">Player not found</h1>
+        <p class="mt-1 text-sm text-slate-400">
+          No player matches <span class="font-mono text-slate-200 [overflow-wrap:anywhere]">{reference}</span>.
+        </p>
+        <div class="mt-3"><FindForms value={searchable ? reference : ''} legends={false} /></div>
+      </div>
+      {matches.length > 0 && (
+        <div>
+          <h2 class="text-xs font-bold uppercase tracking-wide text-slate-400">Did you mean</h2>
+          <ul class="mt-1 grid gap-1 sm:grid-cols-2 2xl:grid-cols-3">
+            {matches.map((match) => (
+              <li>
+                <a href={`/esports/player/id/${match.id}`} class="flex items-center justify-between gap-2 rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2 hover:border-blue-400">
+                  <span class="truncate text-sm font-bold text-white">{match.display_name}</span>
+                  <span class="shrink-0 text-xs text-slate-400">{events(match.event_appearances)}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   </PageShell>
 </Layout>

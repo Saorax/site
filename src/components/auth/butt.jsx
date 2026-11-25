@@ -1,110 +1,88 @@
-import React, { useState, useEffect } from 'react';
-import { host } from "../../stuff";
+import { useEffect, useState } from "react";
+import { Spinner, cx } from "../ui";
+import { authFetch, clearTokens, loginAvailable, loginUrl, readTokens, takeLoginResult } from "./session";
 
-function LoginButton() {
-  const [accessToken, setAccessToken] = useState(null);
-  const [user, setUser] = useState({})
-  const [backendLoginURL, setBackendLoginURL] = useState(null);
-  const fetchUserInfo = async (token) => {
-    try {
-      const response = await fetch(
-        `${host}/auth/user`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      let data = await response.json();
-      if (response.status == 401) {
-        //localStorage.removeItem("accessToken");
-        const refreshToken = localStorage.getItem("refreshToken");
-        const rp2 = await fetch(`${host}/auth/token/refresh`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ refresh_token: refreshToken }),
-        }).then(res => res.json());
-        document.cookie = `accessToken=${rp2.access_token}; Secure; SameSite=Strict; Path=/`;
-        localStorage.setItem("accessToken", rp2.access_token);
-        localStorage.setItem("refreshToken", rp2.refresh_token);
-        data = await fetch(
-          `${host}/auth/user`,
-          {
-            headers: { Authorization: `Bearer ${rp2.access_token}` },
-          }
-        ).then(res => res.json());
-      }
-      setUser(data.user);
-    } catch (error) { console.log(error) }
-  };
-  const renderImage = (src, type, fallbackText = "") => {
-    if (src) {
-      return <img className={`w-${type == 0 ? 12 : 16} h-${type == 0 ? 12 : 16} rounded-lg`} src={src} alt={fallbackText} />;
-    } else {
-      return (
-        <div className={`w-${type == 0 ? 12 : 16} h-${type == 0 ? 12 : 16} rounded-lg bg-slate-700 flex items-center justify-center text-white`}>
-          {fallbackText.charAt(0).toUpperCase() || "?"}
-        </div>
-      );
-    }
-  };
+const buttonBase = "inline-flex min-h-10 items-center justify-center rounded-xl border px-3 py-2 text-sm font-bold transition";
+
+function Avatar({ src, name }) {
+  if (src) return <img className="h-12 w-12 shrink-0 rounded-lg object-cover" src={src} alt="" />;
+  return <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-800 font-bold text-white">{(name || "?").charAt(0).toUpperCase()}</div>;
+}
+
+function LoginButton({ adminHref = "/esports/autoseed/admin" }) {
+  const [state, setState] = useState({ status: "checking", user: null, error: null, available: true });
+
   useEffect(() => {
-    const currentPage = encodeURIComponent(window.location.href);
-    setBackendLoginURL(`${host}/auth/login?redirect_uri=${currentPage}`);
-    const searchParams = new URLSearchParams(window.location.search);
-    const token = searchParams.get("access_token") || localStorage.getItem("accessToken");
-    const refreshToken = searchParams.get("refresh_token") || localStorage.getItem("refreshToken");
-    if (token) {
-      localStorage.setItem("accessToken", token);
-      localStorage.setItem("refreshToken", refreshToken);
-      document.cookie = `accessToken=${token}; Secure; SameSite=Strict; Path=/`;
-      setAccessToken(token);
-      fetchUserInfo(token);
-      searchParams.delete("access_token");
-      searchParams.delete("refresh_token");
-      const newSearch = searchParams.toString();
-      const newUrl = newSearch
-        ? `${window.location.origin}${window.location.pathname}?${newSearch}`
-        : `${window.location.origin}${window.location.pathname}`;
-      window.history.replaceState(null, "", newUrl);
-    }
+    let cancelled = false;
+    const run = async () => {
+      const result = takeLoginResult();
+      if (result.error) {
+        const available = await loginAvailable();
+        if (!cancelled) setState({ status: "signedOut", user: null, error: "start.gg didn't accept the sign-in. Try again.", available });
+        return;
+      }
+      if (readTokens().accessToken) {
+        try {
+          const { signedOut, response } = await authFetch("/auth/user");
+          if (!signedOut && response.ok) {
+            const data = await response.json();
+            if (!cancelled) setState({ status: "signedIn", user: data.user || {}, error: null, available: true });
+            return;
+          }
+        } catch {
+          if (!cancelled) setState({ status: "signedIn", user: {}, error: "Couldn't load your start.gg profile.", available: true });
+          return;
+        }
+      }
+      const available = await loginAvailable();
+      if (!cancelled) setState({ status: "signedOut", user: null, error: null, available });
+    };
+    run();
+    return () => { cancelled = true; };
   }, []);
-  const handleLogout = () => {
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("refreshToken");
-    document.cookie = 'Secure; SameSite=Strict; Path=/';
-    window.location.href = `${window.location.origin}${window.location.pathname}`;
-  };
-  if (!backendLoginURL) return null;
-  return (
-    <div className='text-white'>
-      {accessToken && user ?
-        <div className="flex">
-          {renderImage(user.images?.[0]?.url, 0, user.player?.gamerTag)}
-          <div className="pl-2">
-            <p className="text-xl">{user.player?.gamerTag}</p>
-            <a
-              className="text-slate-400 text-base"
-              target="_blank"
-              rel="noopener noreferrer"
-              href={"https://start.gg/" + user.slug}
-            >
-              {user.slug}
-            </a>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded ml-3"
-          >
-            Logout
-          </button>
-        </div> : <a className="flex" href={backendLoginURL}>
-          <button className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded ml-3">
-            Login with start.gg
-          </button>
-        </a>}
-    </div>
 
+  const signOut = () => {
+    clearTokens();
+    setState((current) => ({ ...current, status: "signedOut", user: null, error: null }));
+  };
+
+  if (state.status === "checking") {
+    return <div className="flex min-h-10 items-center gap-2 text-sm text-slate-400"><Spinner />Checking sign-in</div>;
+  }
+
+  if (state.status === "signedIn") {
+    const user = state.user || {};
+    const name = user.player?.gamerTag || user.slug || "start.gg user";
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          <Avatar src={user.images?.[0]?.url} name={name} />
+          <div className="min-w-0">
+            <div className="truncate font-bold text-white">{name}</div>
+            {user.slug && <a className="text-sm text-slate-400 hover:text-blue-300 hover:underline" target="_blank" rel="noopener noreferrer" href={`https://start.gg/${user.slug}`}>{user.slug}</a>}
+          </div>
+        </div>
+        {state.error && <p className="text-sm text-amber-200">{state.error}</p>}
+        <div className="flex flex-wrap gap-2">
+          <a href={adminHref} className={cx(buttonBase, "border-blue-400/40 bg-blue-500 text-white hover:bg-blue-400")}>Open Autoseed</a>
+          <button type="button" onClick={signOut} className={cx(buttonBase, "border-slate-700 bg-slate-800 text-slate-100 hover:bg-slate-700")}>Sign out</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {state.error && <p className="text-sm text-rose-200">{state.error}</p>}
+      {state.available ? (
+        <a href={loginUrl()} className={cx(buttonBase, "border-emerald-400/40 bg-emerald-600 text-white hover:bg-emerald-500")}>Sign in with start.gg</a>
+      ) : (
+        <>
+          <span className={cx(buttonBase, "cursor-not-allowed border-slate-700 bg-slate-800 text-slate-400")} aria-disabled="true">Sign in with start.gg</span>
+          <p className="text-sm text-slate-400">start.gg sign-in isn't available on this server right now.</p>
+        </>
+      )}
+    </div>
   );
 }
 

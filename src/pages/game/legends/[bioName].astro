@@ -3,20 +3,31 @@ import Layout from "../../../layouts/Layout.astro";
 import LegendPage from "../../../components/game/LegendPage.jsx";
 const { bioName } = Astro.params;
 import { host } from "../../../stuff";
+import { legendHead } from "../../../data/head.js";
+import { closestNames } from "../../../data/not-found.js";
+import { legendHref } from "../../../components/ui/assets.js";
 const legends = await fetch(`${host}/game/legends/summary`).then(r => r.json())
 function normalizeString(input: string): string {
   return String(input || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase();
 }
+const slugKey = (input: string) => normalizeString(input).replace(/[^a-z0-9]/g, "");
+const slugKeys = (input: string) => [slugKey(input), slugKey(String(input || "").replace(/&/g, "and"))];
 const normalizedBioName = normalizeString(bioName);
-const legendSummary = legends.find((item) => normalizeString(item?.bio?.name?.normal) == normalizedBioName || normalizeString(item?.codeName) == normalizedBioName);
+const bioNameKey = slugKey(bioName);
+const legendSummary = legends.find((item) => normalizeString(item?.bio?.name?.normal) == normalizedBioName || normalizeString(item?.codeName) == normalizedBioName)
+  || legends.find((item) => bioNameKey && [...slugKeys(item?.bio?.name?.normal), ...slugKeys(item?.codeName)].includes(bioNameKey));
 const legend = legendSummary
   ? await fetch(`${host}/game/legends/${encodeURIComponent(legendSummary.id)}`).then(r => r.ok ? r.json() : null)
   : null;
 const currentIndex = legendSummary ? legends.findIndex(item => String(item?.id) === String(legendSummary?.id)) : -1;
 const prevLegends = currentIndex >= 0 ? legends.slice(Math.max(currentIndex - 2, 0), currentIndex) : [];
 const nextLegends = currentIndex >= 0 ? legends.slice(currentIndex + 1, currentIndex + 3) : [];
+const head = legend ? legendHead(legend, legendSummary) : null;
+const suggestions = legend ? [] : closestNames(bioName, legends.filter((item) => item?.bio?.name?.normal), (item) => [item.bio.name.normal, item.codeName], 6)
+  .map((item) => ({ name: item.bio.name.normal, href: legendHref(item) }));
+if (!legend) Astro.response.status = 404;
 ---
 
-<Layout title={legend?.bio?.name?.normal || "Legend"}>
-  <LegendPage client:load legend={legend} prevLegends={prevLegends} nextLegends={nextLegends} />
+<Layout title={head?.title ?? "Legend Not Found"} description={head?.description ?? "No legend has this name."} image={head?.image} imageAlt={head?.imageAlt} noindex={!legend}>
+  <LegendPage client:load legend={legend} prevLegends={prevLegends} nextLegends={nextLegends} missingName={legend ? undefined : bioName} suggestions={suggestions} />
 </Layout>

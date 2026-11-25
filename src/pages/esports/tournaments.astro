@@ -1,7 +1,8 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { TournamentsPage } from '../../components/esports/TournamentPages.jsx';
+import { toolText } from '../../data/head.js';
 ---
-<Layout title="Tournaments · Brawlhalla Esports">
+<Layout title="Brawlhalla Tournaments" description={toolText("/esports/tournaments")}>
   <TournamentsPage client:load />
 </Layout>

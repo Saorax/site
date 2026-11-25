@@ -1,0 +1,23 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import RaybotClan from '../../../components/raybot/RaybotClan.jsx';
+import { host } from '../../../stuff';
+const raw = Astro.params.id ?? '';
+const clanId = /^\d{1,12}$/.test(raw) ? Number(raw) : NaN;
+if (!Number.isSafeInteger(clanId) || clanId <= 0) return Astro.redirect('/raybot/clans', 302);
+let name = '';
+let missing = false;
+try {
+  const response = await fetch(`${host}/v2/raybot/clans/${clanId}`, { signal: AbortSignal.timeout(2500) });
+  if (response.ok) name = String((await response.json())?.name ?? '').trim();
+  else if (response.status === 404) missing = true;
+} catch {}
+if (missing) Astro.response.status = 404;
+const title = name ? `${name}: Brawlhalla Clan` : missing ? 'Clan not found' : 'Brawlhalla Clan';
+const description = name
+  ? `${name}'s Brawlhalla clan XP, tier, members with the XP each has given, and members who left.`
+  : 'Brawlhalla clan XP, tier, members with the XP each has given, and members who left.';
+---
+<Layout title={title} description={description} canonical={`/raybot/clan/${clanId}`} noindex={missing}>
+  <RaybotClan client:load clanId={clanId} />
+</Layout>

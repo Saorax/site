@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import UPNG from "upng-js";
 import GIF from "gif.js.optimized";
 import gifWorkerUrl from "gif.js.optimized/dist/gif.worker.js?url";
-import { ChevronDownIcon, ChevronRightIcon } from "@heroicons/react/20/solid";
+import { ChevronDownIcon, ChevronRightIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { PageShell, PageHeader, SidebarHeader, Section, Heading, Card, Pill, Tabs, SearchInput, SelectInput, Toggle, LoadingState, EmptyState, ErrorState, ImageTile, DataViewToggle, RawData, SourceList, useDataView, cx, fetchWithRetry, patchLabel, sortSourceFilterValues, sourceFilterValues, sourceSentence, sourceShortText } from "../../../../components/ui/index.js";
 import "../../../../../fonts/style.css";
 
 const UNRESOLVED_GRADIENT_DEFINE = "__UNRESOLVED_GRADIENT_DEFINE__";
@@ -191,6 +192,12 @@ function compactColorOverrides(overrides, base) {
     next[key] = normalized;
   });
   return next;
+}
+
+function isTeamColor(entry) {
+  if (entry?.teamColor) return true;
+  const detail = entry && entry.colorData ? entry.colorData : entry;
+  return Number(detail?.TeamColor) > 0;
 }
 
 function getColorSelectionKey(entry, idx = 0) {
@@ -633,6 +640,17 @@ function getContrastingTextColor(color) {
   return luminance > 0.5 ? "#000000" : "#FFFFFF";
 }
 
+function skinIconUrlFor(skin) {
+  const costumeData = skin?.costumeData || {};
+  if (isCrossoverSkin(skin) && costumeData.ReplacementPortraitFileName && costumeData.ReplacementPortrait) {
+    return `${host}/game/getGfx/${costumeData.ReplacementPortraitFileName}/${costumeData.ReplacementPortrait}M`;
+  }
+  if (costumeData.CostumeIconFileName && costumeData.CostumeIcon) {
+    return `${host}/game/getGfx/${costumeData.CostumeIconFileName}/${costumeData.CostumeIcon}`;
+  }
+  return null;
+}
+
 function LegendsGrid({
   legends,
   langs,
@@ -643,10 +661,10 @@ function LegendsGrid({
   searchQuery,
 }) {
   if (!legends || !langs) {
-    return <div className="px-3 py-2 text-xs text-slate-500">Loading legends...</div>;
+    return <LoadingState inline label="Loading legends…" />;
   }
   if (!legends.length) {
-    return <div className="px-3 py-2 text-xs text-slate-500">No legends available</div>;
+    return <EmptyState bare title="No legends" />;
   }
 
   const normalizedQuery = normalizeText(searchQuery);
@@ -661,11 +679,11 @@ function LegendsGrid({
     });
 
   if (!filtered.length) {
-    return <div className="px-3 py-2 text-xs text-slate-500">No legends match this search</div>;
+    return <EmptyState bare title="No legends match this search" />;
   }
 
   return (
-    <div className="grid grid-cols-3 gap-2 p-2 max-h-96 overflow-y-auto shadow-sm bg-slate-950/80">
+    <div className="grid max-h-96 shrink-0 auto-rows-max grid-cols-3 gap-2 overflow-y-auto pr-1 app-scrollbar">
       {filtered.map(({ legend, index, legendName }) => {
         const portraitFileName = legend?.heroData?.PortraitFileName;
         const portrait = legend?.heroData?.Portrait;
@@ -677,32 +695,34 @@ function LegendsGrid({
         const isBrowsing = browsingLegendIndex === index;
         const isActive = activeLegendIndex === index && activeSkinIndex != null;
 
-        return (<button
-          key={legend?.heroData?.LegendID ?? index}
-          type="button"
-          onClick={() => onSelectLegend(index)}
-          className={([
-            "group flex flex-col items-center gap-1 rounded-md border border-slate-700 bg-slate-900/80 p-2 text-[10px]",
-            "hover:border-sky-500 hover:bg-slate-900",
-            isBrowsing && "border-sky-400",
-            isActive && "border-emerald-400"
-          ].filter(Boolean).join(" "))}
-        >
-          <div className="relative w-full overflow-hidden rounded-md bg-slate-950 aspect-square flex items-center justify-center">
-            {portraitUrl && (
-              <img
-                src={portraitUrl}
-                alt={legendName}
-                className="h-20 w-20 object-contain"
-              />
-            )}
-          </div>
-          <div className="w-full truncate text-[10px] font-semibold text-slate-200 text-center">
-            {legendName}
-          </div>
-        </button>
+        return (
+          <ImageTile
+            key={legend?.heroData?.LegendID ?? index}
+            src={portraitUrl}
+            label={legendName}
+            onClick={() => onSelectLegend(index)}
+            selected={isBrowsing}
+            badge={isActive ? <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-slate-950" title="Current skin" /> : null}
+          />
         );
       })}
+    </div>
+  );
+}
+
+function SkinTiles({ items, activeLegendIndex, activeSkinIndex, onPick, showLegend = false }) {
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      {items.map(({ legendIndex, skinIndex, legendName, skinName, skinIconUrl, key }, i) => (
+        <ImageTile
+          key={key || `${legendIndex}-${skinIndex}-${i}`}
+          src={skinIconUrl}
+          label={skinName}
+          note={showLegend ? legendName : undefined}
+          onClick={() => onPick(legendIndex, skinIndex)}
+          selected={activeLegendIndex === legendIndex && activeSkinIndex === skinIndex}
+        />
+      ))}
     </div>
   );
 }
@@ -720,193 +740,31 @@ function SkinsGrid({
 
   const skins = Array.isArray(legend?.skins) ? legend.skins : [];
   if (!skins.length) {
-    return <div className="px-3 py-2 text-xs text-slate-500">No skins</div>;
+    return <EmptyState bare title="No skins" />;
   }
 
   const normalizedQuery = normalizeText(searchQuery);
   const filtered = skins
-    .map((skin, skinIndex) => {
-      const costumeData = skin?.costumeData || {};
-      const skinName = getSkinDisplayName(legend, skin, skinIndex, langs);
-
-      const costumeIconFileName = costumeData.CostumeIconFileName;
-      const costumeIcon = costumeData.CostumeIcon;
-      const replacementPortraitFileName = costumeData.ReplacementPortraitFileName;
-      const replacementPortrait = costumeData.ReplacementPortrait;
-      const crossover = isCrossoverSkin(skin);
-
-      let skinIconUrl = null;
-      if (crossover && replacementPortraitFileName && replacementPortrait) {
-        skinIconUrl = `${host}/game/getGfx/${replacementPortraitFileName}/${replacementPortrait}M`;
-      } else if (costumeIconFileName && costumeIcon) {
-        skinIconUrl = `${host}/game/getGfx/${costumeIconFileName}/${costumeIcon}`;
-      }
-
-      return { skinIndex, skinName, skinIconUrl };
-    })
+    .map((skin, skinIndex) => ({
+      legendIndex,
+      skinIndex,
+      skinName: getSkinDisplayName(legend, skin, skinIndex, langs),
+      skinIconUrl: skinIconUrlFor(skin),
+      key: `${legendIndex}-${skinIndex}`,
+    }))
     .filter(({ skinIndex }) => {
       if (!normalizedQuery) return true;
       return skinMatchesSearch(legend, skins[skinIndex], skinIndex, langs, normalizedQuery);
     });
 
   if (!filtered.length) {
-    return <div className="px-3 py-2 text-xs text-slate-500">No skins match this search</div>;
+    return <EmptyState bare title="No skins match this search" />;
   }
 
   return (
-    <div className="p-2 shadow-sm bg-slate-950/80 overflow-y-auto">
-      <div className="px-1 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-        Skins
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        {filtered.map(({ skinIndex, skinName, skinIconUrl }) => {
-          const isSelected = activeLegendIndex === legendIndex && activeSkinIndex === skinIndex;
-          return (
-            <button
-              key={skinIndex}
-              type="button"
-              onClick={() => onSelectSkin(legendIndex, skinIndex)}
-              className={([
-                "group flex flex-col items-center gap-1 rounded-md border border-slate-800 bg-slate-900/80 p-2 text-[10px]",
-                "hover:border-sky-500 hover:bg-slate-900",
-                isSelected && "border-emerald-400 bg-slate-900"
-              ].filter(Boolean).join(" "))}
-            >
-              <div className="relative w-full overflow-hidden rounded-md bg-slate-950 aspect-square flex items-center justify-center">
-                {skinIconUrl && (
-                  <img src={skinIconUrl} alt={skinName} className="h-20 w-20 object-contain" />
-                )}
-              </div>
-              <div className="w-full truncate text-[10px] font-medium text-slate-200 text-center">
-                {skinName}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-
-function MobileHorizontalGrid({ items, renderItem, twoRows }) {
-  return (
-    <div
-      className={([
-        "grid gap-2 overflow-x-auto pb-2",
-        twoRows ? "grid-rows-2 grid-flow-col auto-cols-[5.75rem]" : "grid-rows-1 grid-flow-col auto-cols-[5.75rem]"
-      ].filter(Boolean).join(" "))}
-      style={{ WebkitOverflowScrolling: "touch" }}
-    >
-      {items.map(renderItem)}
-    </div>
-  );
-}
-
-function MobileLegendsRow({ legends, langs, browsingLegendIndex, activeLegendIndex, activeSkinIndex, onSelectLegend, searchQuery }) {
-  if (!legends || !langs) return null;
-  const q = normalizeText(searchQuery);
-  const filtered = legends
-    .map((legend, index) => {
-      const legendName = getLegendDisplayName(legend, index, langs);
-      return { legend, index, legendName };
-    })
-    .filter((x) => !q || legendMatchesSearch(x.legend, x.index, langs, q));
-
-  const twoRows = !!q;
-
-  return (
-    <div className="px-2 pt-2">
-      <MobileHorizontalGrid
-        items={filtered}
-        twoRows={twoRows}
-        renderItem={({ legend, index, legendName }) => {
-          const portraitFileName = legend?.heroData?.PortraitFileName;
-          const portrait = legend?.heroData?.Portrait;
-          const portraitUrl = portraitFileName && portrait ? `${host}/game/getGfx/${portraitFileName}/${portrait}M` : null;
-          const isBrowsing = browsingLegendIndex === index;
-          const isActive = activeLegendIndex === index && activeSkinIndex != null;
-
-          return (
-            <button
-              key={legend?.heroData?.LegendID ?? index}
-              type="button"
-              onClick={() => onSelectLegend(index)}
-              className={([
-                "flex flex-col items-center gap-1 rounded-md border border-slate-700 bg-slate-900/80 p-2 text-[10px]",
-                "hover:border-sky-500 hover:bg-slate-900",
-                isBrowsing && "border-sky-400",
-                isActive && "border-emerald-400"
-              ].filter(Boolean).join(" "))}
-            >
-              <div className="relative w-full overflow-hidden rounded-md bg-slate-950 aspect-square flex items-center justify-center">
-                {portraitUrl && <img src={portraitUrl} alt={legendName} className="h-12 w-12 object-contain" />}
-              </div>
-              <div className="w-full truncate text-[10px] font-semibold text-slate-200 text-center">{legendName}</div>
-            </button>
-          );
-        }}
-      />
-    </div>
-  );
-}
-
-function MobileSkinsRow({ legend, legendIndex, langs, activeLegendIndex, activeSkinIndex, onSelectSkin, searchQuery }) {
-  if (!legend || !langs) return null;
-  const skins = Array.isArray(legend?.skins) ? legend.skins : [];
-  if (!skins.length) return null;
-
-  const q = normalizeText(searchQuery);
-  const filtered = skins
-    .map((skin, skinIndex) => {
-      const costumeData = skin?.costumeData || {};
-      const skinName = getSkinDisplayName(legend, skin, skinIndex, langs);
-
-      const costumeIconFileName = costumeData.CostumeIconFileName;
-      const costumeIcon = costumeData.CostumeIcon;
-      const replacementPortraitFileName = costumeData.ReplacementPortraitFileName;
-      const replacementPortrait = costumeData.ReplacementPortrait;
-      const crossover = isCrossoverSkin(skin);
-
-      let skinIconUrl = null;
-      if (crossover && replacementPortraitFileName && replacementPortrait) {
-        skinIconUrl = `${host}/game/getGfx/${replacementPortraitFileName}/${replacementPortrait}M`;
-      } else if (costumeIconFileName && costumeIcon) {
-        skinIconUrl = `${host}/game/getGfx/${costumeIconFileName}/${costumeIcon}`;
-      }
-
-      return { skinIndex, skinName, skinIconUrl };
-    })
-    .filter(({ skinIndex }) => !q || skinMatchesSearch(legend, skins[skinIndex], skinIndex, langs, q));
-
-  const twoRows = !!q;
-
-  return (
-    <div className="px-2">
-      <MobileHorizontalGrid
-        items={filtered}
-        twoRows={twoRows}
-        renderItem={({ skinIndex, skinName, skinIconUrl }) => {
-          const isSelected = activeLegendIndex === legendIndex && activeSkinIndex === skinIndex;
-          return (
-            <button
-              key={skinIndex}
-              type="button"
-              onClick={() => onSelectSkin(legendIndex, skinIndex)}
-              className={([
-                "flex flex-col items-center gap-1 rounded-md border border-slate-800 bg-slate-900/80 p-2 text-[10px]",
-                "hover:border-sky-500 hover:bg-slate-900",
-                isSelected && "border-emerald-400 bg-slate-900"
-              ].filter(Boolean).join(" "))}
-            >
-              <div className="relative w-full overflow-hidden rounded-md bg-slate-950 aspect-square flex items-center justify-center">
-                {skinIconUrl && <img src={skinIconUrl} alt={skinName} className="h-12 w-12 object-contain" />}
-              </div>
-              <div className="w-full truncate text-[10px] font-medium text-slate-200 text-center">{skinName}</div>
-            </button>
-          );
-        }}
-      />
+    <div>
+      <Heading>Skins</Heading>
+      <SkinTiles items={filtered} activeLegendIndex={activeLegendIndex} activeSkinIndex={activeSkinIndex} onPick={onSelectSkin} />
     </div>
   );
 }
@@ -1294,11 +1152,14 @@ export default function AnimDatabase() {
   const [rawAnimFrames, setRawAnimFrames] = useState(null);
   const [animLoading, setAnimLoading] = useState(false);
   const [animError, setAnimError] = useState(null);
+  const [animAttempt, setAnimAttempt] = useState(0);
   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
 
   const [selectedColorKey, setSelectedColorKey] = useState(null);
   const [colorSearchQuery, setColorSearchQuery] = useState("");
+  const [colorHow, setColorHow] = useState("");
+  const [showTeamColors, setShowTeamColors] = useState(false);
   const [skinPresetSearchQuery, setSkinPresetSearchQuery] = useState("");
   const [selectedSkinPresetKey, setSelectedSkinPresetKey] = useState(null);
   const [selectedSavedColorId, setSelectedSavedColorId] = useState(null);
@@ -1320,6 +1181,7 @@ export default function AnimDatabase() {
   const svgContainerRef = useRef(null);
   const mainSvgViewportRef = useRef(null);
   const [showPip, setShowPip] = useState(false);
+  const [pipHidden, setPipHidden] = useState(false);
   const pipRef = useRef(null);
   const [pipPos, setPipPos] = useState({ x: null, y: null });
   const [pipDragging, setPipDragging] = useState(false);
@@ -1334,26 +1196,17 @@ export default function AnimDatabase() {
   const urlHydratedRef = useRef(false);
   const urlSyncTimerRef = useRef(null);
   const deletedSavedColorTimerRef = useRef(null);
-  const [isLargeScreen, setIsLargeScreen] = useState(() =>
-    typeof window === "undefined" ? true : window.matchMedia("(min-width: 1024px)").matches
-  );
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const retryLoad = useCallback(() => setLoadAttempt((value) => value + 1), []);
 
   const openGroupsRef = useRef({});
   const [unusedDefinesOpen, setUnusedDefinesOpen] = useState(false);
+  const { full: dataFull } = useDataView();
   const [, forceRerender] = useState(0);
 
   useEffect(() => {
     selectedDefineKeyRef.current = selectedDefineKey;
   }, [selectedDefineKey]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
-    const mq = window.matchMedia("(min-width: 1024px)");
-    const update = () => setIsLargeScreen(mq.matches);
-    update();
-    mq.addEventListener?.("change", update);
-    return () => mq.removeEventListener?.("change", update);
-  }, []);
 
   const legends = useMemo(() => (Array.isArray(legendData) ? legendData : []), [legendData]);
   const normalizedQuery = useMemo(() => normalizeText(searchQuery), [searchQuery]);
@@ -1369,15 +1222,22 @@ export default function AnimDatabase() {
   }, []);
 
   useEffect(() => {
+    const readJson = async (url) => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`${url} returned ${res.status}`);
+      return res.json();
+    };
     async function loadAll() {
       try {
         setLoadError(null);
-        const data = await fetch(`${host}/game/colorSchemeCreatorData`).then((res) => res.json());
-        const data2 = await fetch(`${host}/game/langs/0`).then((res) => res.json());
+        const data = await readJson(`${host}/game/colorSchemeCreatorData`);
+        const names = data.names && Object.keys(data.names).length
+          ? data.names
+          : (await readJson(`${host}/game/langs/0`))[0].content;
         setColorData(data.colors);
         setLegendData(data.legends);
         setOriginalLegendData(data.legends);
-        setLangData(data2[0].content);
+        setLangData(names);
 
         if (Array.isArray(data.legends) && data.legends.length > 0) {
           setBrowsingLegendIndex(0);
@@ -1386,11 +1246,11 @@ export default function AnimDatabase() {
         }
       } catch (err) {
         console.error(err);
-        setLoadError("Failed to load color creator data.");
+        setLoadError(err?.message || String(err));
       }
     }
     loadAll();
-  }, []);
+  }, [loadAttempt]);
 
   const browsingLegend =
     browsingLegendIndex != null && legends[browsingLegendIndex] ? legends[browsingLegendIndex] : null;
@@ -1771,18 +1631,6 @@ export default function AnimDatabase() {
     setPaletteOverrides((prev) => ({ ...(prev || {}), [swapKey]: targetBase }));
   }
 
-  function extractActiveColorOverrides(data, legendIndex, skinIndex) {
-    const legend = Array.isArray(data) ? data[legendIndex] : null;
-    const skin = legend?.skins?.[skinIndex];
-    const costumeData = skin?.costumeData || null;
-    if (!costumeData) return null;
-    const overrides = {};
-    Object.entries(costumeData).forEach(([k, v]) => {
-      if (k.endsWith("_Define") || k.endsWith("_Swap")) overrides[k] = v;
-    });
-    return overrides;
-  }
-
   const getBaseCostumeData = useCallback(
     (legendIndex, skinIndex) => {
       const data = Array.isArray(originalLegendData) ? originalLegendData : Array.isArray(legendData) ? legendData : null;
@@ -2134,8 +1982,8 @@ export default function AnimDatabase() {
     if (urlSyncTimerRef.current) clearTimeout(urlSyncTimerRef.current);
     urlSyncTimerRef.current = setTimeout(() => {
       const params = new URLSearchParams();
-      const heroName = activeLegend?.heroData?.HeroName || activeLegend?.Item || "";
-      const costumeName = activeSkin?.costumeData?.CostumeName || "";
+      const heroName = activeLegendName || activeLegend?.heroData?.HeroName || activeLegend?.Item || "";
+      const costumeName = activeSkinName || activeSkin?.costumeData?.CostumeName || "";
       if (heroName) params.set("hero", heroName);
       if (costumeName) params.set("skin", costumeName);
 
@@ -2167,7 +2015,9 @@ export default function AnimDatabase() {
   }, [
     activeBaseCostumeData,
     activeLegend,
+    activeLegendName,
     activeSkin,
+    activeSkinName,
     colorData,
     legends,
     paletteOverrides,
@@ -2237,50 +2087,30 @@ export default function AnimDatabase() {
       setIsAnimating(false);
       return;
     }
-    let cancelled = false;
-    let retryTimer = null;
-    let retryAttempt = 0;
+    const controller = new AbortController();
     setAnimLoading(true);
     setAnimError(null);
     setSelectedFrameIndex(0);
     setIsAnimating(false);
 
-    async function loadAnim() {
-      try {
-        const requestUrl = retryAttempt > 0
-          ? `${animUrl}${animUrl.includes("?") ? "&" : "?"}imageRetry=${retryAttempt}`
-          : animUrl;
-        const res = await fetch(requestUrl, { cache: "no-store" });
-        if (!res.ok) throw new Error(`Animation request failed with ${res.status}`);
-        let json;
-        try {
-          json = await res.json();
-        } catch {
-          json = null;
-        }
-        if (cancelled) return;
+    fetchWithRetry(animUrl, { signal: controller.signal, init: { cache: "no-store" } })
+      .then((res) => res.json().catch(() => null))
+      .then((json) => {
+        if (controller.signal.aborted) return;
         const frames = Array.isArray(json) ? json : (json && Array.isArray(json.frames) ? json.frames : []);
-        if (!frames.length) throw new Error("Animation response did not contain frames");
+        if (!frames.length) throw new Error("No frames in this animation.");
         setRawAnimFrames(frames);
         setAnimLoading(false);
-      } catch (err) {
-        if (cancelled) return;
+      })
+      .catch((err) => {
+        if (err?.name === "AbortError" || controller.signal.aborted) return;
         console.error(err);
         setRawAnimFrames(null);
-        setAnimLoading(true);
-        setAnimError(null);
-        retryTimer = setTimeout(() => {
-          retryAttempt += 1;
-          loadAnim();
-        }, 2000);
-      }
-    }
-    loadAnim();
-    return () => {
-      cancelled = true;
-      if (retryTimer) clearTimeout(retryTimer);
-    };
-  }, [animUrl]);
+        setAnimLoading(false);
+        setAnimError(err?.message || "Request failed");
+      });
+    return () => controller.abort();
+  }, [animUrl, animAttempt]);
 
   const totalFrames = Array.isArray(rawAnimFrames) ? rawAnimFrames.length : 0;
   const clampedFrameIndex = totalFrames > 0 ? Math.min(Math.max(selectedFrameIndex, 0), totalFrames - 1) : 0;
@@ -2440,12 +2270,10 @@ export default function AnimDatabase() {
   }, [displayFrameSvg, isAnimating]);
 
   const renderedSvg = useMemo(() => ({
-    mobile: scaledSvg && !isLargeScreen ? (isAnimating ? scaledSvg : prefixSvgIds(scaledSvg, "mobile_")) : null,
-    desktop: scaledSvg && isLargeScreen ? (isAnimating ? scaledSvg : prefixSvgIds(scaledSvg, "desktop_")) : null,
+    main: scaledSvg ? (isAnimating ? scaledSvg : prefixSvgIds(scaledSvg, "main_")) : null,
     pip: scaledSvg && !isAnimating ? prefixSvgIds(scaledSvg, "pip_") : null,
-    mobileHit: hitTestSvg && !isAnimating && !isLargeScreen ? prefixSvgIds(hitTestSvg, "mobile_hit_") : null,
-    desktopHit: hitTestSvg && !isAnimating && isLargeScreen ? prefixSvgIds(hitTestSvg, "desktop_hit_") : null,
-  }), [hitTestSvg, isAnimating, isLargeScreen, scaledSvg]);
+    mainHit: hitTestSvg && !isAnimating ? prefixSvgIds(hitTestSvg, "main_hit_") : null,
+  }), [hitTestSvg, isAnimating, scaledSvg]);
 
   const svgRenderKey = useMemo(
     () => `${clampedFrameIndex}:${Object.entries(defineColorMap || {}).map(([key, value]) => `${key}:${value}`).join("|")}`,
@@ -2500,7 +2328,7 @@ export default function AnimDatabase() {
     setPipPos((p) => {
       if (p && p.x != null && p.y != null) return clampPipPos(p);
       const x = Math.max(8, window.innerWidth - 160 - 16);
-      const y = 64;
+      const y = 136;
       return clampPipPos({ x, y });
     });
     const onResize = () => setPipPos((p) => (p && p.x != null && p.y != null ? clampPipPos(p) : p));
@@ -2974,9 +2802,156 @@ export default function AnimDatabase() {
     }
   }, [grouped]);
 
-  return (
-    <div className="flex min-h-screen bg-slate-950 text-slate-100 lg:h-screen lg:overflow-hidden">
+  const pageReady = Boolean(legendData && colorData && langs);
+  const hasSkin = Boolean(activeLegend && activeSkinIndex != null && activeSkin);
+  const toolButton = "rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-bold text-slate-200 transition hover:border-slate-500 disabled:cursor-default disabled:opacity-40";
+  const smallButton = "rounded-lg bg-slate-800 px-2.5 py-1 text-xs font-bold text-slate-200 transition hover:bg-slate-700 disabled:cursor-default disabled:opacity-40";
+  const textField = "rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-blue-400";
+  const listScroll = "max-h-[60vh] overflow-y-auto pr-1 app-scrollbar";
 
+  const renderBrowser = ({ close }) => {
+    const pick = (legendIndex, skinIndex) => {
+      setBrowsingLegendIndex(legendIndex);
+      selectActiveSkin(legendIndex, skinIndex);
+      close();
+    };
+    return (
+      <>
+        <SidebarHeader as="h2" title="Legends" />
+        <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder="Search legends or skins" />
+        <Tabs
+          variant="small"
+          label="Skin list"
+          value={viewMode}
+          onChange={setViewMode}
+          items={[
+            { value: "all", label: "All" },
+            { value: "crossovers", label: "Crossovers", count: pageReady ? crossoverSkins.length : undefined },
+          ]}
+        />
+
+        {viewMode === "all" && (
+          <>
+            <LegendsGrid
+              legends={legendData ? legends : null}
+              langs={langs}
+              browsingLegendIndex={browsingLegendIndex}
+              activeLegendIndex={activeLegendIndex}
+              activeSkinIndex={activeSkinIndex}
+              searchQuery={searchQuery}
+              onSelectLegend={(index) => selectLegendDefaultSkin(index)}
+            />
+            {normalizedQuery ? (
+              <div>
+                <Heading>Matching skins</Heading>
+                {searchedSkins.length === 0 ? (
+                  <EmptyState bare title="No skins match this search" />
+                ) : (
+                  <SkinTiles items={searchedSkins} activeLegendIndex={activeLegendIndex} activeSkinIndex={activeSkinIndex} onPick={pick} showLegend />
+                )}
+              </div>
+            ) : (
+              <SkinsGrid
+                legend={browsingLegend}
+                legendIndex={browsingLegendIndex}
+                langs={langs}
+                activeLegendIndex={activeLegendIndex}
+                activeSkinIndex={activeSkinIndex}
+                searchQuery={searchQuery}
+                onSelectSkin={pick}
+              />
+            )}
+          </>
+        )}
+
+        {viewMode === "crossovers" && (
+          crossoverSkins.length === 0 ? (
+            <EmptyState bare title="No crossovers match this search" />
+          ) : (
+            <SkinTiles items={crossoverSkins} activeLegendIndex={activeLegendIndex} activeSkinIndex={activeSkinIndex} onPick={pick} showLegend />
+          )
+        )}
+      </>
+    );
+  };
+
+  const renderDefineCard = ({ key, base, cssColor }, muted = false) => {
+    const effectiveColor = effectiveDefineColors?.[key] || cssColor || svgDefineFallback?.[key] || "#ffffff";
+    const isPicked = selectedDefineKey === key;
+    return (
+      <div
+        key={key}
+        className={cx(
+          "flex flex-col gap-2 rounded-xl border p-2",
+          muted ? "bg-slate-900/40" : "bg-slate-900/70",
+          isPicked ? "border-blue-400" : muted ? "border-slate-800" : "border-slate-700"
+        )}
+      >
+        <div>
+          <div className={cx("text-xs font-bold", muted ? "text-slate-300" : "text-slate-100")}>{formatDefineLabel(base)}</div>
+          {dataFull && <div className="mt-0.5 break-all font-mono text-[10px] text-slate-500">{key}</div>}
+        </div>
+        <ColorPicker value={effectiveColor} defineKey={key} onChange={(newCss) => handleDefineColorChange(key, newCss)} />
+        <button type="button" onClick={() => resetDefineToDefault(key)} className={smallButton}>
+          Reset
+        </button>
+      </div>
+    );
+  };
+
+  const normalizedColorQuery = normalizeText(colorSearchQuery);
+  const allColors = Array.isArray(colorData) ? colorData : [];
+  const teamColorCount = allColors.filter(isTeamColor).length;
+  const colorPool = showTeamColors ? allColors : allColors.filter((entry) => !isTeamColor(entry));
+  const colorHowCounts = {};
+  for (const entry of colorPool) {
+    for (const value of sourceFilterValues(entry)) colorHowCounts[value] = (colorHowCounts[value] || 0) + 1;
+  }
+  const colorHowValues = sortSourceFilterValues(Object.keys(colorHowCounts));
+  const activeColorHow = colorHowCounts[colorHow] ? colorHow : "";
+  const filteredColors = allColors
+    .map((entry, idx) => {
+      if (!showTeamColors && isTeamColor(entry)) return null;
+      const detail = entry && entry.colorData ? entry.colorData : entry;
+      const nameKey = detail?.DisplayNameKey;
+      const displayName = (nameKey && langs && langs[nameKey]) || nameKey || "Unnamed";
+      if (normalizedColorQuery && !normalizeText((nameKey && langs && langs[nameKey]) || nameKey || "").includes(normalizedColorQuery)) return null;
+      if (activeColorHow && !sourceFilterValues(entry).includes(activeColorHow)) return null;
+      const iconFileName = detail?.IconFileName;
+      const iconName = detail?.IconName;
+      const iconUrl = iconFileName && iconName ? `${host}/game/getGfx/${iconFileName}/${iconName}` : null;
+      const indicatorCss = defineToCssColor(detail?.IndicatorColor);
+      const textColor = getContrastingTextColor(indicatorCss);
+      const selectionKey = getColorSelectionKey(entry, idx);
+      const firstSource = Array.isArray(entry?.sources) ? entry.sources[0] : null;
+      const sourceText = firstSource ? sourceShortText(firstSource) : "";
+      const sourceTitle = Array.isArray(entry?.sources) ? entry.sources.map(sourceSentence).join("\n") : "";
+      return { entry, displayName, iconUrl, indicatorCss, textColor, selectionKey, sourceText, sourceTitle };
+    })
+    .filter(Boolean);
+  const pickedColor = selectedColorKey && Array.isArray(colorData)
+    ? colorData.find((entry, idx) => getColorSelectionKey(entry, idx) === selectedColorKey)
+    : null;
+  const pickedColorName = pickedColor
+    ? (langs && langs[pickedColor?.colorData?.DisplayNameKey]) || pickedColor?.colorData?.ColorSchemeName || ""
+    : "";
+  const pickedColorAdded = pickedColor?.added ? patchLabel(pickedColor.added.patch, pickedColor.added.dateTime || pickedColor.added.date, { datePrefix: "Added " }) : "";
+
+  const normalizedPresetQuery = normalizeText(skinPresetSearchQuery);
+  const filteredPresets = allSkinsWithColors.filter((entry) => {
+    if (!normalizedPresetQuery) return true;
+    return textSearchMatches(normalizedPresetQuery, [
+      entry.legendName,
+      entry.skinName,
+      entry.costumeName,
+      entry.ownerHero,
+      entry.displayKey,
+      entry.heroName,
+    ]);
+  });
+
+  return (
+    <>
       <input
         ref={xmlFileInputRef}
         type="file"
@@ -2991,299 +2966,133 @@ export default function AnimDatabase() {
       {defineCss && <style dangerouslySetInnerHTML={{ __html: defineCss }} />}
       {activeDefineHighlightCss && <style dangerouslySetInnerHTML={{ __html: activeDefineHighlightCss }} />}
 
-      {loadError && (
-        <div className="fixed inset-x-4 top-4 z-[70] rounded-xl border border-red-500/40 bg-red-950/95 px-4 py-3 text-sm font-semibold text-red-100 shadow-2xl">
-          {loadError}
-        </div>
-      )}
-
-      {!loadError && (!legendData || !colorData || !langs) && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950">
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/90 px-6 py-5 text-center shadow-2xl">
-            <div className="mx-auto h-12 w-12 animate-pulse rounded-full bg-sky-400/30 ring-8 ring-sky-500/10" />
-            <div className="mt-4 text-sm font-bold text-slate-100">Loading Color Creator</div>
-            <div className="mt-1 text-xs text-slate-400">Legends, skins, palettes, and animation data</div>
-          </div>
-        </div>
-      )}
-
-      <aside className="hidden min-h-0 w-80 flex-col bg-slate-900/80 ring-1 ring-slate-800 xl:flex">
-        <div className="px-3 py-2 shadow-sm">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Legends</div>
-          <div className="mt-2">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-md bg-slate-900 border border-slate-700 px-2 py-1 text-[11px] outline-none focus:border-sky-500"
-              placeholder="Search legends or skins"
-            />
-          </div>
-          <div className="mt-2 flex justify-evenly rounded-md bg-slate-800 p-0.5 text-[10px]">
-            <button
-              type="button"
-              onClick={() => setViewMode("all")}
-              className={(["px-2 py-1 rounded-md w-full", viewMode === "all" ? "bg-slate-950 text-sky-300" : "text-slate-300"].filter(Boolean).join(" "))}
-            >
-              All
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("crossovers")}
-              className={(["px-2 py-1 rounded-md w-full", viewMode === "crossovers" ? "bg-slate-950 text-sky-300" : "text-slate-300"].filter(Boolean).join(" "))}
-            >
-              Crossovers
-            </button>
-          </div>
-        </div>
-
-        <div className="flex flex-col overflow-y-auto bg-slate-950/80">
-          {viewMode === "all" && (
-            <>
-              <LegendsGrid
-                legends={legends}
-                langs={langs}
-                browsingLegendIndex={browsingLegendIndex}
-                activeLegendIndex={activeLegendIndex}
-                activeSkinIndex={activeSkinIndex}
-                searchQuery={searchQuery}
-                onSelectLegend={(index) => selectLegendDefaultSkin(index)}
-              />
-              {normalizedQuery ? (
-                <div className="p-2 shadow-sm bg-slate-950/80 overflow-y-auto">
-                  <div className="px-1 pb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                    Matching Skins
-                  </div>
-                  {searchedSkins.length === 0 ? (
-                    <div className="px-1 py-2 text-xs text-slate-500">No skins match this search</div>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-2">
-                      {searchedSkins.map(({ legendIndex, skinIndex, legendName, skinName, skinIconUrl, key }) => {
-                        const isSelected = activeLegendIndex === legendIndex && activeSkinIndex === skinIndex;
-                        return (
-                          <button
-                            key={key}
-                            type="button"
-                            onClick={() => {
-                              setBrowsingLegendIndex(legendIndex);
-                              selectActiveSkin(legendIndex, skinIndex);
-                            }}
-                            className={([
-                              "group flex flex-col items-center gap-1 rounded-md border border-slate-800 bg-slate-900/80 p-2 text-[10px]",
-                              "hover:border-sky-500 hover:bg-slate-900",
-                              isSelected && "border-emerald-400 bg-slate-900"
-                            ].filter(Boolean).join(" "))}
-                          >
-                            <div className="relative w-full overflow-hidden rounded-md bg-slate-950 aspect-square flex items-center justify-center">
-                              {skinIconUrl && <img src={skinIconUrl} alt={skinName} className="h-20 w-20 object-contain" />}
-                            </div>
-                            <div className="w-full truncate text-[10px] font-semibold text-slate-200 text-center">{skinName}</div>
-                            <div className="w-full truncate text-[9px] text-slate-400 text-center">{legendName}</div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <SkinsGrid
-                  legend={browsingLegend}
-                  legendIndex={browsingLegendIndex}
-                  langs={langs}
-                  activeLegendIndex={activeLegendIndex}
-                  activeSkinIndex={activeSkinIndex}
-                  searchQuery={searchQuery}
-                  onSelectSkin={(legendIndex, skinIndex) => selectActiveSkin(legendIndex, skinIndex)}
-                />
-              )}
-            </>
-          )}
-
-          {viewMode === "crossovers" && (
-            <div className="p-2">
-              {crossoverSkins.length === 0 && (
-                <div className="px-1 py-2 text-xs text-slate-500">No crossovers match this search</div>
-              )}
-              {crossoverSkins.length > 0 && (
-                <div className="grid grid-cols-3 gap-2">
-                  {crossoverSkins.map(({ legendIndex, skinIndex, legendName, skinName, skinIconUrl }, i) => {
-                    const isSelected = activeLegendIndex === legendIndex && activeSkinIndex === skinIndex;
-                    return (
-                      <button
-                        key={`${legendIndex}-${skinIndex}-${i}`}
-                        type="button"
-                        onClick={() => {
-                          setBrowsingLegendIndex(legendIndex);
-                          selectActiveSkin(legendIndex, skinIndex);
-                        }}
-                        className={([
-                          "group flex flex-col items-center gap-1 rounded-md border border-slate-800 bg-slate-900/80 p-2 text-[10px]",
-                          "hover:border-sky-500 hover:bg-slate-900",
-                          isSelected && "border-emerald-400 bg-slate-900"
-                        ].filter(Boolean).join(" "))}
-                      >
-                        <div className="relative w-full overflow-hidden rounded-md bg-slate-950 aspect-square flex items-center justify-center">
-                          {skinIconUrl && <img src={skinIconUrl} alt={skinName} className="h-20 w-20 object-contain" />}
-                        </div>
-                        <div className="w-full truncate text-[10px] font-semibold text-slate-200 text-center">{skinName}</div>
-                        <div className="w-full truncate text-[9px] text-slate-400 text-center">{legendName}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </aside>
-
-
-      <div className="lg:hidden flex flex-col min-w-0">
-        <div className="shadow-sm bg-slate-950/80">
-          <div className="px-3 py-2">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Browse</div>
-            <div className="mt-2">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full rounded-md bg-slate-900 border border-slate-700 px-2 py-2 text-[12px] outline-none focus:border-sky-500"
-                placeholder="Search legends or skins"
-              />
-            </div>
-            <div className="mt-2 flex justify-evenly rounded-md bg-slate-800 p-0.5 text-[10px]">
-              <button
-                type="button"
-                onClick={() => setViewMode("all")}
-                className={(["px-3 py-2 rounded-md w-full", viewMode === "all" ? "bg-slate-950 text-sky-300" : "text-slate-300"].filter(Boolean).join(" "))}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("crossovers")}
-                className={(["px-3 py-2 rounded-md w-full", viewMode === "crossovers" ? "bg-slate-950 text-sky-300" : "text-slate-300"].filter(Boolean).join(" "))}
-              >
-                Crossovers
-              </button>
-            </div>
-          </div>
-
-          {viewMode === "all" && (
-            <>
-              <MobileLegendsRow
-                legends={legends}
-                langs={langs}
-                browsingLegendIndex={browsingLegendIndex}
-                activeLegendIndex={activeLegendIndex}
-                activeSkinIndex={activeSkinIndex}
-                searchQuery={searchQuery}
-                onSelectLegend={(index) => selectLegendDefaultSkin(index)}
-              />
-              {normalizedQuery ? (
-                <div className="px-2">
-                  <MobileHorizontalGrid
-                    items={searchedSkins}
-                    twoRows={true}
-                    renderItem={({ legendIndex, skinIndex, legendName, skinName, skinIconUrl, key }) => {
-                      const isSelected = activeLegendIndex === legendIndex && activeSkinIndex === skinIndex;
-                      return (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => {
-                            setBrowsingLegendIndex(legendIndex);
-                            selectActiveSkin(legendIndex, skinIndex);
-                          }}
-                          className={([
-                            "flex flex-col items-center gap-1 rounded-md border border-slate-800 bg-slate-900/80 p-2 text-[10px]",
-                            "hover:border-sky-500 hover:bg-slate-900",
-                            isSelected && "border-emerald-400 bg-slate-900"
-                          ].filter(Boolean).join(" "))}
-                        >
-                          <div className="relative w-full overflow-hidden rounded-md bg-slate-950 aspect-square flex items-center justify-center">
-                            {skinIconUrl && <img src={skinIconUrl} alt={skinName} className="h-12 w-12 object-contain" />}
-                          </div>
-                          <div className="w-full truncate text-[10px] font-semibold text-slate-200 text-center">{skinName}</div>
-                          <div className="w-full truncate text-[9px] text-slate-400 text-center">{legendName}</div>
-                        </button>
-                      );
-                    }}
-                  />
-                </div>
-              ) : (
-                <MobileSkinsRow
-                  legend={browsingLegend}
-                  legendIndex={browsingLegendIndex}
-                  langs={langs}
-                  activeLegendIndex={activeLegendIndex}
-                  activeSkinIndex={activeSkinIndex}
-                  searchQuery={searchQuery}
-                  onSelectSkin={(legendIndex, skinIndex) => selectActiveSkin(legendIndex, skinIndex)}
-                />
-              )}
-            </>
-          )}
-
-          {viewMode === "crossovers" && (
-            <div className="px-2 pb-2">
-              <MobileHorizontalGrid
-                items={crossoverSkins}
-                twoRows={!!normalizedQuery}
-                renderItem={({ legendIndex, skinIndex, legendName, skinName, skinIconUrl }, i) => {
-                  const isSelected = activeLegendIndex === legendIndex && activeSkinIndex === skinIndex;
-                  return (
-                    <button
-                      key={`${legendIndex}-${skinIndex}-${i}`}
-                      type="button"
-                      onClick={() => {
-                        setBrowsingLegendIndex(legendIndex);
-                        selectActiveSkin(legendIndex, skinIndex);
-                      }}
-                      className={([
-                        "flex flex-col items-center gap-1 rounded-md border border-slate-800 bg-slate-900/80 p-2 text-[10px]",
-                        "hover:border-sky-500 hover:bg-slate-900",
-                        isSelected && "border-emerald-400 bg-slate-900"
-                      ].filter(Boolean).join(" "))}
-                    >
-                      <div className="relative w-full overflow-hidden rounded-md bg-slate-950 aspect-square flex items-center justify-center">
-                        {skinIconUrl && <img src={skinIconUrl} alt={skinName} className="h-12 w-12 object-contain" />}
-                      </div>
-                      <div className="w-full truncate text-[10px] font-semibold text-slate-200 text-center">{skinName}</div>
-                      <div className="w-full truncate text-[9px] text-slate-400 text-center">{legendName}</div>
-                    </button>
-                  );
-                }}
-              />
-            </div>
-          )}
-        </div>
-
-        {!activeLegend || activeSkinIndex == null || !activeSkin ? (
-          <div className="flex-1 flex items-center justify-center text-xs text-slate-500 px-3 py-6">Select a skin to view animations.</div>
+      <PageShell
+        title={activeSkinName || "Colors"}
+        subtitle={activeLegendName || undefined}
+        sidebar={renderBrowser}
+        sidebarLabel="Skins"
+        sidebarTitle="Legends and skins"
+      >
+        {loadError ? (
+          <ErrorState message="Couldn't load the color data." detail={loadError} onRetry={retryLoad} />
+        ) : !pageReady ? (
+          <LoadingState label="Loading legends, skins and colors…" rows={6} />
+        ) : !hasSkin ? (
+          <EmptyState title="Pick a skin" />
         ) : (
           <>
-            <div className="px-3 py-3 shadow-sm bg-slate-950/60">
-              <div className="flex justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  {activeSkinIconUrl && (
-                    <div className="shrink-0">
-                      <img
-                        src={activeSkinIconUrl}
-                        alt={activeSkinName || "Skin icon"}
-                        className="h-16 w-16 rounded-md border border-slate-800 object-contain bg-slate-900"
-                      />
-                    </div>
+            <PageHeader
+              eyebrow={activeLegendName}
+              title={activeSkinName || activeLegendName || "Skin"}
+              image={activeSkinIconUrl ? (
+                <img
+                  src={activeSkinIconUrl}
+                  alt=""
+                  className="h-16 w-16 rounded-xl border border-slate-700 bg-slate-950 object-contain"
+                />
+              ) : null}
+              actions={(
+                <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                  <DataViewToggle />
+                  {dataFull && (
+                    <>
+                      <button type="button" onClick={() => xmlFileInputRef.current && xmlFileInputRef.current.click()} className={toolButton}>
+                        Import XML
+                      </button>
+                      <button type="button" onClick={makeXml} className={toolButton}>
+                        Save XML
+                      </button>
+                    </>
                   )}
-                  <div className="flex flex-col min-w-0">
-                    {activeLegendName && <div className="truncate text-sm font-semibold">{activeLegendName}</div>}
-                    {activeSkinName && <div className="truncate text-xs text-slate-400">{activeSkinName}</div>}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!scaledSvg) return;
+                      exportCurrentFramePng({
+                        svg: scaledSvg,
+                        filename: `frame_${clampedFrameIndex + 1}.png`,
+                        scale: 4,
+                      });
+                    }}
+                    className={toolButton}
+                  >
+                    Save PNG
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      exportApng({
+                        frames: processFramesWithDefines(rawAnimFrames || [], defineColorMap, sourceDefineColorMap) || [],
+                        filename: `anim_${animType}_${playMode}.apng`,
+                        fps: ANIMATION_FPS,
+                        scale: 4,
+                      });
+                    }}
+                    className={toolButton}
+                  >
+                    Save APNG
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      exportGif({
+                        frames: processFramesWithDefines(rawAnimFrames || [], defineColorMap, sourceDefineColorMap) || [],
+                        filename: `anim_${animType}_${playMode}.gif`,
+                        fps: ANIMATION_FPS,
+                        scale: 4,
+                        workerScript: gifWorkerUrl,
+                      });
+                    }}
+                    className={toolButton}
+                  >
+                    Save GIF
+                  </button>
                 </div>
-                <div className="mt-2 flex flex-col gap-2 items-center justify-between">
+              )}
+            />
+
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,28rem)] min-[112.5rem]:grid-cols-[minmax(0,1fr)_36rem] min-[137.5rem]:grid-cols-[minmax(0,1fr)_48rem] xl:items-start">
+              <div className="min-w-0 xl:sticky xl:top-20">
+                <Section
+                  title="Preview"
+                  actions={<span className="text-xs text-slate-400">Frame {clampedFrameIndex + 1} / {totalFrames}</span>}
+                >
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                    {animTypeOptions.length === 0 ? (
+                      <span className="text-sm text-slate-400">No animations for this skin.</span>
+                    ) : (
+                      <Tabs
+                        variant="small"
+                        label="Animation"
+                        value={animType}
+                        onChange={(key) => {
+                          setAnimType(key);
+                          setSelectedFrameIndex(0);
+                          setIsAnimating(false);
+                        }}
+                        items={animTypeOptions.map((opt) => ({ value: opt.key, label: opt.label }))}
+                      />
+                    )}
+                    <Tabs
+                      variant="small"
+                      label="Playback"
+                      value={playMode}
+                      onChange={(mode) => {
+                        setPlayMode(mode);
+                        setSelectedFrameIndex(0);
+                        setIsAnimating(false);
+                      }}
+                      items={[
+                        { value: "all", label: "All Frames" },
+                        { value: "loop", label: "Loop" },
+                      ]}
+                    />
+                  </div>
+
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
+                      aria-pressed={isAnimating}
                       onClick={() => {
                         if (totalFrames <= 1) {
                           setIsAnimating(false);
@@ -3291,558 +3100,13 @@ export default function AnimDatabase() {
                         }
                         setIsAnimating((prev) => !prev);
                       }}
-                      className={([
-                        "min-h-10 px-3 py-2 rounded-md border text-xs",
-                        isAnimating
-                          ? "border-emerald-500 bg-slate-900 text-emerald-300"
-                          : "border-slate-600 text-slate-200 hover:border-emerald-500"
-                      ].filter(Boolean).join(" "))}
+                      className={cx(
+                        "min-h-10 rounded-lg border px-3 py-2 text-xs font-bold transition",
+                        isAnimating ? "border-emerald-400 bg-emerald-500/15 text-emerald-200" : "border-slate-700 bg-slate-950 text-slate-200 hover:border-slate-500"
+                      )}
                     >
                       Animate
                     </button>
-                    <div className="text-[11px] text-slate-300">Frame {clampedFrameIndex + 1} / {totalFrames}</div>
-                    <div className="flex flex-col gap-1">
-                      <button
-                        type="button"
-                        onClick={makeXml}
-                        className="px-3 py-2 rounded-md border text-xs border-slate-600 text-slate-200 hover:border-sky-400"
-                      >
-                        Save XML
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => xmlFileInputRef.current && xmlFileInputRef.current.click()}
-                        className="px-3 py-2 rounded-md border text-xs border-slate-600 text-slate-200 hover:border-sky-400"
-                      >
-                        Import XML
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!scaledSvg) return;
-                        exportCurrentFramePng({
-                          svg: scaledSvg,
-                          filename: `frame_${clampedFrameIndex + 1}.png`,
-                          scale: 4,
-                        });
-                      }}
-                      className="px-3 py-2 rounded-md border text-xs border-slate-600 text-slate-200 hover:border-sky-400"
-                    >
-                      Save PNG
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        exportApng({
-                          frames: processFramesWithDefines(rawAnimFrames || [], defineColorMap, sourceDefineColorMap) || [],
-                          filename: `anim_${animType}_${playMode}.apng`,
-                          fps: ANIMATION_FPS,
-                          scale: 4,
-                        });
-                      }}
-                      className="px-3 py-2 rounded-md border text-xs border-slate-600 text-slate-200 hover:border-sky-400"
-                    >
-                      Save APNG
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        exportGif({
-                          frames: processFramesWithDefines(rawAnimFrames || [], defineColorMap, sourceDefineColorMap) || [],
-                          filename: `anim_${animType}_${playMode}.gif`,
-                          fps: ANIMATION_FPS,
-                          scale: 4,
-                          workerScript: gifWorkerUrl,
-                        });
-                      }}
-                      className="px-3 py-2 rounded-md border text-xs border-slate-600 text-slate-200 hover:border-sky-400"
-                    >
-                      Save GIF
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-3">
-                <div className="w-full flex items-center gap-2 text-[11px]">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAnimating(false);
-                      setSelectedFrameIndex((prev) => (prev > 0 ? prev - 1 : prev));
-                    }}
-                    disabled={totalFrames === 0 || clampedFrameIndex === 0}
-                    className={([
-                      "min-h-10 px-3 py-2 rounded-md border text-xs",
-                      clampedFrameIndex === 0 || totalFrames === 0
-                        ? "border-slate-700 text-slate-600 cursor-default"
-                        : "border-slate-600 text-slate-200 hover:border-sky-500"
-                    ].filter(Boolean).join(" "))}
-                  >
-                    Prev
-                  </button>
-                  <input
-                    type="range"
-                    min={0}
-                    max={Math.max(totalFrames - 1, 0)}
-                    value={clampedFrameIndex}
-                    onChange={(e) => {
-                      setIsAnimating(false);
-                      setSelectedFrameIndex(Number(e.target.value));
-                    }}
-                    className="flex-1"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAnimating(false);
-                      setSelectedFrameIndex((prev) => (prev < totalFrames - 1 ? prev + 1 : prev));
-                    }}
-                    disabled={totalFrames === 0 || clampedFrameIndex === totalFrames - 1}
-                    className={([
-                      "min-h-10 px-3 py-2 rounded-md border text-xs",
-                      clampedFrameIndex === totalFrames - 1 || totalFrames === 0
-                        ? "border-slate-700 text-slate-600 cursor-default"
-                        : "border-slate-600 text-slate-200 hover:border-sky-500"
-                    ].filter(Boolean).join(" "))}
-                  >
-                    Next
-                  </button>
-                </div>
-
-                <div className="mt-3 grid grid-cols-1 gap-3">
-                  <div className="rounded-md border border-slate-800 bg-slate-900/30 p-2">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Animation Type</div>
-                    <div className="mt-2 flex gap-1">
-                      {animTypeOptions.length === 0 && <div className="text-[11px] text-slate-500">No animation types defined for this skin.</div>}
-                      {animTypeOptions.length > 0 &&
-                        animTypeOptions.map((opt) => (
-                          <button
-                            key={opt.key}
-                            type="button"
-                            onClick={() => {
-                              setAnimType(opt.key);
-                              setSelectedFrameIndex(0);
-                              setIsAnimating(false);
-                            }}
-                            className={([
-                              "px-3 py-2 rounded-md border text-[11px] w-full",
-                              animType === opt.key ? "border-sky-500 bg-slate-900 text-sky-300" : "border-slate-700 text-slate-200 hover:border-sky-400"
-                            ].filter(Boolean).join(" "))}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                    </div>
-                  </div>
-
-                  <div className="rounded-md border border-slate-800 bg-slate-900/30 p-2">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Playback</div>
-                    <div className="mt-2 flex gap-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPlayMode("all");
-                          setSelectedFrameIndex(0);
-                          setIsAnimating(false);
-                        }}
-                        className={([
-                          "px-3 py-2 rounded-md border text-[11px] w-full",
-                          playMode === "all" ? "border-sky-500 bg-slate-900 text-sky-300" : "border-slate-700 text-slate-200 hover:border-sky-400"
-                        ].filter(Boolean).join(" "))}
-                      >
-                        All Frames
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPlayMode("loop");
-                          setSelectedFrameIndex(0);
-                          setIsAnimating(false);
-                        }}
-                        className={([
-                          "px-3 py-1 rounded-md border text-[11px] w-full",
-                          playMode === "loop" ? "border-sky-500 bg-slate-900 text-sky-300" : "border-slate-700 text-slate-200 hover:border-sky-400"
-                        ].filter(Boolean).join(" "))}
-                      >
-                        Loop
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="px-2 py-2">
-              <div ref={mainSvgViewportRef} className="w-full overflow-x-auto rounded-md border border-slate-800 bg-slate-900 p-3">
-                {displayFrameSvg ? (
-                  <div
-                    ref={svgContainerRef}
-                    className="relative mx-auto"
-                    onPointerMove={onSvgPointerMove}
-                    onPointerLeave={onSvgPointerLeave}
-                    onPointerDown={onSvgPointerDown}
-                  >
-                    <div key={`mobile-${svgRenderKey}`} className="[&>svg]:block [&>svg]:max-w-full [&>svg]:h-auto" dangerouslySetInnerHTML={{ __html: renderedSvg.mobile || "" }} />
-                    {renderedSvg.mobileHit && (
-                      <div
-                        key={`mobile-hit-${svgRenderKey}`}
-                        className="absolute inset-0 opacity-0 [&>svg]:block [&>svg]:h-full [&>svg]:w-full"
-                        dangerouslySetInnerHTML={{ __html: renderedSvg.mobileHit }}
-                      />
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-xs text-slate-500">No frame SVG</div>
-                )}
-              </div>
-            </div>
-
-
-            {showPip && !isAnimating && scaledSvg && (
-              <div
-                ref={pipRef}
-                onPointerDown={startPipDrag}
-                className={([
-                  "fixed z-50 w-40 rounded-md border border-slate-800 bg-slate-950/95 shadow-lg overflow-hidden touch-none",
-                  pipDragging ? "cursor-grabbing" : "cursor-grab"
-                ].filter(Boolean).join(" "))}
-                style={{
-                  left: pipPos?.x ?? undefined,
-                  top: pipPos?.y ?? undefined,
-                }}
-              >
-                <div className="p-1">
-                  <div key={`pip-${svgRenderKey}`} className="[&>svg]:block [&>svg]:w-full [&>svg]:h-auto" dangerouslySetInnerHTML={{ __html: renderedSvg.pip }} />
-                </div>
-              </div>
-            )}
-
-            <div className="px-3 pb-2">
-              <div className="rounded-md border border-slate-800 bg-slate-900/40 p-2">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Color Schemes</div>
-                <input
-                  type="text"
-                  value={colorSearchQuery}
-                  onChange={(e) => setColorSearchQuery(e.target.value)}
-                  className="mt-2 w-full rounded-md bg-slate-950 border border-slate-700 px-2 py-2 text-[12px] outline-none focus:border-sky-500"
-                  placeholder="Search palettes"
-                />
-                {colorData && Array.isArray(colorData) && (
-                  <div className="mt-2">
-                    {(() => {
-                      const allColors = Array.isArray(colorData) ? colorData : [];
-                      const normalizedColorQuery = normalizeText(colorSearchQuery);
-                      const filteredColors = allColors
-                        .map((entry, idx) => {
-                          const detail = entry && entry.colorData ? entry.colorData : entry;
-                          const nameKey = detail?.DisplayNameKey;
-                          const displayName = (nameKey && langs && langs[nameKey]) || nameKey || "Unnamed";
-                          if (normalizedColorQuery && !normalizeText(displayName).includes(normalizedColorQuery)) return null;
-                          const iconFileName = detail?.IconFileName;
-                          const iconName = detail?.IconName;
-                          const iconUrl = iconFileName && iconName ? `${host}/game/getGfx/${iconFileName}/${iconName}` : null;
-                          const indicatorCss = defineToCssColor(detail?.IndicatorColor) || "#111827";
-                          const textColor = getContrastingTextColor(indicatorCss);
-                          const selectionKey = getColorSelectionKey(entry, idx);
-                          return { entry, displayName, iconUrl, indicatorCss, textColor, selectionKey };
-                        })
-                        .filter(Boolean);
-
-                      return (
-                        <MobileHorizontalGrid
-                          items={filteredColors}
-                          twoRows={!!colorSearchQuery}
-                          renderItem={({ entry, displayName, iconUrl, indicatorCss, textColor, selectionKey }) => {
-                            const isSelected = selectedColorKey === selectionKey;
-                            return (
-                              <button
-                                key={selectionKey}
-                                type="button"
-                                onClick={() => applyColorSchemeFromColorData(entry, selectionKey)}
-                                className={([
-                                  "rounded-md border p-2 text-left",
-                                  isSelected ? "border-emerald-500" : "border-slate-800 hover:border-sky-500"
-                                ].filter(Boolean).join(" "))}
-                                style={{ backgroundColor: indicatorCss }}
-                              >
-                                <div className="w-full rounded-md bg-slate-950/70 flex items-center justify-center aspect-square overflow-hidden">
-                                  {iconUrl && <img src={iconUrl} alt={displayName} className="h-12 w-12 object-contain" />}
-                                </div>
-                                <div className="mt-1 w-full truncate text-[10px] font-semibold text-center" style={{ color: textColor }}>
-                                  {displayName}
-                                </div>
-                              </button>
-                            );
-                          }}
-                        />
-                      );
-                    })()}
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-2 rounded-md border border-slate-800 bg-slate-900/40 p-2">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Skin Color Presets</div>
-                <input
-                  type="text"
-                  value={skinPresetSearchQuery}
-                  onChange={(e) => setSkinPresetSearchQuery(e.target.value)}
-                  className="mt-2 w-full rounded-md bg-slate-950 border border-slate-700 px-2 py-2 text-[12px] outline-none focus:border-sky-500"
-                  placeholder="Search skins"
-                />
-                <div className="mt-2">
-                  <MobileHorizontalGrid
-                    items={allSkinsWithColors
-                      .map((x) => {
-                        const matches = !skinPresetSearchQuery || textSearchMatches(skinPresetSearchQuery, [
-                          x.legendName,
-                          x.skinName,
-                          x.costumeName,
-                          x.ownerHero,
-                          x.displayKey,
-                          x.heroName,
-                        ]);
-                        return matches ? x : null;
-                      })
-                      .filter(Boolean)}
-                    twoRows={!!skinPresetSearchQuery}
-                    renderItem={({ legendIndex, skinIndex, legendName, skinName, skinIconUrl, key }) => {
-                      const selected = selectedSkinPresetKey === key;
-                      return (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => applyColorSchemeFromSkin(legendIndex, skinIndex, key)}
-                          className={([
-                            "rounded-md border bg-slate-950/20 p-2",
-                            selected ? "border-emerald-500" : "border-slate-800 hover:border-sky-500"
-                          ].filter(Boolean).join(" "))}
-                        >
-                          <div className="relative w-full overflow-hidden rounded-md bg-slate-950 aspect-square flex items-center justify-center">
-                            {skinIconUrl && <img src={skinIconUrl} alt={skinName} className="h-12 w-12 object-contain" />}
-                          </div>
-                          <div className="mt-1 w-full truncate text-[10px] font-semibold text-center text-slate-100">{skinName}</div>
-                          <div className="w-full truncate text-[9px] text-center text-slate-400">{legendName}</div>
-                        </button>
-                      );
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="mt-2 rounded-md border border-slate-800 bg-slate-900/40 p-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Saved Custom Colors</div>
-                  <div className="flex items-center gap-2">
-                    {deletedSavedColor?.entry && (
-                      <button
-                        type="button"
-                        onClick={undoDeleteSavedColor}
-                        className="rounded-md border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[10px] font-black text-amber-200"
-                      >
-                        Undo
-                      </button>
-                    )}
-                    <div className="text-[10px] text-slate-500">{savedCustomColors.length}</div>
-                  </div>
-                </div>
-                <div className="mt-2 flex gap-2">
-                  <input
-                    type="text"
-                    value={customColorName}
-                    onChange={(e) => setCustomColorName(e.target.value)}
-                    className="min-w-0 flex-1 rounded-md bg-slate-950 border border-slate-700 px-2 py-2 text-[12px] outline-none focus:border-sky-500"
-                    placeholder="Name this custom color"
-                  />
-                  <button
-                    type="button"
-                    onClick={saveCurrentCustomColor}
-                    disabled={!Object.keys(currentCompactOverrides).length}
-                    className={([
-                      "rounded-md border px-3 py-2 text-[11px] font-bold",
-                      Object.keys(currentCompactOverrides).length
-                        ? "border-emerald-500/70 text-emerald-200 hover:bg-emerald-500/10"
-                        : "border-slate-800 text-slate-600 cursor-default"
-                    ].filter(Boolean).join(" "))}
-                  >
-                    Save
-                  </button>
-                </div>
-                {highDefineTestSkins.length > 0 && (
-              <div className="mt-2 rounded-md border border-slate-800 bg-slate-950/35 p-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">High-Define Test Skins</div>
-                  <div className="text-[10px] text-slate-500">first 2 cover all 38</div>
-                </div>
-                <div className="mt-2">
-                      <MobileHorizontalGrid
-                        items={highDefineTestSkins}
-                        twoRows={highDefineTestSkins.length > 3}
-                        renderItem={(skin) => {
-                          const selected = activeLegendIndex === skin.legendIndex && activeSkinIndex === skin.skinIndex;
-                          return (
-                            <button
-                              key={skin.key}
-                              type="button"
-                              onClick={() => selectActiveSkin(skin.legendIndex, skin.skinIndex)}
-                              className={([
-                                "w-36 rounded-md border bg-slate-950/40 p-2 text-left",
-                                selected ? "border-amber-400 bg-slate-900" : "border-slate-800 hover:border-amber-400"
-                              ].filter(Boolean).join(" "))}
-                            >
-                              <div className="flex items-center gap-2">
-                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-slate-950">
-                                  {skin.skinIconUrl && <img src={skin.skinIconUrl} alt={skin.skinName} className="h-10 w-10 object-contain" />}
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="truncate text-[11px] font-black text-slate-100">{skin.skinName}</div>
-                                  <div className="truncate text-[10px] text-slate-500">{skin.legendName}</div>
-                                  <div className="mt-1 inline-flex rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-black text-amber-200">
-                                    {skin.actualDefineCount || skin.defineCount} defines
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="mt-1 text-[10px] leading-tight text-slate-500">{skin.note}</div>
-                            </button>
-                          );
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-                <div className="mt-2">
-                  {savedCustomColors.length === 0 ? (
-                    <div className="rounded-md border border-slate-800 bg-slate-950/40 px-3 py-2 text-[11px] text-slate-500">
-                      No saved custom colors yet.
-                    </div>
-                  ) : (
-                    <MobileHorizontalGrid
-                      items={savedCustomColors}
-                      twoRows={savedCustomColors.length > 4}
-                      renderItem={(saved) => {
-                        const selected = selectedSavedColorId === saved.id;
-                        return (
-                          <div
-                            key={saved.id}
-                            className={([
-                              "rounded-md border bg-slate-950/40 p-2",
-                              selected ? "border-emerald-500" : "border-slate-800"
-                            ].filter(Boolean).join(" "))}
-                          >
-                            <button type="button" onClick={() => applySavedCustomColor(saved)} className="w-full text-left">
-                              <div className="truncate text-[11px] font-bold text-slate-100">{saved.name}</div>
-                              <div className="mt-2 flex flex-wrap gap-1">
-                                {Object.entries(saved.overrides || {}).map(([key, value]) => {
-                                  const css = defineToCssColor(value);
-                                  return css ? <span key={key} className="h-4 w-4 rounded border border-slate-700" style={{ backgroundColor: css }} /> : null;
-                                })}
-                              </div>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => deleteSavedCustomColor(saved.id)}
-                              className="mt-2 w-full rounded border border-red-500/40 px-2 py-1 text-[10px] font-bold text-red-200 hover:bg-red-500/10"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        );
-                      }}
-                    />
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="px-2 pb-4">
-              <div className="rounded-md border border-slate-800 bg-slate-950/40">
-                <div className="px-2 py-2 shadow-sm flex items-center justify-between">
-                  <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Defines</div>
-                  <button type="button" onClick={resetAllColorsToDefault} className="min-h-10 rounded-md border border-slate-700 bg-slate-900/70 px-3 text-xs text-slate-200">
-                    Reset
-                  </button>
-                </div>
-                <div className="p-2">
-                  <label className="flex items-center gap-2 text-[11px] text-slate-300">
-                    <input type="checkbox" checked={showAllDefines} onChange={(e) => setShowAllDefines(e.target.checked)} className="h-4 w-4 rounded border border-slate-700 bg-slate-900" />
-                    Show all defines
-                  </label>
-                </div>
-                <div className="p-2 flex flex-col gap-2">
-                  {grouped.map(([group, items]) => {
-                    const open = !!openGroupsRef.current[group];
-                    const count = items.defines.length + items.swaps.length;
-                    return (
-                      <div key={group} className="rounded-md border border-slate-800 bg-slate-900/40">
-                        <button type="button" onClick={() => toggleGroup(group)} className="w-full flex items-center justify-between px-2 py-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            {open ? <ChevronDownIcon className="h-4 w-4 text-slate-300 shrink-0" /> : <ChevronRightIcon className="h-4 w-4 text-slate-300 shrink-0" />}
-                            <div className="truncate text-[11px] font-semibold text-slate-200">{group}</div>
-                          </div>
-                          <div className="text-[10px] text-slate-400">{count}</div>
-                        </button>
-                        {open && (
-                          <div className="px-2 py-2 flex flex-col gap-2 shadow-sm">
-                            {items.defines.map((d) => {
-                              const isSelected = selectedDefineKey === d.key;
-                              return (
-                                <div key={d.key} className={(["rounded-md border px-2 py-2 flex items-center justify-between gap-2", isSelected ? "border-sky-500 bg-slate-900/80" : "border-slate-800 bg-slate-950/20"].filter(Boolean).join(" "))}>
-                                  <div className="min-w-0">
-                                    <div className="text-[11px] font-semibold text-slate-200 truncate">{formatDefineLabel(d.base)}</div>
-                                    <div className="text-[10px] text-slate-500 truncate">{d.key}</div>
-                                  </div>
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    <ColorPicker value={d.cssColor} defineKey={d.key} onChange={(cssColor) => handleDefineColorChange(d.key, cssColor)} />
-                                    <button type="button" onClick={() => resetDefineToDefault(d.key)} className="min-h-10 rounded-md border border-slate-700 bg-slate-900/70 px-3 text-[10px] text-slate-200 hover:border-sky-400">
-                                      Reset
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-
-      <main className="hidden min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(340px,400px)] lg:grid">
-        <section className="min-w-0 ring-1 ring-slate-800 bg-slate-950/80 flex flex-col">
-          {!activeLegend || activeSkinIndex == null || !activeSkin ? (
-            <div className="flex-1 flex items-center justify-center text-xs text-slate-500">Select a skin to view animations.</div>
-          ) : (
-            <div className="flex flex-col h-full">
-              <div className="px-4 py-2 flex items-center justify-between gap-3 text-xs shadow-sm">
-                <div className="flex items-center gap-3">
-                  {activeSkinIconUrl && (
-                    <div className="ml-auto">
-                      <img
-                        src={activeSkinIconUrl}
-                        alt={activeSkinName || "Skin icon"}
-                        className="h-16 w-16 rounded-md border border-slate-800 object-contain bg-slate-900"
-                      />
-                    </div>
-                  )}
-                  <div className="flex flex-col">
-                    {activeLegendName && <div className="text-sm font-semibold">{activeLegendName}</div>}
-                    {activeSkinName && <div className="text-xs text-slate-400">{activeSkinName}</div>}
-
-                  </div>
-                </div>
-
-                <div>
-                  <div className="w-full max-w-xl flex items-center gap-3 text-[11px]">
                     <button
                       type="button"
                       onClick={() => {
@@ -3850,17 +3114,13 @@ export default function AnimDatabase() {
                         setSelectedFrameIndex((prev) => (prev > 0 ? prev - 1 : prev));
                       }}
                       disabled={totalFrames === 0 || clampedFrameIndex === 0}
-                      className={([
-                        "px-2 py-1 rounded-md border text-xs",
-                        clampedFrameIndex === 0 || totalFrames === 0
-                          ? "border-slate-700 text-slate-600 cursor-default"
-                          : "border-slate-600 text-slate-200 hover:border-sky-500"
-                      ].filter(Boolean).join(" "))}
+                      className={cx(toolButton, "min-h-10")}
                     >
                       Prev
                     </button>
                     <input
                       type="range"
+                      aria-label="Frame"
                       min={0}
                       max={Math.max(totalFrames - 1, 0)}
                       value={clampedFrameIndex}
@@ -3868,7 +3128,7 @@ export default function AnimDatabase() {
                         setIsAnimating(false);
                         setSelectedFrameIndex(Number(e.target.value));
                       }}
-                      className="flex-1"
+                      className="min-w-0 flex-1 accent-blue-500"
                     />
                     <button
                       type="button"
@@ -3877,371 +3137,345 @@ export default function AnimDatabase() {
                         setSelectedFrameIndex((prev) => (prev < totalFrames - 1 ? prev + 1 : prev));
                       }}
                       disabled={totalFrames === 0 || clampedFrameIndex === totalFrames - 1}
-                      className={([
-                        "px-2 py-1 rounded-md border text-xs",
-                        clampedFrameIndex === totalFrames - 1 || totalFrames === 0
-                          ? "border-slate-700 text-slate-600 cursor-default"
-                          : "border-slate-600 text-slate-200 hover:border-sky-500"
-                      ].filter(Boolean).join(" "))}
+                      className={cx(toolButton, "min-h-10")}
                     >
                       Next
                     </button>
                   </div>
-                  <div className="mt-2 flex gap-2 justify-between">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (totalFrames <= 1) {
-                          setIsAnimating(false);
-                          return;
-                        }
-                        setIsAnimating((prev) => !prev);
-                      }}
-                      className={([
-                        "px-2 py-1 rounded-md border text-xs",
-                        isAnimating
-                          ? "border-emerald-500 bg-slate-900 text-emerald-300"
-                          : "border-slate-600 text-slate-200 hover:border-emerald-500"
-                      ].filter(Boolean).join(" "))}
-                    >
-                      Animate
-                    </button>
-                    <div className="flex text-right text-[11px] text-slate-300  items-center">
-                      Frame {clampedFrameIndex + 1} / {totalFrames}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => xmlFileInputRef.current && xmlFileInputRef.current.click()}
-                      className="px-2 py-1 rounded-md border text-xs border-slate-600 text-slate-200 hover:border-sky-400"
-                    >
-                      Import XML
-                    </button>
 
-                    <button
-                      type="button"
-                      onClick={makeXml}
-                      className="px-2 py-1 rounded-md border text-xs border-slate-600 text-slate-200 hover:border-sky-400"
-                    >
-                      Save XML
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!scaledSvg) return;
-                        exportCurrentFramePng({
-                          svg: scaledSvg,
-                          filename: `frame_${clampedFrameIndex + 1}.png`,
-                          scale: 4,
-                        });
-                      }}
-                      className="px-2 py-1 rounded-md border text-xs border-slate-600 text-slate-200 hover:border-sky-400"
-                    >
-                      Save PNG
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        exportApng({
-                          frames: processFramesWithDefines(rawAnimFrames || [], defineColorMap, sourceDefineColorMap) || [],
-                          filename: `anim_${animType}_${playMode}.apng`,
-                          fps: ANIMATION_FPS,
-                          scale: 4,
-                        });
-                      }}
-                      className="px-2 py-1 rounded-md border text-xs border-slate-600 text-slate-200 hover:border-sky-400"
-                    >
-                      Save APNG
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        exportGif({
-                          frames: processFramesWithDefines(rawAnimFrames || [], defineColorMap, sourceDefineColorMap) || [],
-                          filename: `anim_${animType}_${playMode}.gif`,
-                          fps: ANIMATION_FPS,
-                          scale: 4,
-                        });
-                      }}
-                      className="px-2 py-1 rounded-md border text-xs border-slate-600 text-slate-200 hover:border-sky-400"
-                    >
-                      Save GIF
-                    </button>
-                  </div>
-                </div>
-                <div className="flex text-xs gap-1 text-slate-200">
-                  <div className="flex flex-col">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Animation Type</div>
-                    <div className="flex flex-col gap-1">
-                      {animTypeOptions.length === 0 && (
-                        <div className="text-[11px] text-slate-500">No animation types defined for this skin.</div>
-                      )}
-                      {animTypeOptions.length > 0 && (() => {
-                        const idleOpt = animTypeOptions.find((opt) => opt.key === "idle");
-                        const idleOtherOpt = animTypeOptions.find((opt) => opt.key === "idleOther");
-                        const selectedOpt = animTypeOptions.find((opt) => opt.key === "selected");
-                        const selectedOtherOpt = animTypeOptions.find((opt) => opt.key === "selectedOther");
-
-                        const renderButton = (opt) => (
-                          <button
-                            key={opt.key}
-                            type="button"
-                            onClick={() => {
-                              setAnimType(opt.key);
-                              setSelectedFrameIndex(0);
-                              setIsAnimating(false);
-                            }}
-                            className={([
-                              "px-2 py-1 rounded-md border text-[11px] w-full",
-                              animType === opt.key
-                                ? "border-sky-500 bg-slate-900 text-sky-300"
-                                : "border-slate-700 text-slate-200 hover:border-sky-400"
-                            ].filter(Boolean).join(" "))}
+                  <div
+                    ref={mainSvgViewportRef}
+                    className="flex min-h-[18rem] w-full items-center justify-center overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-2 app-scrollbar lg:min-h-[26rem]"
+                  >
+                    {animLoading ? (
+                      <LoadingState inline label="Loading animation…" />
+                    ) : animError ? (
+                      <ErrorState message="Couldn't load this animation." detail={animError} onRetry={() => setAnimAttempt((value) => value + 1)} className="w-full" />
+                    ) : totalFrames === 0 ? (
+                      <span className="text-sm text-slate-400">No frames for this animation.</span>
+                    ) : displayFrameSvg ? (
+                      <div
+                        ref={svgContainerRef}
+                        className="relative max-w-full"
+                        onPointerMove={onSvgPointerMove}
+                        onPointerLeave={onSvgPointerLeave}
+                        onPointerDown={onSvgPointerDown}
+                      >
+                        <div
+                          key={`main-${svgRenderKey}`}
+                          className="[&>svg]:block [&>svg]:h-auto [&>svg]:max-h-[55vh] [&>svg]:max-w-full"
+                          dangerouslySetInnerHTML={{ __html: renderedSvg.main || "" }}
+                        />
+                        {renderedSvg.mainHit && (
+                          <div
+                            key={`main-hit-${svgRenderKey}`}
+                            className="absolute inset-0 opacity-0 [&>svg]:block [&>svg]:h-full [&>svg]:w-full"
+                            dangerouslySetInnerHTML={{ __html: renderedSvg.mainHit }}
+                          />
+                        )}
+                        {hoveredDefine?.key && (
+                          <div
+                            className="pointer-events-none absolute z-50 rounded-lg border border-slate-700 bg-slate-950/95 px-2 py-1 text-[11px] shadow-lg"
+                            style={{ left: hoveredDefine.x, top: hoveredDefine.y }}
                           >
-                            {opt.label}
-                          </button>
-                        );
-
-                        return (
-                          <>
-                            <div className="flex gap-1">
-                              {idleOpt && renderButton(idleOpt)}
-                              {idleOtherOpt && renderButton(idleOtherOpt)}
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-slate-200">{hoveredDefine.base}</span>
+                              <span
+                                className="h-3 w-3 rounded border border-slate-600"
+                                style={{ backgroundColor: hoveredDefine.color }}
+                              />
+                              <span className="text-slate-300">{hoveredDefine.color.toUpperCase()}</span>
                             </div>
-                            <div className="flex gap-1">
-                              {selectedOpt && renderButton(selectedOpt)}
-                              {selectedOtherOpt && renderButton(selectedOtherOpt)}
-                            </div>
-                          </>
-                        );
-                      })()}
-                    </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-sm text-slate-400">This frame is empty.</span>
+                    )}
                   </div>
-
-                  <div className="flex flex-col">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Playback</div>
-                    <div className="flex flex-col gap-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPlayMode("all");
-                          setSelectedFrameIndex(0);
-                          setIsAnimating(false);
-                        }}
-                        className={([
-                          "px-2 py-1 rounded-md border text-[11px] w-full",
-                          playMode === "all"
-                            ? "border-sky-500 bg-slate-900 text-sky-300"
-                            : "border-slate-700 text-slate-200 hover:border-sky-400"
-                        ].filter(Boolean).join(" "))}
-                      >
-                        All Frames
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPlayMode("loop");
-                          setSelectedFrameIndex(0);
-                          setIsAnimating(false);
-                        }}
-                        className={([
-                          "px-2 py-1 rounded-md border text-[11px] w-full",
-                          playMode === "loop"
-                            ? "border-sky-500 bg-slate-900 text-sky-300"
-                            : "border-slate-700 text-slate-200 hover:border-sky-400"
-                        ].filter(Boolean).join(" "))}
-                      >
-                        Loop
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                </Section>
               </div>
 
-              <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(360px,440px)] gap-3 overflow-y-auto px-3 py-3">
-                <div className="flex min-w-0 flex-col justify-start">
-                  {animLoading && <div className="text-xs text-slate-500">Loading animation...</div>}
-                  {!animLoading && animError && <div className="text-xs text-red-400">{animError}</div>}
-                  {!animLoading && !animError && totalFrames === 0 && <div className="text-xs text-slate-500">No frames for this animation.</div>}
+              <div className="min-w-0 space-y-3">
+                <Section>
+                  <Tabs
+                    variant="small"
+                    label="Color source"
+                    value={palettePanel}
+                    onChange={setPalettePanel}
+                    items={[
+                      { value: "colors", label: "Colors", count: colorPool.length },
+                      { value: "presets", label: "Skin presets", count: allSkinsWithColors.length },
+                      { value: "saved", label: "Saved", count: savedCustomColors.length },
+                    ]}
+                  />
 
-                  {!animLoading && !animError && totalFrames > 0 && (
-                    <div className="w-full flex flex-col gap-4">
-                      <div className="flex min-h-[600px] w-full items-center justify-center rounded-2xl border border-slate-800 bg-slate-950 p-3">
-                        <div className="inline-flex max-h-[72vh] max-w-full px-3 py-3">
-                          {displayFrameSvg ? (
-                            <div
-                              ref={svgContainerRef}
-                              className="relative max-w-full"
-                              onPointerMove={onSvgPointerMove}
-                              onPointerLeave={onSvgPointerLeave}
-                              onPointerDown={onSvgPointerDown}
-                            >
-                              <div
-                                key={`desktop-${svgRenderKey}`}
-                                className="[&>svg]:block [&>svg]:max-h-[68vh] [&>svg]:max-w-full [&>svg]:h-auto"
-                                dangerouslySetInnerHTML={{ __html: renderedSvg.desktop || "" }}
-                              />
-                              {renderedSvg.desktopHit && (
-                                <div
-                                  key={`desktop-hit-${svgRenderKey}`}
-                                  className="absolute inset-0 opacity-0 [&>svg]:block [&>svg]:h-full [&>svg]:w-full"
-                                  dangerouslySetInnerHTML={{ __html: renderedSvg.desktopHit }}
-                                />
-                              )}
-                              {hoveredDefine?.key && (
-                                <div
-                                  className="pointer-events-none absolute z-50 rounded-md border border-slate-700 bg-slate-950/95 px-2 py-1 text-[11px] shadow-lg"
-                                  style={{ left: hoveredDefine.x, top: hoveredDefine.y }}
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-semibold text-slate-200">{hoveredDefine.base}</span>
-                                    <span
-                                      className="h-3 w-3 rounded border border-slate-600"
-                                      style={{ backgroundColor: hoveredDefine.color }}
-                                    />
-                                    <span className="text-slate-300">{hoveredDefine.color.toUpperCase()}</span>
-                                  </div>
+                  {palettePanel === "colors" && (
+                    <div className="space-y-3">
+                      <SearchInput value={colorSearchQuery} onChange={setColorSearchQuery} placeholder="Search Colors" shortcut={false} />
+                      {teamColorCount > 0 && <Toggle label={`Team mode colors (${teamColorCount})`} checked={showTeamColors} onChange={setShowTeamColors} />}
+                      {colorHowValues.length > 1 && (
+                        <Tabs
+                          variant="chips"
+                          label="How to get"
+                          value={activeColorHow}
+                          onChange={setColorHow}
+                          items={[{ value: "", label: "All", count: colorPool.length }, ...colorHowValues.map((value) => ({ value, label: value, count: colorHowCounts[value] }))]}
+                        />
+                      )}
+                      {!Array.isArray(colorData) || colorData.length === 0 ? (
+                        <EmptyState bare title="No colors available" />
+                      ) : filteredColors.length === 0 ? (
+                        <EmptyState bare title="No colors match" />
+                      ) : (
+                        <div className={cx("grid grid-cols-3 content-start gap-2 sm:grid-cols-4 xl:grid-cols-3 min-[112.5rem]:grid-cols-4 min-[137.5rem]:grid-cols-5", listScroll)}>
+                          {filteredColors.map(({ entry, displayName, iconUrl, indicatorCss, textColor, selectionKey, sourceText, sourceTitle }) => {
+                            const isSelected = selectedColorKey && selectedColorKey === selectionKey;
+                            return (
+                              <button
+                                key={selectionKey}
+                                type="button"
+                                aria-pressed={!!isSelected}
+                                onClick={() => applyColorSchemeFromColorData(entry, selectionKey)}
+                                className={cx(
+                                  "flex min-w-0 flex-col items-center gap-1.5 rounded-xl border bg-slate-900 p-1.5 transition",
+                                  isSelected ? "border-blue-400 ring-1 ring-blue-400/60" : "border-slate-800 hover:border-slate-500"
+                                )}
+                                style={{ backgroundColor: indicatorCss || undefined }}
+                                title={sourceTitle ? `${displayName}\n${sourceTitle}` : displayName}
+                              >
+                                <div className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg bg-slate-950/70">
+                                  {iconUrl && <img src={iconUrl} alt="" className="h-4/5 w-4/5 object-contain" loading="lazy" />}
                                 </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="text-xs text-slate-500">Frame has no SVG content.</div>
-                          )}
+                                <div className="line-clamp-2 w-full text-center text-[11px] font-bold leading-tight" style={{ color: textColor }}>
+                                  {displayName}
+                                </div>
+                                {sourceText && (
+                                  <div className="w-full truncate text-center text-[10px] leading-tight opacity-80" style={{ color: textColor }}>
+                                    {sourceText}
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })}
                         </div>
+                      )}
+                      {pickedColor && Array.isArray(pickedColor.sources) && (
+                        <Card className="space-y-2">
+                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            <span className="text-sm font-bold text-white">{pickedColorName}</span>
+                            {pickedColorAdded && <span className="text-xs text-slate-400">{pickedColorAdded}</span>}
+                          </div>
+                          <SourceList sources={pickedColor.sources} />
+                        </Card>
+                      )}
+                    </div>
+                  )}
+
+                  {palettePanel === "presets" && (
+                    <div className="space-y-3">
+                      <SearchInput value={skinPresetSearchQuery} onChange={setSkinPresetSearchQuery} placeholder="Search Skins" shortcut={false} />
+                      {allSkinsWithColors.length === 0 ? (
+                        <EmptyState bare title="No skin presets" />
+                      ) : filteredPresets.length === 0 ? (
+                        <EmptyState bare title="No skins match this search" />
+                      ) : (
+                        <div className={cx("grid grid-cols-3 content-start gap-2 sm:grid-cols-4 xl:grid-cols-3 min-[112.5rem]:grid-cols-4 min-[137.5rem]:grid-cols-5", listScroll)}>
+                          {filteredPresets.map(({ legendIndex, skinIndex, legendName, skinName, skinIconUrl, key }) => (
+                            <ImageTile
+                              key={key}
+                              src={skinIconUrl}
+                              label={skinName}
+                              note={legendName}
+                              onClick={() => applyColorSchemeFromSkin(legendIndex, skinIndex, key)}
+                              selected={!!selectedSkinPresetKey && selectedSkinPresetKey === key}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {palettePanel === "saved" && (
+                    <div className="space-y-3">
+                      <div className="flex gap-2">
+                        <label className="min-w-0 flex-1">
+                          <span className="sr-only">Name</span>
+                          <input
+                            type="text"
+                            value={customColorName}
+                            onChange={(e) => setCustomColorName(e.target.value)}
+                            className={cx(textField, "w-full")}
+                            placeholder="Name this custom color"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={saveCurrentCustomColor}
+                          disabled={!Object.keys(currentCompactOverrides).length}
+                          className="rounded-xl border border-emerald-400/40 bg-emerald-500/15 px-3 py-2 text-sm font-bold text-emerald-100 transition hover:bg-emerald-500/25 disabled:cursor-default disabled:border-slate-800 disabled:bg-transparent disabled:text-slate-600"
+                        >
+                          Save
+                        </button>
                       </div>
+                      {deletedSavedColor?.entry && (
+                        <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                          <span className="min-w-0 truncate">Deleted {deletedSavedColor.entry.name}</span>
+                          <button type="button" onClick={undoDeleteSavedColor} className="shrink-0 rounded-lg bg-amber-500/20 px-2.5 py-1 text-xs font-bold text-amber-100 hover:bg-amber-500/30">
+                            Undo
+                          </button>
+                        </div>
+                      )}
+
+                      {dataFull && highDefineTestSkins.length > 0 && (
+                        <Card>
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="text-sm font-bold text-slate-100">High-Define Test Skins</div>
+                              <div className="text-xs text-slate-400">The first two cover all 38 define keys</div>
+                            </div>
+                            <Pill tone="amber">{highDefineTestSkins.length}</Pill>
+                          </div>
+                          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            {highDefineTestSkins.map((skin) => {
+                              const selected = activeLegendIndex === skin.legendIndex && activeSkinIndex === skin.skinIndex;
+                              return (
+                                <button
+                                  key={skin.key}
+                                  type="button"
+                                  aria-pressed={selected}
+                                  onClick={() => selectActiveSkin(skin.legendIndex, skin.skinIndex)}
+                                  className={cx(
+                                    "flex items-start gap-2 rounded-xl border bg-slate-900/70 p-2 text-left transition",
+                                    selected ? "border-blue-400 ring-1 ring-blue-400/60" : "border-slate-800 hover:border-slate-500"
+                                  )}
+                                >
+                                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-950">
+                                    {skin.skinIconUrl && <img src={skin.skinIconUrl} alt="" className="h-11 w-11 object-contain" />}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex min-w-0 items-start justify-between gap-2">
+                                      <div className="min-w-0">
+                                        <div className="truncate text-xs font-bold text-slate-100">{skin.skinName}</div>
+                                        <div className="truncate text-[11px] text-slate-400">{skin.legendName}</div>
+                                      </div>
+                                      <Pill tone="amber" className="shrink-0">{skin.actualDefineCount || skin.defineCount}</Pill>
+                                    </div>
+                                    <div className="mt-1 text-[11px] leading-tight text-slate-500">{skin.note}</div>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </Card>
+                      )}
+
+                      {savedCustomColors.length === 0 ? (
+                        <EmptyState bare title="No saved custom colors yet" />
+                      ) : (
+                        <div className={cx("grid grid-cols-1 content-start gap-2 sm:grid-cols-2 min-[137.5rem]:grid-cols-3", listScroll)}>
+                          {savedCustomColors.map((saved) => {
+                            const selected = selectedSavedColorId === saved.id;
+                            return (
+                              <Card key={saved.id} className={selected ? "border-blue-400 ring-1 ring-blue-400/60" : ""}>
+                                <button type="button" onClick={() => applySavedCustomColor(saved)} className="w-full text-left">
+                                  <div className="truncate text-sm font-bold text-slate-100">{saved.name}</div>
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {Object.entries(saved.overrides || {}).map(([key, value]) => {
+                                      const css = defineToCssColor(value);
+                                      return css ? (
+                                        <span
+                                          key={key}
+                                          title={key}
+                                          className="h-5 w-5 rounded-md border border-slate-700"
+                                          style={{ backgroundColor: css }}
+                                        />
+                                      ) : null;
+                                    })}
+                                  </div>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteSavedCustomColor(saved.id)}
+                                  className="mt-3 w-full rounded-lg bg-rose-500/15 px-2 py-1 text-xs font-bold text-rose-200 hover:bg-rose-500/25"
+                                >
+                                  Delete
+                                </button>
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
-                </div>
+                </Section>
 
-                <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-900/55 p-3 shadow-xl shadow-slate-950/40">
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <div>
-                      <div className="text-sm font-black text-slate-100">Color Defines</div>
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{defineEntries.length} defines / {swapEntries.length} swaps</div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setShowAllDefines((v) => !v)}
-                      className={([
-                        "px-2 py-0.5 rounded-md border text-[10px]",
-                        showAllDefines ? "border-emerald-500 bg-slate-900 text-emerald-300" : "border-slate-700 text-slate-200 hover:border-emerald-400"
-                      ].filter(Boolean).join(" "))}
-                    >
-                      Show All Defines
-                    </button>
-                    <button
-                      type="button"
-                      onClick={resetAllColorsToDefault}
-                      disabled={!originalLegendData}
-                      className={([
-                        "px-2 py-0.5 rounded-md border text-[10px]",
-                        originalLegendData
-                          ? "border-slate-700 text-slate-200 hover:border-sky-400"
-                          : "border-slate-800 text-slate-600 cursor-default"
-                      ].filter(Boolean).join(" "))}
-                    >
-                      Reset All
-                    </button>
-                  </div>
-
-                  {defineEntries.length === 0 && swapEntries.length === 0 && (
-                    <div className="text-[11px] text-slate-500">No color defines or swaps found on this skin.</div>
+                <Section
+                  title="Color Defines"
+                  count={`${defineEntries.length} defines · ${swapEntries.length} swaps`}
+                  actions={(
+                    <>
+                      <Toggle label="Show all" checked={showAllDefines} onChange={setShowAllDefines} />
+                      <button type="button" onClick={resetAllColorsToDefault} disabled={!originalLegendData} className={smallButton}>
+                        Reset all
+                      </button>
+                    </>
                   )}
-
-                  {(defineEntries.length > 0 || swapEntries.length > 0) && (
-                    <div className="flex max-h-[72vh] flex-col gap-2 overflow-y-auto pr-1 scrollbar-thin scrollbar-track-slate-950 scrollbar-thumb-slate-700">
+                >
+                  {defineEntries.length === 0 && swapEntries.length === 0 ? (
+                    <EmptyState bare title="No color defines or swaps on this skin" />
+                  ) : (
+                    <div className="flex flex-col gap-2">
                       {grouped.map(([group, data]) => {
                         const isOpen = !!openGroupsRef.current[group];
                         return (
-                          <div key={group} className="rounded-xl border border-slate-700/80 bg-slate-950/45">
+                          <div key={group} className="rounded-xl border border-slate-700 bg-slate-950/60">
                             <button
                               type="button"
+                              aria-expanded={isOpen}
                               onClick={() => toggleGroup(group)}
-                              className="w-full flex items-center justify-between px-3 py-2 hover:bg-slate-900/70"
+                              className="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left hover:bg-slate-900/70"
                             >
-                              <div className="flex items-center gap-2">
-                                <span className="h-4 w-4 flex items-center justify-center">
-                                  {isOpen ? <ChevronDownIcon className="h-3 w-3" /> : <ChevronRightIcon className="h-3 w-3" />}
-                                </span>
-                                <span className="text-[11px] font-semibold text-slate-200">{group}</span>
-                              </div>
-                              <div className="text-[10px] text-slate-500">
+                              <span className="flex min-w-0 items-center gap-2">
+                                {isOpen ? <ChevronDownIcon className="h-4 w-4 shrink-0 text-slate-400" /> : <ChevronRightIcon className="h-4 w-4 shrink-0 text-slate-400" />}
+                                <span className="truncate text-sm font-bold text-slate-200">{group}</span>
+                              </span>
+                              <span className="shrink-0 text-xs text-slate-400">
                                 {data.defines.length} defines · {data.swaps.length} swaps
-                              </div>
+                              </span>
                             </button>
 
                             {isOpen && (
-                              <div className="grid grid-cols-2 gap-2 p-3">
-                                {data.defines.map(({ key, base, cssColor }) => {
-                                  const effectiveColor = effectiveDefineColors?.[key] || cssColor || svgDefineFallback?.[key] || "#ffffff";
-                                  const isPicked = selectedDefineKey === key;
-                                  return (
-                                    <div
-                                      key={key}
-                                      className={([
-                                        "flex flex-col rounded-xl border bg-slate-900/70 p-3 gap-2",
-                                        isPicked ? "border-sky-500" : "border-slate-700"
-                                      ].filter(Boolean).join(" "))}
-                                    >
-                                      <div>
-                                        <div className="text-xs font-bold text-slate-100">{formatDefineLabel(base)}</div>
-                                        <div className="mt-0.5 text-[10px] text-slate-500 break-all">{key}</div>
-                                      </div>
-
-                                      <div className="flex items-center justify-between gap-2">
-                                        <div className="flex items-center gap-2">
-                                          <ColorPicker value={effectiveColor} defineKey={key} onChange={(newCss) => handleDefineColorChange(key, newCss)} />
-                                        </div>
-                                      </div>
-
-                                      <button
-                                        type="button"
-                                        onClick={() => resetDefineToDefault(key)}
-                                        className="rounded-lg border border-slate-700 px-2 py-1 text-[10px] font-semibold text-slate-200 hover:border-sky-400"
-                                      >
-                                        Reset
-                                      </button>
-                                    </div>
-                                  );
-                                })}
+                              <div className="grid grid-cols-1 gap-2 border-t border-slate-800 p-3 sm:grid-cols-2 min-[137.5rem]:grid-cols-3">
+                                {data.defines.map((entry) => renderDefineCard(entry))}
 
                                 {data.swaps.map(({ key, base, target, linkedDefine }) => (
-                                  <div key={key} className="flex flex-col rounded-xl border border-slate-700 bg-slate-900/70 p-3 gap-2">
+                                  <div key={key} className="flex flex-col gap-2 rounded-xl border border-slate-700 bg-slate-900/70 p-2">
                                     <div>
                                       <div className="text-xs font-bold text-slate-100">{formatDefineLabel(base)}</div>
-                                      <div className="mt-0.5 text-[10px] text-slate-500 break-all">{key}</div>
+                                      {dataFull && <div className="mt-0.5 break-all font-mono text-[10px] text-slate-500">{key}</div>}
                                     </div>
-                                    <div className="flex flex-col gap-2">
-                                      <div className="flex items-center gap-2">
-                                        <div
-                                          className="h-8 w-8 shrink-0 rounded-lg border border-slate-600"
-                                          style={{ backgroundColor: linkedDefine?.cssColor || "#000000" }}
-                                        />
-                                        <span className="text-[10px] text-slate-300">
-                                          {linkedDefine ? `Linked to ${formatDefineLabel(linkedDefine.base)}` : `Linked to ${target}_Define (missing)`}
-                                        </span>
-                                      </div>
-                                      {defineEntries.length > 0 && (
-                                        <select
-                                          value={target}
-                                          onChange={(e) => handleSwapTargetChange(key, e.target.value)}
-                                          className="mt-1 w-full rounded bg-slate-900 border border-slate-700 px-1 py-0.5 text-[10px] outline-none"
-                                        >
-                                          {defineEntries.map((def) => (
-                                            <option key={def.key} value={def.base}>
-                                              {formatDefineLabel(def.base)}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      )}
-                                      <button
-                                        type="button"
-                                        onClick={() => resetSwapToDefault(key)}
-                                        className="rounded-lg border border-slate-700 px-2 py-1 text-[10px] font-semibold text-slate-200 hover:border-sky-400"
-                                      >
-                                        Reset
-                                      </button>
+                                    <div className="flex items-center gap-2">
+                                      <div
+                                        className="h-8 w-8 shrink-0 rounded-lg border border-slate-600"
+                                        style={{ backgroundColor: linkedDefine?.cssColor || "#000000" }}
+                                      />
+                                      <span className="text-[11px] text-slate-300">
+                                        {linkedDefine ? `Linked to ${formatDefineLabel(linkedDefine.base)}` : `Linked to ${dataFull ? `${target}_Define` : formatDefineLabel(target)} (missing)`}
+                                      </span>
                                     </div>
+                                    {defineEntries.length > 0 && (
+                                      <SelectInput
+                                        label={<span className="sr-only">Linked define</span>}
+                                        value={target}
+                                        onChange={(value) => handleSwapTargetChange(key, value)}
+                                        options={defineEntries.map((def) => ({ value: def.base, label: formatDefineLabel(def.base) }))}
+                                        className="[&>select]:w-full [&>select]:py-1 [&>select]:text-xs"
+                                      />
+                                    )}
+                                    <button type="button" onClick={() => resetSwapToDefault(key)} className={smallButton}>
+                                      Reset
+                                    </button>
                                   </div>
                                 ))}
                               </div>
@@ -4250,379 +3484,72 @@ export default function AnimDatabase() {
                         );
                       })}
 
-                      {unusedDefineEntries.length > 0 && (
-                        <div className="rounded-xl border border-slate-800 bg-slate-950/25">
+                      {dataFull && unusedDefineEntries.length > 0 && (
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/30">
                           <button
                             type="button"
+                            aria-expanded={unusedDefinesOpen}
                             onClick={() => setUnusedDefinesOpen((v) => !v)}
-                            className="w-full flex items-center justify-between px-3 py-2 hover:bg-slate-900/30"
+                            className="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left hover:bg-slate-900/40"
                           >
-                            <div className="flex items-center gap-2">
-                              <span className="h-4 w-4 flex items-center justify-center">
-                                {unusedDefinesOpen ? <ChevronDownIcon className="h-3 w-3" /> : <ChevronRightIcon className="h-3 w-3" />}
-                              </span>
-                              <span className="text-[11px] font-semibold text-slate-400">Unused Defines (not referenced in selected skin)</span>
-                            </div>
-                            <div className="text-[10px] text-slate-500">{unusedDefineEntries.length} defines</div>
+                            <span className="flex min-w-0 items-center gap-2">
+                              {unusedDefinesOpen ? <ChevronDownIcon className="h-4 w-4 shrink-0 text-slate-500" /> : <ChevronRightIcon className="h-4 w-4 shrink-0 text-slate-500" />}
+                              <span className="text-sm font-bold text-slate-400">Unused on this skin</span>
+                            </span>
+                            <span className="shrink-0 text-xs text-slate-500">{unusedDefineEntries.length} defines</span>
                           </button>
 
                           {unusedDefinesOpen && (
-                            <div className="grid grid-cols-2 gap-2 p-3">
-                              {unusedDefineEntries.map(({ key, base, cssColor }) => {
-                                const effectiveColor = effectiveDefineColors?.[key] || cssColor || svgDefineFallback?.[key] || "#ffffff";
-                                const isPicked = selectedDefineKey === key;
-                                return (
-                                  <div
-                                    key={key}
-                                      className={([
-                                        "flex flex-col rounded-xl border bg-slate-900/40 p-3 gap-2",
-                                        isPicked ? "border-sky-500" : "border-slate-800"
-                                      ].filter(Boolean).join(" "))}
-                                  >
-                                    <div>
-                                      <div className="text-[11px] font-medium">{formatDefineLabel(base)}</div>
-                                      <div className="text-[10px] text-slate-500 break-all">{key}</div>
-                                    </div>
-                                    <div className="mt-1 flex items-center justify-between gap-2">
-                                      <div className="flex items-center gap-2">
-                                        <ColorPicker value={effectiveColor} defineKey={key} onChange={(newCss) => handleDefineColorChange(key, newCss)} />
-                                      </div>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => resetDefineToDefault(key)}
-                                      className="rounded-md border border-slate-800 px-1.5 py-0.5 text-[10px] text-slate-300 hover:border-sky-400"
-                                    >
-                                      Reset
-                                    </button>
-                                  </div>
-                                );
-                              })}
+                            <div className="grid grid-cols-1 gap-2 border-t border-slate-800 p-3 sm:grid-cols-2 min-[137.5rem]:grid-cols-3">
+                              {unusedDefineEntries.map((entry) => renderDefineCard(entry, true))}
                             </div>
                           )}
                         </div>
                       )}
                     </div>
                   )}
-                </div>
+                </Section>
+                {dataFull && activeSkin?.costumeData && (
+                  <RawData data={activeSkin.costumeData} title="Raw skin data" filename={`skin-${activeSkin.costumeData.CostumeID || activeSkin.costumeData.CostumeName || 'data'}`} />
+                )}
+                {dataFull && selectedColorKey && Array.isArray(colorData) && (() => {
+                  const found = colorData.find((entry, idx) => getColorSelectionKey(entry, idx) === selectedColorKey);
+                  const row = found?.colorData || found;
+                  return row ? <RawData data={row} title="Raw color scheme data" filename={`color-${row.ColorSchemeName || 'data'}`} /> : null;
+                })()}
               </div>
             </div>
-          )}
-        </section>
 
-        <section className="min-h-0 min-w-0 overflow-hidden bg-slate-950/80">
-          <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden px-3 py-3 text-xs text-slate-200 ring-1 ring-slate-800">
-            {!activeLegend || activeSkinIndex == null || !activeSkin ? (
-              <div className="text-slate-500">Select a skin to edit colors.</div>
-            ) : (
-              <>
-                <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-2">
-                  <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-950/80 p-1">
-                    <button
-                      type="button"
-                      onClick={() => setPalettePanel("colors")}
-                      className={([
-                        "rounded-lg px-3 py-2 text-xs font-black transition-colors",
-                        palettePanel === "colors" ? "bg-sky-500 text-white" : "text-slate-300 hover:bg-slate-800"
-                      ].filter(Boolean).join(" "))}
-                    >
-                      Colors
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPalettePanel("presets")}
-                      className={([
-                        "rounded-lg px-3 py-2 text-xs font-black transition-colors",
-                        palettePanel === "presets" ? "bg-emerald-500 text-white" : "text-slate-300 hover:bg-slate-800"
-                      ].filter(Boolean).join(" "))}
-                    >
-                      Skin Presets
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPalettePanel("saved")}
-                      className={([
-                        "rounded-lg px-3 py-2 text-xs font-black transition-colors",
-                        palettePanel === "saved" ? "bg-amber-500 text-slate-950" : "text-slate-300 hover:bg-slate-800"
-                      ].filter(Boolean).join(" "))}
-                    >
-                      Saved
-                    </button>
-                  </div>
-                </div>
-
-                {Array.isArray(colorData) && colorData.length > 0 && (
-                  <div className={palettePanel === "colors" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
-                    <div className="mb-3 flex flex-col gap-2">
-                      <div className="font-black text-slate-100">Color Palettes</div>
-                      <input
-                        type="text"
-                        value={colorSearchQuery}
-                        onChange={(e) => setColorSearchQuery(e.target.value)}
-                        className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs font-semibold outline-none focus:border-sky-500"
-                        placeholder="Search colors"
-                      />
-                    </div>
-
-                    {(() => {
-                      const allColors = Array.isArray(colorData) ? colorData : [];
-                      if (!allColors.length) return <div className="text-[11px] text-slate-500">No colors available.</div>;
-
-                      const normalizedColorQuery = normalizeText(colorSearchQuery);
-                      const filteredColors = allColors.filter((entry) => {
-                        const detail = entry && entry.colorData ? entry.colorData : entry;
-                        const nameKey = detail?.DisplayNameKey;
-                        const name = (nameKey && langs && langs[nameKey]) || nameKey || "";
-                        if (!normalizedColorQuery) return true;
-                        return normalizeText(name).includes(normalizedColorQuery);
-                      });
-
-                      if (!filteredColors.length) return <div className="text-[11px] text-slate-500">No colors match this search.</div>;
-
-                      return (
-                        <div className="grid min-h-0 flex-1 grid-cols-2 content-start gap-3 overflow-y-auto pr-1 scrollbar-thin scrollbar-track-slate-950 scrollbar-thumb-slate-700 xl:grid-cols-3">
-                          {filteredColors.map((entry, idx) => {
-                            const detail = entry && entry.colorData ? entry.colorData : entry;
-                            const nameKey = detail?.DisplayNameKey;
-                            const displayName = (nameKey && langs && langs[nameKey]) || nameKey || "Unnamed";
-                            const iconFileName = detail?.IconFileName;
-                            const iconName = detail?.IconName;
-                            const iconUrl = iconFileName && iconName ? `${host}/game/getGfx/${iconFileName}/${iconName}` : null;
-
-                            const indicatorCss = defineToCssColor(detail?.IndicatorColor);
-                            const textColor = getContrastingTextColor(indicatorCss);
-
-                            const selectionKey = getColorSelectionKey(entry, idx);
-                            const isSelected = selectedColorKey && selectedColorKey === selectionKey;
-
-                            return (
-                              <button
-                                key={selectionKey}
-                                type="button"
-                                onClick={() => applyColorSchemeFromColorData(entry, selectionKey)}
-                                className={([
-                                  "group flex flex-col items-center gap-2 rounded-xl border bg-slate-900/80 p-2",
-                                  "hover:border-sky-500 hover:bg-slate-900",
-                                  isSelected && "border-sky-400 bg-slate-900"
-                                ].filter(Boolean).join(" "))}
-                                style={{ backgroundColor: indicatorCss }}
-                              >
-                                <div className="w-full rounded-lg bg-slate-950/70 flex items-center justify-center aspect-square overflow-hidden">
-                                  {iconUrl && <img src={iconUrl} alt={displayName} className="h-20 w-20 object-contain" />}
-                                </div>
-                                <div className="w-full text-center text-[11px] font-black leading-tight" style={{ color: textColor }}>
-                                  {displayName}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
-                  </div>
+            {showPip && !pipHidden && !isAnimating && scaledSvg && (
+              <div
+                ref={pipRef}
+                onPointerDown={startPipDrag}
+                className={cx(
+                  "fixed z-50 w-40 touch-none overflow-hidden rounded-xl border border-slate-700 bg-slate-950/95 shadow-lg xl:hidden",
+                  pipDragging ? "cursor-grabbing" : "cursor-grab"
                 )}
-
-                {Array.isArray(allSkinsWithColors) && allSkinsWithColors.length > 0 && (
-                  <div className={palettePanel === "presets" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
-                    <div className="mb-3 flex flex-col gap-2">
-                      <div className="font-black text-slate-100">Skin Color Presets</div>
-                      <input
-                        type="text"
-                        value={skinPresetSearchQuery}
-                        onChange={(e) => setSkinPresetSearchQuery(e.target.value)}
-                        className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs font-semibold outline-none focus:border-emerald-500"
-                        placeholder="Search skins"
-                      />
-                    </div>
-
-                    {(() => {
-                      const normalizedPresetQuery = normalizeText(skinPresetSearchQuery);
-                      const filtered = allSkinsWithColors.filter((entry) => {
-                        if (!normalizedPresetQuery) return true;
-                        return textSearchMatches(normalizedPresetQuery, [
-                          entry.legendName,
-                          entry.skinName,
-                          entry.costumeName,
-                          entry.ownerHero,
-                          entry.displayKey,
-                          entry.heroName,
-                        ]);
-                      });
-
-                      if (!filtered.length) return <div className="text-[11px] text-slate-500">No skins match this search.</div>;
-
-                      return (
-                        <div className="grid min-h-0 flex-1 grid-cols-2 content-start gap-3 overflow-y-auto pr-1 scrollbar-thin scrollbar-track-slate-950 scrollbar-thumb-slate-700 xl:grid-cols-3">
-                          {filtered.map((entry) => {
-                            const { legendIndex, skinIndex, legendName, skinName, skinIconUrl, key } = entry;
-                            const isSelectedPreset = selectedSkinPresetKey && selectedSkinPresetKey === key;
-
-                            return (
-                              <button
-                                key={key}
-                                type="button"
-                                onClick={() => applyColorSchemeFromSkin(legendIndex, skinIndex, key)}
-                                className={([
-                                  "group flex flex-col items-center gap-2 rounded-xl border bg-slate-900/80 p-2",
-                                  "hover:border-sky-500 hover:bg-slate-900",
-                                  isSelectedPreset && "border-emerald-400 bg-slate-900"
-                                ].filter(Boolean).join(" "))}
-                              >
-                                <div className="w-full rounded-lg bg-slate-950/70 flex items-center justify-center aspect-square overflow-hidden">
-                                  {skinIconUrl && <img src={skinIconUrl} alt={skinName} className="h-20 w-20 object-contain" />}
-                                </div>
-                                <div className="w-full text-center text-[11px] font-black leading-tight text-slate-100">{skinName}</div>
-                                <div className="w-full text-center text-[10px] leading-tight text-slate-400">{legendName}</div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
-
-                <div className={palettePanel === "saved" ? "flex min-h-0 flex-1 flex-col overflow-hidden" : "hidden"}>
-                  <div className="mb-3 flex flex-col gap-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-black text-slate-100">Saved Custom Colors</div>
-                      <div className="flex items-center gap-2">
-                        {deletedSavedColor?.entry && (
-                          <button
-                            type="button"
-                            onClick={undoDeleteSavedColor}
-                            className="rounded-full border border-amber-500/50 bg-amber-500/10 px-2 py-0.5 text-[10px] font-black text-amber-200 hover:bg-amber-500/15"
-                          >
-                            Undo delete
-                          </button>
-                        )}
-                        <div className="rounded-full border border-slate-700 bg-slate-950 px-2 py-0.5 text-[10px] font-bold text-slate-400">
-                          {savedCustomColors.length}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={customColorName}
-                        onChange={(e) => setCustomColorName(e.target.value)}
-                        className="min-w-0 flex-1 rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs font-semibold outline-none focus:border-amber-500"
-                        placeholder="Name this custom color"
-                      />
-                      <button
-                        type="button"
-                        onClick={saveCurrentCustomColor}
-                        disabled={!Object.keys(currentCompactOverrides).length}
-                        className={([
-                          "rounded-xl border px-3 py-2 text-xs font-black",
-                          Object.keys(currentCompactOverrides).length
-                            ? "border-emerald-500/70 text-emerald-200 hover:bg-emerald-500/10"
-                            : "border-slate-800 text-slate-600 cursor-default"
-                        ].filter(Boolean).join(" "))}
-                      >
-                        Save
-                      </button>
-                    </div>
-                  </div>
-
-                  {highDefineTestSkins.length > 0 && (
-                    <div className="mb-2 rounded-xl border border-slate-800 bg-slate-950/35 p-2.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <div className="text-xs font-black text-slate-100">High-Define Test Skins</div>
-                          <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                            The first two cover all 38 define keys
-                          </div>
-                        </div>
-                        <div className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-black text-amber-200">
-                          {highDefineTestSkins.length}
-                        </div>
-                      </div>
-                      <div className="mt-2 grid grid-cols-1 gap-2 xl:grid-cols-2">
-                        {highDefineTestSkins.map((skin) => {
-                          const selected = activeLegendIndex === skin.legendIndex && activeSkinIndex === skin.skinIndex;
-                          return (
-                            <button
-                              key={skin.key}
-                              type="button"
-                              onClick={() => selectActiveSkin(skin.legendIndex, skin.skinIndex)}
-                              className={([
-                                "group flex items-start gap-2 rounded-xl border bg-slate-900/70 p-2 text-left",
-                                selected ? "border-amber-400 bg-slate-900" : "border-slate-800 hover:border-amber-400"
-                              ].filter(Boolean).join(" "))}
-                            >
-                              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-slate-950/80">
-                                {skin.skinIconUrl && <img src={skin.skinIconUrl} alt={skin.skinName} className="h-11 w-11 object-contain" />}
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="flex min-w-0 items-start justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <div className="truncate text-xs font-black text-slate-100">{skin.skinName}</div>
-                                    <div className="truncate text-[10px] text-slate-500">{skin.legendName}</div>
-                                  </div>
-                                  <div className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-black text-amber-200">
-                                    {skin.actualDefineCount || skin.defineCount}
-                                  </div>
-                                </div>
-                                <div className="mt-1 text-[10px] leading-tight text-slate-500">{skin.note}</div>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {savedCustomColors.length === 0 ? (
-                    <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-4 text-[11px] text-slate-500">
-                      No saved custom colors yet.
-                    </div>
-                  ) : (
-                    <div className="grid min-h-0 flex-1 grid-cols-1 content-start gap-3 overflow-y-auto pr-1 scrollbar-thin scrollbar-track-slate-950 scrollbar-thumb-slate-700 xl:grid-cols-2">
-                      {savedCustomColors.map((saved) => {
-                        const selected = selectedSavedColorId === saved.id;
-                        return (
-                          <div
-                            key={saved.id}
-                            className={([
-                              "rounded-xl border bg-slate-900/80 p-3",
-                              selected ? "border-amber-400 bg-slate-900" : "border-slate-800"
-                            ].filter(Boolean).join(" "))}
-                          >
-                            <button type="button" onClick={() => applySavedCustomColor(saved)} className="w-full text-left">
-                              <div className="truncate text-xs font-black text-slate-100">{saved.name}</div>
-                              <div className="mt-2 flex flex-wrap gap-1.5">
-                                {Object.entries(saved.overrides || {}).map(([key, value]) => {
-                                  const css = defineToCssColor(value);
-                                  return css ? (
-                                    <span
-                                      key={key}
-                                      title={key}
-                                      className="h-5 w-5 rounded-md border border-slate-700"
-                                      style={{ backgroundColor: css }}
-                                    />
-                                  ) : null;
-                                })}
-                              </div>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => deleteSavedCustomColor(saved.id)}
-                              className="mt-3 w-full rounded-lg border border-red-500/40 px-2 py-1 text-[10px] font-bold text-red-200 hover:bg-red-500/10"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                style={{
+                  left: pipPos?.x ?? undefined,
+                  top: pipPos?.y ?? undefined,
+                }}
+              >
+                <button
+                  type="button"
+                  aria-label="Hide preview"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => setPipHidden(true)}
+                  className="absolute right-1 top-1 z-10 flex h-10 w-10 items-center justify-center rounded-lg bg-slate-900/90 text-slate-200 hover:bg-slate-800"
+                >
+                  <XMarkIcon className="h-5 w-5" aria-hidden="true" />
+                </button>
+                <div className="p-1">
+                  <div key={`pip-${svgRenderKey}`} className="[&>svg]:block [&>svg]:h-auto [&>svg]:w-full" dangerouslySetInnerHTML={{ __html: renderedSvg.pip }} />
                 </div>
-              </>
+              </div>
             )}
-          </div>
-        </section>
-      </main>
-    </div>
+          </>
+        )}
+      </PageShell>
+    </>
   );
 }

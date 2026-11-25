@@ -1,7 +1,8 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import RankingsPage from '../../components/esports/RankingsPage.jsx';
+import { toolText } from '../../data/head.js';
 ---
-<Layout title="Brawlhalla Power Rankings">
+<Layout title="Brawlhalla Power Rankings" description={toolText("/pr")}>
   <RankingsPage client:load />
 </Layout>

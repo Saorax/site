@@ -1,0 +1,7 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import RaybotQueue from "../../components/raybot/RaybotQueue.jsx";
+---
+<Layout title="Brawlhalla Ranked Queue" description="Top 500 Brawlhalla players in ranked right now on every server, with each session's rating change, games and wins, checked every 5 minutes.">
+  <RaybotQueue client:load />
+</Layout>

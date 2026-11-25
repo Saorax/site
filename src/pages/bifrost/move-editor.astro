@@ -1,8 +1,9 @@
 ---
 import Layout from "../../layouts/Layout.astro";
 import MoveEditor from "../../components/bifrost/MoveEditor.jsx";
+import { toolText } from "../../data/head.js";
 ---
 
-<Layout title="Bifrost Move Editor">
+<Layout title="Move Editor · Bifrost" description={toolText("/bifrost/move-editor")}>
   <MoveEditor client:load />
 </Layout>

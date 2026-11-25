@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { host } from "../../stuff";
+import { CountPill, CountPills, EmptyState, ErrorState, LoadingState, PageHeader, PageShell, Pill, SearchInput, SelectInput, SidebarHeader, SkeletonGrid, Toggle, WEAPON_LABELS, cx, legendHref, useApi, useQueryFlag, useQueryList, useQueryState, weaponName } from '../ui';
 
 const normalizeString = (str) => String(str || '').normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 const apiAsset = (src) => typeof src === 'string' && src.startsWith('/game/') ? `${host}${src}` : src;
@@ -13,8 +14,10 @@ const statRows = [
 
 const weaponList = [
     "Sword", "Hammer", "Pistol", "RocketLance", "Spear", "Katar", "Axe",
-    "Bow", "Fists", "Scythe", "Cannon", "Orb", "Greatsword", "Boots",
+    "Bow", "Fists", "Scythe", "Cannon", "Orb", "Greatsword", "Boots", "Chakram",
 ];
+
+const weaponLabelSet = new Set(Object.values(WEAPON_LABELS));
 
 const sortOptions = [
     { value: 'releaseAsc', label: 'Release Order' },
@@ -49,10 +52,6 @@ function statValue(legend, key) {
     return Number.isFinite(value) ? value : 0;
 }
 
-function statTotal(legend) {
-    return statRows.reduce((total, row) => total + statValue(legend, row.key), 0);
-}
-
 function statPipIcon(value, index) {
     if (index === 0 && value >= 1) return '742';
     if (index === 9 && value < 10) return '753';
@@ -69,13 +68,35 @@ function weaponNames(legend) {
     return [legend?.weapons?.main?.name, legend?.weapons?.secondary?.name].filter(Boolean);
 }
 
+function weaponSlug(weapon) {
+    return weaponName(weapon).replace(/\s+/g, '');
+}
+
+function weaponFromParam(value) {
+    const wanted = normalizeString(value).replace(/\s+/g, '');
+    if (!wanted) return null;
+    return weaponList.find((weapon) => normalizeString(weapon) === wanted || normalizeString(weaponSlug(weapon)) === wanted) || null;
+}
+
 function legendUrl(legend) {
-    return `/game/legends/${normalizeString(legend?.bio?.name?.normal)}`;
+    return legendHref(legend) || `/game/legends/${normalizeString(legend?.bio?.name?.normal)}`;
 }
 
 function sortLegends(items, sortBy) {
     const byName = (a, b) => String(a?.bio?.name?.normal || '').localeCompare(String(b?.bio?.name?.normal || ''));
+    const order = (legend) => {
+        const value = Number(legend?.releaseOrder);
+        return Number.isFinite(value) && value > 0 ? value : null;
+    };
+    const byOrder = (a, b) => {
+        const aOrder = order(a);
+        const bOrder = order(b);
+        if (aOrder !== null && bOrder !== null && aOrder !== bOrder) return aOrder - bOrder;
+        return 0;
+    };
     const byReleaseAsc = (a, b) => {
+        const ordered = byOrder(a, b);
+        if (ordered) return ordered;
         const aRelease = releaseMs(a.release);
         const bRelease = releaseMs(b.release);
         if (!aRelease && !bRelease) return byName(a, b);
@@ -84,6 +105,8 @@ function sortLegends(items, sortBy) {
         return aRelease - bRelease || byName(a, b);
     };
     const byReleaseDesc = (a, b) => {
+        const ordered = byOrder(b, a);
+        if (ordered) return ordered;
         const aRelease = releaseMs(a.release);
         const bRelease = releaseMs(b.release);
         if (!aRelease && !bRelease) return byName(a, b);
@@ -131,25 +154,16 @@ function StatIconViewer({ legend }) {
                                 <img
                                     key={index}
                                     src={`/game/${statPipIcon(value, index)}.png`}
-                                    className="h-5 w-4 shrink-0 object-fill"
+                                    className="h-5 w-4 min-w-0 shrink object-fill"
                                     alt=""
                                     aria-hidden="true"
                                 />
                             ))}
                         </div>
-                        <span className="text-right text-xs font-black text-slate-700 dark:text-slate-100">{value}</span>
+                        <span className="text-right text-xs font-bold text-slate-100">{value}</span>
                     </div>
                 );
             })}
-        </div>
-    );
-}
-
-function SummaryTile({ label, value }) {
-    return (
-        <div className="rounded-xl border border-slate-300 bg-white/80 px-3 py-2 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
-            <div className="text-lg font-black leading-none text-slate-950 dark:text-white">{value}</div>
-            <div className="mt-1 text-[10px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</div>
         </div>
     );
 }
@@ -161,37 +175,35 @@ function LegendCard({ legend }) {
     return (
         <a
             href={legendUrl(legend)}
-            className="group relative flex min-h-[20rem] flex-col overflow-hidden rounded-2xl border border-slate-300 bg-white text-slate-950 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-400 hover:shadow-xl hover:shadow-blue-500/10 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            className="group relative flex min-h-[20rem] flex-col overflow-hidden rounded-xl border border-slate-700 bg-slate-900/80 text-white shadow-sm transition hover:border-blue-400 focus-visible:border-blue-400 focus-visible:outline-none"
         >
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-blue-500/20 to-transparent dark:from-blue-400/10" />
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b to-transparent from-blue-400/10" />
 
             <div className="relative p-3 pb-1">
                 <div className="min-w-0 pr-12">
-                    <div className="truncate text-[11px] font-black uppercase tracking-wide text-blue-600 dark:text-blue-300">
+                    <div className="truncate text-xs font-bold uppercase tracking-wide text-blue-300">
                         {aka || legend?.codeName || 'Legend'}
                     </div>
-                    <h2 className="mt-0.5 whitespace-nowrap text-lg font-black leading-none tracking-tight sm:text-2xl">
+                    <h2 className="mt-0.5 truncate text-lg font-bold leading-tight sm:text-xl">
                         {legend?.bio?.name?.normal}
                     </h2>
-                    <div className="mt-1 text-[10px] font-black text-slate-500 dark:text-slate-400">
+                    <div className="mt-1 text-xs text-slate-400">
                         {releaseDate(legend.release)}
                     </div>
                 </div>
                 {beta && (
-                    <span className="absolute right-3 top-3 rounded-lg border border-amber-400/50 bg-amber-500/15 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-700 dark:text-amber-200">
-                        Beta
-                    </span>
+                    <Pill tone="amber" className="absolute right-3 top-3">Beta</Pill>
                 )}
             </div>
 
             <div className="relative flex flex-1 flex-col items-center justify-start px-3">
                 <div className="grid w-full grid-cols-[4.5rem_1fr] items-center gap-3">
                     <div className="flex flex-col items-center gap-2">
-                        {legend?.weapons?.main?.image && <img src={apiAsset(legend.weapons.main.image)} className="h-16 w-16 object-contain drop-shadow" alt={`${legend.weapons.main.name}`} />}
-                        {legend?.weapons?.secondary?.image && <img src={apiAsset(legend.weapons.secondary.image)} className="h-16 w-16 object-contain drop-shadow" alt={`${legend.weapons.secondary.name}`} />}
+                        {legend?.weapons?.main?.image && <img src={apiAsset(legend.weapons.main.image)} className="h-16 w-16 object-contain drop-shadow" alt={weaponName(legend.weapons.main.name)} />}
+                        {legend?.weapons?.secondary?.image && <img src={apiAsset(legend.weapons.secondary.image)} className="h-16 w-16 object-contain drop-shadow" alt={weaponName(legend.weapons.secondary.name)} />}
                     </div>
 
-                    <div className="flex h-36 items-end justify-center rounded-2xl bg-slate-100/80 p-2 dark:bg-slate-950/45">
+                    <div className="flex h-36 items-end justify-center rounded-xl bg-slate-950/60 p-2">
                         {legend?.image && (
                             <img
                                 src={apiAsset(legend.image)}
@@ -212,51 +224,113 @@ function LegendCard({ legend }) {
     );
 }
 
-function FilterButton({ active, children, onClick }) {
+
+function NewestLegend({ legend }) {
+    return (
+        <a href={legendUrl(legend)} className="group flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-300">
+            <span className="text-xs font-bold uppercase tracking-wide text-blue-300">Newest</span>
+            {legend.image && <img src={apiAsset(legend.image)} className="h-10 w-10 rounded-lg object-contain" alt="" />}
+            <span className="font-bold text-white group-hover:text-blue-300">{legend.bio?.name?.normal}</span>
+            <span className="flex items-center gap-1">
+                {weaponNames(legend).map((weapon) => (
+                    <img key={weapon} src={weaponIcon(weapon)} alt={weaponName(weapon)} title={weaponName(weapon)} className="h-8 w-8 object-contain" />
+                ))}
+            </span>
+            <span className="text-slate-400">{releaseDate(legend.release)}</span>
+        </a>
+    );
+}
+
+function WeaponChip({ weapon, count, active, onClick }) {
     return (
         <button
             type="button"
             onClick={onClick}
-            className={`${active ? 'border-blue-400 bg-blue-500 text-white shadow-lg shadow-blue-500/20' : 'border-slate-300 bg-white text-slate-800 hover:border-blue-300 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:border-blue-500 dark:hover:bg-slate-700'} rounded-xl border px-3 py-2 text-sm font-black transition`}
+            aria-pressed={active}
+            className={cx(
+                'flex min-w-0 items-center gap-2 rounded-xl border px-2 py-1.5 text-left text-xs font-bold transition',
+                active ? 'border-blue-400 bg-blue-500/20 text-white' : 'border-slate-700 bg-slate-950 text-slate-200 hover:border-slate-500',
+            )}
         >
-            {children}
+            <img src={weaponIcon(weapon)} alt="" className="h-6 w-6 shrink-0 object-contain" />
+            <span className="min-w-0 flex-1 truncate">{weaponName(weapon)}</span>
+            <span className="text-slate-400">{count}</span>
         </button>
     );
 }
 
+function TagChip({ tag, active, onClick }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            aria-pressed={active}
+            className={cx(
+                'rounded-lg px-2.5 py-1 text-xs font-bold transition',
+                active ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700',
+            )}
+        >
+            {tag}
+        </button>
+    );
+}
+
+function Filters({ searchTerm, setSearchTerm, sortBy, setSortBy, showBetaLegends, setShowBetaLegends, betaCount, selectedWeapon, setSelectedWeapon, weaponCounts, nonWeaponTags, selectedTags, toggleTag, filtered, resetFilters }) {
+    return (
+        <>
+            <SidebarHeader title="Legends" as="div" />
+            <SearchInput value={searchTerm} onChange={setSearchTerm} placeholder="Name, alias or weapon" label="Search legends" className="flex-none" />
+            <SelectInput label="Sort" value={sortBy} onChange={setSortBy} options={sortOptions} className="justify-between" />
+            <Toggle label={`Show beta legends (${betaCount})`} checked={showBetaLegends} onChange={setShowBetaLegends} />
+            <div>
+                <div className="mb-2 flex items-baseline justify-between gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Weapon</span>
+                    <a href={selectedWeapon ? `/game/weapons?weapon=${encodeURIComponent(weaponSlug(selectedWeapon))}` : '/game/weapons'} className="text-xs font-bold text-blue-300 hover:underline">Weapon chart →</a>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                    {weaponList.map((weapon) => (
+                        <WeaponChip
+                            key={weapon}
+                            weapon={weapon}
+                            count={weaponCounts.get(weapon) || 0}
+                            active={selectedWeapon === weapon}
+                            onClick={() => setSelectedWeapon(selectedWeapon === weapon ? null : weapon)}
+                        />
+                    ))}
+                </div>
+            </div>
+            {!!nonWeaponTags.length && (
+                <div>
+                    <div className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">
+                        Archetype tags{selectedTags.length > 0 ? ` (${selectedTags.length})` : ''}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                        {nonWeaponTags.map((tag) => (
+                            <TagChip key={tag} tag={tag} active={selectedTags.includes(tag)} onClick={() => toggleTag(tag)} />
+                        ))}
+                    </div>
+                </div>
+            )}
+            {filtered && (
+                <button type="button" onClick={resetFilters} className="rounded-xl bg-slate-800 px-3 py-2 text-sm font-bold text-slate-200 hover:bg-slate-700">
+                    Clear filters
+                </button>
+            )}
+        </>
+    );
+}
+
 function LegendData() {
-    const [historyItems, setHistoryItems] = useState([]);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [selectedWeapon, setSelectedWeapon] = useState(null);
-    const [selectedTags, setSelectedTags] = useState([]);
-    const [showBetaLegends, setShowBetaLegends] = useState(false);
-    const [sortBy, setSortBy] = useState('releaseAsc');
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-
-    useEffect(() => {
-        let cancelled = false;
-
-        async function fetchData() {
-            setLoading(true);
-            setError('');
-            try {
-                const response = await fetch(host + '/game/legends/summary');
-                if (!response.ok) throw new Error(`Failed to load legends (${response.status})`);
-                const data = await response.json();
-                if (!cancelled) setHistoryItems(Array.isArray(data) ? data : []);
-            } catch (e) {
-                if (!cancelled) setError(e.message);
-            } finally {
-                if (!cancelled) setLoading(false);
-            }
-        }
-
-        fetchData();
-        return () => {
-            cancelled = true;
-        };
-    }, []);
+    const { data, error, loading, retry } = useApi(`${host}/game/legends/summary`);
+    const historyItems = useMemo(() => (Array.isArray(data) ? data : []), [data]);
+    const [searchTerm, setSearchTerm] = useQueryState("search", "");
+    const [weaponParam, setWeaponParam] = useQueryState("weapon", "");
+    const [selectedTags, setSelectedTags] = useQueryList("tags");
+    const [showBetaLegends, setShowBetaLegends] = useQueryFlag("beta");
+    const [sortParam, setSortBy] = useQueryState("sort", "releaseAsc");
+    const sortBy = sortOptions.some((option) => option.value === sortParam) ? sortParam : 'releaseAsc';
+    const selectedWeapon = weaponFromParam(weaponParam);
+    const setSelectedWeapon = (weapon) => setWeaponParam(weapon ? weaponSlug(weapon) : "");
 
     const betaCount = useMemo(() => historyItems.filter(isBetaLegend).length, [historyItems]);
     const liveCount = historyItems.length - betaCount;
@@ -265,7 +339,7 @@ function LegendData() {
     const nonWeaponTags = useMemo(() => Array.from(
         new Set(
             visiblePool.flatMap(item => item.missionTagsFull || [])
-                .filter(tag => tag && !weaponList.includes(tag))
+                .filter(tag => tag && !weaponList.includes(tag) && !weaponLabelSet.has(tag))
         )
     ).sort(), [visiblePool]);
 
@@ -285,7 +359,7 @@ function LegendData() {
                 || normalizeString(item.bio?.name?.normal).includes(searchQuery)
                 || normalizeString(item.bio?.aka).includes(searchQuery)
                 || normalizeString(item.bio?.botName).includes(searchQuery)
-                || weaponNames(item).some((weapon) => normalizeString(weapon).includes(searchQuery));
+                || weaponNames(item).some((weapon) => normalizeString(weapon).includes(searchQuery) || normalizeString(weaponName(weapon)).includes(searchQuery));
 
             const matchesWeapon = selectedWeapon
                 ? weaponNames(item).includes(selectedWeapon)
@@ -303,9 +377,7 @@ function LegendData() {
     const newestLegend = useMemo(() => sortLegends(visiblePool, 'releaseDesc')[0], [visiblePool]);
 
     const toggleTag = (tag) => {
-        setSelectedTags((prevTags) =>
-            prevTags.includes(tag) ? prevTags.filter(t => t !== tag) : [...prevTags, tag]
-        );
+        setSelectedTags(selectedTags.includes(tag) ? selectedTags.filter(t => t !== tag) : [...selectedTags, tag]);
     };
 
     const resetFilters = () => {
@@ -313,132 +385,87 @@ function LegendData() {
         setSelectedWeapon(null);
         setSelectedTags([]);
         setSortBy('releaseAsc');
+        setShowBetaLegends(false);
     };
 
+    const filtered = Boolean(searchTerm || selectedWeapon || selectedTags.length || sortBy !== 'releaseAsc' || showBetaLegends);
+    const filterCount = (searchTerm ? 1 : 0) + (selectedWeapon ? 1 : 0) + selectedTags.length;
+
     return (
-        <div className="min-h-screen bg-slate-100 p-3 text-slate-950 dark:bg-slate-950 dark:text-white sm:p-4">
-            <div className="mx-auto flex max-w-[100rem] flex-col gap-4">
-                <section className="overflow-hidden rounded-2xl border border-slate-300 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                    <div className="grid gap-4 p-4 lg:grid-cols-[1fr_auto] lg:items-end">
-                        <div>
-                            <div className="text-xs font-black uppercase tracking-[0.2em] text-blue-600 dark:text-blue-300">Legend Database</div>
-                            <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">Brawlhalla Legends</h1>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2 sm:min-w-96">
-                            <SummaryTile label="Legends" value={liveCount} />
-                            <SummaryTile label="Beta" value={betaCount} />
-                            <SummaryTile label="Showing" value={filteredLegends.length} />
-                        </div>
-                    </div>
-
-                    {newestLegend && (
-                        <div className="border-t border-slate-200 bg-gradient-to-r from-blue-500/10 via-transparent to-transparent px-4 py-3 dark:border-slate-800">
-                            <a href={legendUrl(newestLegend)} className="group flex flex-wrap items-center gap-3 text-sm font-bold text-slate-600 transition hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-300">
-                                <span className="text-xs font-black uppercase tracking-wide text-blue-600 dark:text-blue-300">Newest</span>
-                                {newestLegend.image && <img src={apiAsset(newestLegend.image)} className="h-10 w-10 rounded-lg object-contain" alt={newestLegend.bio?.name?.normal} />}
-                                <span className="text-slate-950 group-hover:text-blue-600 dark:text-white dark:group-hover:text-blue-300">{newestLegend.bio?.name?.normal}</span>
-                                <span className="flex items-center gap-2">
-                                    {weaponNames(newestLegend).map((weapon) => (
-                                        <img key={weapon} src={weaponIcon(weapon)} alt={weapon} title={weapon} className="h-9 w-9 object-contain" />
-                                    ))}
-                                </span>
-                                <span>{releaseDate(newestLegend.release)}</span>
-                            </a>
-                        </div>
-                    )}
-                </section>
-
-                <section className="rounded-2xl border border-slate-300 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:p-4">
-                    <div className="grid gap-3 lg:grid-cols-[minmax(16rem,1fr)_14rem_auto]">
-                        <input
-                            type="text"
-                            placeholder="Search legends, codenames, aliases, or weapons"
-                            className="w-full rounded-xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-500 focus:border-blue-400 focus:ring-2 focus:ring-blue-400/30 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                        />
-                        <select
-                            value={sortBy}
-                            onChange={(e) => setSortBy(e.target.value)}
-                            className="w-full rounded-xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm font-bold text-slate-900 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-400/30 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                        >
-                            {sortOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                        </select>
-                        <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm font-black text-slate-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
-                            <input
-                                type="checkbox"
-                                checked={showBetaLegends}
-                                onChange={(e) => setShowBetaLegends(e.target.checked)}
-                                className="h-4 w-4 rounded border-slate-600 bg-slate-950"
-                            />
-                            Show Beta
-                        </label>
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap justify-center gap-2">
-                        {weaponList.map((weapon) => (
-                            <button
-                                key={weapon}
-                                type="button"
-                                className={`${selectedWeapon === weapon ? 'border-blue-400 bg-blue-500/15 text-blue-700 dark:text-blue-200' : 'border-slate-300 bg-slate-100 text-slate-700 hover:border-blue-300 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200'} flex items-center gap-2 rounded-xl border px-2.5 py-2 text-xs font-black transition`}
-                                onClick={() => setSelectedWeapon(selectedWeapon === weapon ? null : weapon)}
-                            >
-                                <img src={weaponIcon(weapon)} alt={weapon} className="h-7 w-7 object-contain" />
-                                <span>{weapon}</span>
-                                <span className="rounded-md bg-white/70 px-1.5 py-0.5 text-[10px] dark:bg-slate-800">{weaponCounts.get(weapon) || 0}</span>
-                            </button>
-                        ))}
-                    </div>
-
-                    {!!nonWeaponTags.length && (
-                        <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 open:space-y-3 dark:border-slate-800 dark:bg-slate-950/70">
-                            <summary className="cursor-pointer select-none text-sm font-black text-slate-700 dark:text-slate-200">
-                                Archetype Tags {selectedTags.length > 0 ? `(${selectedTags.length} selected)` : ''}
-                            </summary>
-                            <div className="flex flex-wrap gap-2">
-                                {nonWeaponTags.map((tag) => (
-                                    <FilterButton key={tag} active={selectedTags.includes(tag)} onClick={() => toggleTag(tag)}>
-                                        {tag}
-                                    </FilterButton>
-                                ))}
-                            </div>
-                        </details>
-                    )}
-
-                    {(searchTerm || selectedWeapon || selectedTags.length || sortBy !== 'releaseAsc') && (
-                        <div className="mt-3 flex justify-center">
-                            <button
-                                type="button"
-                                onClick={resetFilters}
-                                className="rounded-xl bg-red-500 px-4 py-2 text-sm font-black text-white transition hover:bg-red-400"
-                            >
-                                Reset Filters
-                            </button>
-                        </div>
-                    )}
-                </section>
-
-                {loading && (
-                    <div className="rounded-2xl border border-slate-300 bg-white p-8 text-center text-lg font-black text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
-                        Loading legends...
-                    </div>
+        <PageShell
+            title="Legends"
+            subtitle={loading && !data ? 'Loading' : `${filteredLegends.length} shown`}
+            sidebarLabel={filterCount ? `Filters (${filterCount})` : 'Filters'}
+            sidebarTitle="Legend filters"
+            sidebar={(
+                <Filters
+                    searchTerm={searchTerm}
+                    setSearchTerm={setSearchTerm}
+                    sortBy={sortBy}
+                    setSortBy={setSortBy}
+                    showBetaLegends={showBetaLegends}
+                    setShowBetaLegends={setShowBetaLegends}
+                    betaCount={betaCount}
+                    selectedWeapon={selectedWeapon}
+                    setSelectedWeapon={setSelectedWeapon}
+                    weaponCounts={weaponCounts}
+                    nonWeaponTags={nonWeaponTags}
+                    selectedTags={selectedTags}
+                    toggleTag={toggleTag}
+                    filtered={filtered}
+                    resetFilters={resetFilters}
+                />
+            )}
+        >
+            <PageHeader
+                className="hidden lg:block"
+                title="Legends"
+                actions={(
+                    <>
+                        <CountPills>
+                            <CountPill label="Legends" value={liveCount} />
+                            <CountPill label="Beta" value={betaCount} tone="amber" />
+                            <CountPill label="Showing" value={filteredLegends.length} tone="blue" />
+                        </CountPills>
+                        <a href="/game/weapons" className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm font-bold text-slate-200 hover:bg-slate-700">Weapon Chart</a>
+                    </>
                 )}
+            >
+                {newestLegend && <NewestLegend legend={newestLegend} />}
+            </PageHeader>
 
-                {!!error && (
-                    <div className="rounded-2xl border border-red-400/50 bg-red-500/10 p-4 text-center font-bold text-red-700 dark:text-red-200">
-                        {error}
-                    </div>
-                )}
+            {newestLegend && (
+                <div className="rounded-2xl border border-slate-700 bg-slate-900 p-3 lg:hidden">
+                    <h1 className="sr-only">Legends</h1>
+                    <NewestLegend legend={newestLegend} />
+                    <a href="/game/weapons" className="mt-2 inline-block text-sm font-bold text-blue-300 hover:underline">Weapon chart →</a>
+                </div>
+            )}
 
-                {!loading && !error && (
-                    <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4 2xl:grid-cols-5">
-                        {filteredLegends.map((item) => (
-                            <LegendCard key={item.id || item.codeName || item.bio?.name?.normal} legend={item} />
-                        ))}
-                    </div>
-                )}
-            </div>
-        </div>
+            {error && !data && <ErrorState message="Couldn't load the legend list." detail={error} onRetry={retry} />}
+
+            {loading && !data && (
+                <>
+                    <LoadingState label="Loading legends…" />
+                    <SkeletonGrid count={10} className="grid-cols-2 sm:gap-3 lg:grid-cols-4 2xl:grid-cols-5 min-[118.75rem]:grid-cols-6 min-[143.75rem]:grid-cols-7 min-[156.25rem]:grid-cols-8" tileClassName="h-80" />
+                </>
+            )}
+
+            {data && !filteredLegends.length && (
+                <EmptyState
+                    title="No legends match these filters"
+                    action={<button type="button" onClick={resetFilters} className="rounded-lg bg-slate-800 px-3 py-1.5 text-sm font-bold text-slate-200 hover:bg-slate-700">Clear filters</button>}
+                />
+            )}
+
+            {data && !!filteredLegends.length && (
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 2xl:grid-cols-5 min-[118.75rem]:grid-cols-6 min-[143.75rem]:grid-cols-7 min-[156.25rem]:grid-cols-8">
+                    {filteredLegends.map((item) => (
+                        <LegendCard key={item.id || item.codeName || item.bio?.name?.normal} legend={item} />
+                    ))}
+                </div>
+            )}
+        </PageShell>
     );
 }
 

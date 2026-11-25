@@ -1,7 +1,8 @@
 ---
 import Layout from '../../../layouts/Layout.astro';
 import PlayersPage from '../../../components/esports/PlayersPage.jsx';
+import { toolText } from '../../../data/head.js';
 ---
-<Layout title="Players · Brawlhalla Esports">
+<Layout title="Brawlhalla Esports Players" description={toolText("/esports/player")}>
   <PlayersPage client:load />
 </Layout>

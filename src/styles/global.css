@@ -11,7 +11,24 @@
 html,
 body {
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
+}
+
+@layer base {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (pointer: coarse) {
+  button:is([class*='px-'], [class*='py-'], [class*=' p-'], [class^='p-'], .flex, .inline-flex, .block, .grid),
+  select,
+  summary,
+  [role='tab'],
+  [role='button'],
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']) {
+    min-height: 2.5rem;
+  }
 }
 
 @media (max-width: 640px) {

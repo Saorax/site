@@ -1,10 +1,19 @@
 ---
 import Layout from '../../../layouts/Layout.astro';
 import { TournamentPage } from '../../../components/esports/TournamentPages.jsx';
-
+import { fetchPageHead } from '../../../data/head.js';
 const tournamentId = Number.parseInt(Astro.params.tournamentId ?? '', 10);
 if (!Number.isSafeInteger(tournamentId) || tournamentId <= 0) return Astro.redirect('/esports/tournaments', 302);
+const { head, missing } = await fetchPageHead('tournament', tournamentId);
+if (head?.redirect && head.redirect !== Astro.url.pathname) return Astro.redirect(head.redirect, 301);
+if (missing) Astro.response.status = 404;
 ---
-<Layout title="Tournament · Brawlhalla Esports">
-  <TournamentPage client:load tournamentId={tournamentId} />
+<Layout
+  title={head?.title ?? (missing ? 'Tournament not found' : 'Brawlhalla Tournament')}
+  description={head?.description ?? 'Brawlhalla tournament results, brackets and matches.'}
+  image={head?.image ?? undefined}
+  imageAlt={head?.name}
+  imageWide={head?.imageWide}
+>
+  <TournamentPage client:load tournamentId={tournamentId} heading={head?.name} />
 </Layout>

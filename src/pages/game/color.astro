@@ -1,7 +1,3 @@
 ---
-import Layout from "../../layouts/Layout.astro";
-import ColorSchemeSite from '../../components/game/colorScheme.jsx';
+return Astro.redirect(`/game/colors${Astro.url.search}`, 301);
 ---
-<Layout title="Game Database">
-    <ColorSchemeSite client:load />
-</Layout>

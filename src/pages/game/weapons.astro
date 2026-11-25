@@ -1,0 +1,9 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import WeaponChart from '../../components/game/WeaponChart.jsx';
+import { toolText } from '../../data/head.js';
+---
+
+<Layout title="Brawlhalla Weapon Chart" description={toolText('/game/weapons')}>
+  <WeaponChart client:load />
+</Layout>

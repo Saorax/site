@@ -1,8 +1,15 @@
 ---
 import Layout from "../../../layouts/Layout.astro";
 import AnimDatabase from './comp/_index.jsx';
+import { LoadingState, PageHeader, PageShell } from "../../../components/ui/index.js";
+import { toolText } from '../../../data/head.js';
 ---
 
-<Layout title="Animation Viewer">
-  <AnimDatabase client:only="react" />
+<Layout title="Brawlhalla Animation Viewer" description={toolText("/game/anim")}>
+  <AnimDatabase client:only="react">
+    <PageShell slot="fallback">
+      <PageHeader title="Animations" />
+      <LoadingState label="Loading animations…" />
+    </PageShell>
+  </AnimDatabase>
 </Layout>

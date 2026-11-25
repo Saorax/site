@@ -1,0 +1,23 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import RaybotPlayer from '../../../components/raybot/RaybotPlayer.jsx';
+import { host } from '../../../stuff';
+const raw = Astro.params.bhid ?? '';
+const bhid = /^\d{1,12}$/.test(raw) ? Number(raw) : NaN;
+if (!Number.isSafeInteger(bhid) || bhid <= 0) return Astro.redirect('/raybot', 302);
+let name = '';
+let hidden = false;
+try {
+  const response = await fetch(`${host}/v2/raybot/players/${bhid}/profile`, { signal: AbortSignal.timeout(2500) });
+  if (response.ok) name = String((await response.json())?.name ?? '').trim();
+  else if (response.status === 404) Astro.response.status = 404;
+  else if (response.status === 403) hidden = true;
+} catch {}
+const title = name ? `${name}: Brawlhalla Ranked Stats` : hidden ? 'Private profile' : 'Brawlhalla Ranked Player';
+const description = name
+  ? `${name}'s Brawlhalla 1v1 rating, 2v2 teams, glory estimate, legends, weapons and recent ranked sessions.`
+  : 'Brawlhalla 1v1 rating, 2v2 teams, glory estimate, legends, weapons and recent ranked sessions.';
+---
+<Layout title={title} description={description} canonical={`/raybot/player/${bhid}`} noindex={hidden}>
+  <RaybotPlayer client:load bhid={bhid} />
+</Layout>
