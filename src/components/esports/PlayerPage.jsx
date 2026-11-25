@@ -3,9 +3,9 @@ import { FaTwitch, FaTwitter } from "react-icons/fa";
 import { host } from "../../stuff";
 import { pageTitle } from "../../data/head";
 import {
-  apiUrl, Avatar, avatarUrl, Badge, Card, date, DELETED_ACCOUNT_NOTE, Empty, ErrorNote, FlagIcon,
+  apiUrl, Avatar, avatarUrl, Badge, Card, cleanEntrantName, date, DELETED_ACCOUNT_NOTE, Empty, ErrorNote, FlagIcon,
   isDeletedAccountName, isLostSpelling, Loading, modeName, money, number, officialRegions,
-  ordinal, PageShell, Pagination, points, regionName, SearchInput, Select, Tabs, useApi, useDebounced, useQueryState,
+  ordinal, PageShell, Pagination, points, regionName, SearchInput, Select, Tabs, useApi, useDebounced, useQueryState, vodTime,
 } from "./ui";
 import { mapName, useLegendNames } from "./MatchPages";
 import { ContributionList } from "./RankingsPage";
@@ -93,6 +93,7 @@ export default function PlayerPage({ playerId, heading }) {
             { key: "legends", label: "Legends & Maps" },
             { key: "rankings", label: "Power Rankings" },
             { key: "appearances", label: "All Appearances", count: events.length },
+            { key: "vods", label: "VODs" },
           ]}
         />
         <div className="mt-3">
@@ -101,6 +102,7 @@ export default function PlayerPage({ playerId, heading }) {
           {tab === "legends" && <CareerUsage legacy={legacy} cmode={cmode} />}
           {tab === "rankings" && <Rankings playerId={playerId} latest={data.latestRankings ?? []} history={data.rankingHistory ?? []} />}
           {tab === "appearances" && <Appearances key={JSON.stringify(finish)} events={events} />}
+          {tab === "vods" && <PlayerVods playerId={playerId} />}
         </div>
       </div>
     </PageShell>
@@ -1128,6 +1130,109 @@ function RankChart({ series }) {
   );
 }
 
+
+const VOD_LABEL = { "youtube-set": "Watch set", "youtube-stream": "YouTube stream", twitch: "Twitch" };
+
+function VodButton({ vod }) {
+  const at = vod.offsetSeconds != null && vod.kind !== "youtube-set" ? vodTime(vod.offsetSeconds) : null;
+  const tone = vod.kind === "twitch" ? "bg-violet-600 hover:bg-violet-500" : "bg-rose-600 hover:bg-rose-500";
+  return (
+    <a
+      href={vod.url}
+      target="_blank"
+      rel="noreferrer"
+      title={[vod.title, vod.channel, vod.estimated && at ? "Start time estimated from the reported result" : null].filter(Boolean).join(" · ") || undefined}
+      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-black text-white ${tone}`}
+    >
+      {VOD_LABEL[vod.kind]}{at ? ` · ${vod.estimated ? "~" : ""}${at}` : ""} ↗
+    </a>
+  );
+}
+
+function PlayerVods({ playerId }) {
+  const vods = useApi(apiUrl(`/players/${playerId}/vods`));
+  const [mode, setMode] = useQueryState("mode", "all");
+  const [scope, setScope] = useQueryState("type", "all");
+  const [year, setYear] = useQueryState("year", "all");
+  const [search, setSearch] = useQueryState("q", "");
+  const [page, setPage] = usePageParam();
+  const perPage = 48;
+  const sets = vods.data?.sets ?? [];
+  const years = useMemo(() => [...new Set(sets.map((set) => set.at && new Date(set.at).getFullYear()).filter(Boolean))], [sets]);
+  const term = search.trim().toLowerCase();
+  const filtered = sets
+    .filter((set) => mode === "all" || modeKey(set.gameMode) === mode)
+    .filter((set) => scope === "all" || (scope === "official") === Boolean(set.official))
+    .filter((set) => year === "all" || (set.at && new Date(set.at).getFullYear() === Number(year)))
+    .filter((set) => !term || `${set.tournament.name} ${set.event.name} ${set.round ?? ""} ${set.opponent?.name ?? ""} ${(set.opponent?.members ?? []).map((member) => member.name).join(" ")}`.toLowerCase().includes(term));
+  const visible = filtered.slice((page - 1) * perPage, page * perPage);
+  const reset = (setter) => (value) => { setter(value); setPage(1); };
+  const setVideos = sets.filter((set) => set.vods.some((vod) => vod.kind === "youtube-set")).length;
+
+  if (vods.error) return <ErrorNote message={vods.error} onRetry={vods.retry} />;
+  if (!vods.data) return <Loading label="Looking for videos…" />;
+  if (!sets.length) {
+    return <Card><Empty>No videos found for this player's official or streamed sets.</Empty></Card>;
+  }
+  return (
+    <Card padded={false}>
+      <div className="grid gap-3 border-b p-3 border-slate-800 sm:grid-cols-2 xl:grid-cols-[minmax(14rem,2fr)_repeat(3,minmax(8rem,1fr))]">
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">Search</span>
+          <SearchInput value={search} onChange={reset(setSearch)} placeholder="Tournament, round or opponent" />
+        </label>
+        <Select label="Format" value={mode} onChange={reset(setMode)} options={[["all", "All formats"], ...MODES]} />
+        <Select label="Type" value={scope} onChange={reset(setScope)} options={[["all", "All tournaments"], ["official", "Official"], ["community", "Community"]]} />
+        <Select label="Year" value={year} onChange={reset(setYear)} options={[["all", "All years"], ...years.map((value) => [String(value), String(value)])]} />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs font-bold text-slate-500">
+        <span>{number(filtered.length)} of {number(sets.length)} sets with video · {number(setVideos)} with their own upload</span>
+        <span title="Stream links jump to an estimated start time">~ marks an estimated time</span>
+      </div>
+      {!filtered.length && <Empty>No videos match these filters.</Empty>}
+      {filtered.length > 0 && (
+        <div className="grid gap-2 p-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {visible.map((set) => (
+            <div key={set.setId} className="flex min-w-0 flex-col gap-2 rounded-xl border border-slate-800 bg-slate-950/60 p-2">
+              <div className="flex min-w-0 items-start gap-2">
+                {set.tournament.image
+                  ? <img src={set.tournament.image} alt="" loading="lazy" onError={hide} className="h-10 w-16 shrink-0 rounded-md bg-slate-800 object-cover" />
+                  : <div className="h-10 w-16 shrink-0 rounded-md bg-slate-800" />}
+                <div className="min-w-0">
+                  <a href={`/esports/tournament/${set.tournament.id}`} className="block truncate text-sm font-bold text-white hover:text-blue-300">{set.tournament.name}</a>
+                  <div className="truncate text-xs text-slate-400">{[set.round, set.at ? date(set.at) : null].filter(Boolean).join(" · ")}</div>
+                </div>
+              </div>
+              <div className="flex min-w-0 items-center justify-between gap-2 text-sm">
+                <span className="min-w-0 truncate text-slate-300">
+                  vs{" "}
+                  {set.opponent?.members?.length
+                    ? set.opponent.members.map((member, index) => (
+                      <span key={`${member.playerId}-${index}`}>
+                        {index > 0 && " & "}
+                        {member.playerId ? <a href={`/esports/player/id/${member.playerId}`} className="font-bold text-white hover:text-blue-300">{member.name}</a> : <span className="font-bold text-white">{member.name}</span>}
+                      </span>
+                    ))
+                    : <span className="font-bold text-white">{set.opponent?.name ?? "Unknown"}</span>}
+                </span>
+                {set.score && (
+                  <span className={`shrink-0 font-black tabular-nums ${set.won === true ? "text-emerald-400" : set.won === false ? "text-rose-400" : "text-slate-300"}`}>
+                    {set.score[0] ?? "–"}–{set.score[1] ?? "–"}
+                  </span>
+                )}
+              </div>
+              <div className="mt-auto flex flex-wrap items-center gap-1.5 border-t border-slate-800 pt-2">
+                {set.vods.map((vod) => <VodButton key={`${vod.kind}-${vod.url}`} vod={vod} />)}
+                <a href={`/esports/set/${set.setId}`} className="ml-auto text-xs font-bold text-blue-300 hover:underline">Set page</a>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {filtered.length > perPage && <div className="p-2"><Pagination page={page} totalPages={Math.ceil(filtered.length / perPage)} onChange={setPage} /></div>}
+    </Card>
+  );
+}
 
 function Appearances({ events }) {
   const [mode, setMode] = useQueryState("mode", "all");
