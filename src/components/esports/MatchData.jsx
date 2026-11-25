@@ -1,8 +1,8 @@
 import { useId, useMemo, useState } from "react";
 import { host } from "../../stuff";
-import { legendKey, mapName as rawMapName, useLegendNames } from "./MatchPages";
+import { legendKey, mapName as rawMapName, useLegendNames, useLegendWeapons } from "./MatchPages";
 import { Card, cleanEntrantName, Empty, number, Pagination, percent, Select, useQueryState } from "./ui";
-import { ScrollX } from "../ui";
+import { ScrollX, weaponIconUrl, weaponName } from "../ui";
 
 export const mapName = (value) => rawMapName(value).replace(/^Small\s+/i, "");
 const legendArt = (name) => `${host}/game/legends/art/${encodeURIComponent(name ?? "")}`;
@@ -603,6 +603,95 @@ export function LegendSection({ summary, legendName, onPick, active, minGames = 
   );
 }
 
+export function weaponRows(legendRows, weaponsOf) {
+  const byWeapon = new Map();
+  let picks = 0;
+  for (const row of legendRows ?? []) {
+    const pair = weaponsOf(row.key ?? row.name);
+    if (!pair) continue;
+    picks += row.games;
+    for (const weapon of pair) {
+      const entry = byWeapon.get(weapon) ?? { key: weapon, games: 0, wins: 0, known: 0, legends: [] };
+      entry.games += row.games;
+      entry.wins += row.wins;
+      entry.known += row.known;
+      entry.legends.push(row);
+      byWeapon.set(weapon, entry);
+    }
+  }
+  const list = [...byWeapon.values()].map((entry) => ({ ...entry, legends: [...entry.legends].sort(byGames) }));
+  return { picks, list };
+}
+
+function WeaponList({ rows, picks, legendName, onPickLegend, activeLegend, minGames }) {
+  const [sort, setSort] = useState("picks");
+  const sorted = useMemo(() => {
+    const list = [...rows];
+    if (sort === "rate") {
+      return list.sort((left, right) => (right.known >= minGames) - (left.known >= minGames) || (rateOf(right) ?? -1) - (rateOf(left) ?? -1) || right.games - left.games);
+    }
+    return list.sort(byGames);
+  }, [rows, sort, minGames]);
+  const top = Math.max(1, ...rows.map((row) => row.games));
+  if (!rows.length) return <Empty bare>No legend picks reported</Empty>;
+  return (
+    <div className="grid gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+        <span title="Each pick counts for both of the legend's weapons">A pick counts for both of the legend's weapons.</span>
+        <ViewSwitch value={sort} onChange={setSort} options={[["picks", "Most picked"], ["rate", "Win %"]]} />
+      </div>
+      <div className="grid gap-1">
+        {sorted.map((row) => (
+          <div key={row.key} className="grid grid-cols-[2rem_minmax(0,1fr)] items-center gap-x-2 gap-y-1 rounded-lg px-1 py-1.5 hover:bg-slate-800/50 sm:grid-cols-[2rem_9rem_minmax(0,1fr)_9rem]">
+            <img src={weaponIconUrl(row.key)} alt="" loading="lazy" onError={hide} className="h-8 w-8 object-contain" />
+            <span className="min-w-0">
+              <a href={`/game/weapons?weapon=${encodeURIComponent(weaponName(row.key).replace(/\s+/g, ""))}`} className="block truncate font-bold text-white hover:text-blue-300">{weaponName(row.key)}</a>
+              <span className="block text-xs tabular-nums text-slate-400">{plural(row.games, "pick")}</span>
+            </span>
+            <span className="col-start-2 grid gap-0.5 sm:col-start-auto" title={`${number(row.games)} of ${number(picks)} picks`}>
+              <span className="text-[11px] font-bold tabular-nums text-slate-400">{percent(row.games, picks)} of picks</span>
+              <span className="h-1.5 overflow-hidden rounded-full bg-slate-800"><span className="block h-full rounded-full bg-blue-400/80" style={{ width: `${Math.max(2, (100 * row.games) / top)}%` }} /></span>
+            </span>
+            <span className="col-start-2 sm:col-start-auto"><WinLine wins={row.wins} known={row.known} games={row.games} /></span>
+            <span className="col-start-2 flex flex-wrap gap-1 sm:col-span-3">
+              {row.legends.slice(0, 10).map((legend) => (
+                <button
+                  key={legend.key}
+                  type="button"
+                  onClick={() => onPickLegend?.(legend.key)}
+                  disabled={!onPickLegend}
+                  title={`${legendName(legend.key)}: ${plural(legend.games, "pick")}`}
+                  className={`rounded-md ${activeLegend === legend.key ? "ring-2 ring-blue-400" : onPickLegend ? "hover:ring-1 hover:ring-slate-500" : ""}`}
+                >
+                  <Face legend={legend.key} legendName={legendName} size="h-7 w-7" title={`${legendName(legend.key)}: ${plural(legend.games, "pick")}`} />
+                </button>
+              ))}
+              {row.legends.length > 10 && <span className="self-center text-xs text-slate-500">+{row.legends.length - 10}</span>}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function WeaponSection({ title = "Weapons", legendRows, againstRows, weaponsOf, legendName, onPickLegend, activeLegend, minGames = 3, className = "" }) {
+  const [side, setSide] = useState("used");
+  const used = useMemo(() => weaponRows(legendRows, weaponsOf), [legendRows, weaponsOf]);
+  const against = useMemo(() => weaponRows(againstRows, weaponsOf), [againstRows, weaponsOf]);
+  const shown = againstRows && side === "against" ? against : used;
+  return (
+    <Panel
+      title={title}
+      count={plural(shown.list.length, "weapon")}
+      className={className}
+      action={againstRows ? <ViewSwitch value={side} onChange={setSide} options={[["used", "Picked"], ["against", "Faced"]]} /> : null}
+    >
+      <WeaponList rows={shown.list} picks={shown.picks} legendName={legendName} onPickLegend={side === "used" ? onPickLegend : null} activeLegend={activeLegend} minGames={minGames} />
+    </Panel>
+  );
+}
+
 function MapGrid({ rows, total, legendName, onPick, active, focused, legendsFor, step = 10 }) {
   const [limit, setLimit] = useState(step);
   if (!rows.length) return <Empty bare>No maps reported</Empty>;
@@ -1025,6 +1114,7 @@ function GameList({ games, legendName }) {
 
 export function MatchData({ sets = [], entrants = [] }) {
   const legendName = useLegendNames();
+  const weaponsOf = useLegendWeapons();
   const [legend, setLegend] = useQueryState("legend", "");
   const [map, setMap] = useQueryState("map", "");
   const [player, setPlayer] = useQueryState("player", "");
@@ -1108,7 +1198,14 @@ export function MatchData({ sets = [], entrants = [] }) {
       <div className="grid min-w-0 content-start gap-3">
         <FocusPanels focus={focus} label={focusLabel} kind={player ? "player" : "legend"} legendName={legendName} onPickLegend={toggle(setLegend, legend)} onPickMap={toggle(setMap, map)} activeLegend={legend} activeMap={map} />
 
+        {focus && player && (
+          <WeaponSection title={`${focusLabel}'s weapons`} legendRows={focus.legends} againstRows={focus.against} weaponsOf={weaponsOf} legendName={legendName} onPickLegend={toggle(setLegend, legend)} activeLegend={legend} />
+        )}
+        {focus && !player && legend && (
+          <WeaponSection title={`Weapons against ${focusLabel}`} legendRows={focus.against} weaponsOf={weaponsOf} legendName={legendName} />
+        )}
         <LegendSection summary={summary} legendName={legendName} onPick={toggle(setLegend, legend)} active={legend} />
+        <WeaponSection legendRows={summary.legends} weaponsOf={weaponsOf} legendName={legendName} onPickLegend={toggle(setLegend, legend)} activeLegend={legend} />
         <MapSection summary={summary} legendName={legendName} onPickMap={toggle(setMap, map)} onPickLegend={toggle(setLegend, legend)} activeMap={map} activeLegend={legend} />
 
         <div className="grid gap-3 2xl:grid-cols-2">

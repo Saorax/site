@@ -497,7 +497,7 @@ function HowPoints({ type, mode, decay }) {
 function BoardFacts({ data, assignment, full }) {
   if (!data) return null;
   const rows = [
-    ["Region", assignment === "latest" ? "Region of each player's latest event, like the official board. Taken from their 1v1 events when they have any, so a 2v2 partner never moves them" : "Region each player played most. Taken from their 1v1 events when they have any, so a 2v2 partner never moves them"],
+    ["Region", `${assignment === "latest" ? "Region of each player's latest official event" : "Region where each player played the most official events"}. 1v1 events count first, so a 2v2 partner never moves anyone. Players with no official events are placed by their community events.`],
     full && data.contributingProviders?.length ? ["Sources", providerNames(data.contributingProviders)] : null,
     full && data.algorithmVersion ? ["Scoring version", String(data.algorithmVersion)] : null,
     full && data.rankingCoverage ? ["Events with results", `${data.rankingCoverage.detailedEvents?.toLocaleString()} of ${data.rankingCoverage.totalEvents?.toLocaleString()}`] : null,

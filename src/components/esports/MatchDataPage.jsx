@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { host } from "../../stuff";
-import { mapName as rawMapName, useLegendNames } from "./MatchPages";
+import { mapName as rawMapName, useLegendNames, useLegendWeapons } from "./MatchPages";
 import {
-  CoverageChart, FocusPanels, LegendSection, MapSection, PairList, Panel, plural, PlayerTable, SET_GRID, SetGames, StatStrip,
+  CoverageChart, FocusPanels, LegendSection, MapSection, PairList, Panel, plural, PlayerTable, SET_GRID, SetGames, StatStrip, WeaponSection,
 } from "./MatchData";
 import {
   apiUrl, date, Empty, ErrorNote, Loading, number, PageShell, Pagination, percent, officialRegions, Select, useApi, useDebounced, useQueryState,
@@ -98,6 +98,7 @@ function GamesPanel({ query, legendName, total }) {
 
 export function MatchDataPage() {
   const legendName = useLegendNames();
+  const weaponsOf = useLegendWeapons();
   const [mode, setMode] = useQueryState("mode", "1");
   const [region, setRegion] = useQueryState("region", "all");
   const [tier, setTier] = useQueryState("tier", "all");
@@ -176,7 +177,14 @@ export function MatchDataPage() {
                 </Panel>
               </div>
               <FocusPanels focus={data.focus} label={focusLabel} kind={data.focus?.kind} legendName={legendName} onPickLegend={toggle(setLegend, legend)} onPickMap={toggle(setMap, map)} activeLegend={legend} activeMap={map} />
+              {data.focus?.kind === "player" && (
+                <WeaponSection title={`${focusLabel}'s weapons`} legendRows={data.focus.legends} againstRows={data.focus.against} weaponsOf={weaponsOf} legendName={legendName} onPickLegend={toggle(setLegend, legend)} activeLegend={legend} minGames={minGames} />
+              )}
+              {data.focus?.kind === "legend" && (
+                <WeaponSection title={`Weapons against ${focusLabel}`} legendRows={data.focus.against} weaponsOf={weaponsOf} legendName={legendName} minGames={minGames} />
+              )}
               <LegendSection summary={data} legendName={legendName} onPick={toggle(setLegend, legend)} active={legend} minGames={minGames} />
+              <WeaponSection legendRows={data.legends} weaponsOf={weaponsOf} legendName={legendName} onPickLegend={toggle(setLegend, legend)} activeLegend={legend} minGames={minGames} />
               <MapSection summary={data} legendName={legendName} onPickMap={toggle(setMap, map)} onPickLegend={toggle(setLegend, legend)} activeMap={map} activeLegend={legend} />
               <div className="grid gap-3 2xl:grid-cols-2">
                 <Panel title="Players" count={`top ${number(data.players.length)} by games`}>

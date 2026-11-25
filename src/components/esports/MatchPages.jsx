@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { host } from "../../stuff";
 import {
   apiUrl, Avatar, Badge, Card, cleanEntrantName, date, Empty, ErrorNote, LIVE_REFRESH_MS, LiveUpdates, Loading, modeName, PageShell,
@@ -22,6 +23,20 @@ export function useLegendNames() {
     names.set(legendKey(display), display);
   }
   return (code) => names.get(legendKey(code)) ?? code ?? "Unknown";
+}
+
+export function useLegendWeapons() {
+  const legends = useApi(`${host}/game/legends/summary`);
+  return useMemo(() => {
+    const weapons = new Map();
+    for (const legend of Array.isArray(legends.data) ? legends.data : []) {
+      const pair = [legend.weapons?.main?.name, legend.weapons?.secondary?.name].filter(Boolean);
+      if (pair.length !== 2) continue;
+      weapons.set(legendKey(legend.codeName), pair);
+      weapons.set(legendKey(legend.bio?.name?.normal ?? legend.codeName), pair);
+    }
+    return (code) => weapons.get(legendKey(code)) ?? null;
+  }, [legends.data]);
 }
 
 
