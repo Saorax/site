@@ -62,10 +62,10 @@ export default function RankingsPage() {
   const [eventsParam, setEventsParam] = useQueryState("events", "");
   const [pageParam, setPageParam] = useQueryState("page", "1");
   const [search, setSearchParam] = useQueryState("q", "");
-  const [assignment, setAssignment] = useQueryState("assign", "latest");
+  const [assignment, setAssignment] = useQueryState("assign", "most");
   const [playerParam, setPlayerParam] = useQueryState("player", "");
   const page = Math.max(1, Number.parseInt(pageParam, 10) || 1);
-  const regionAssignment = assignment === "most" ? "most" : "latest";
+  const regionAssignment = assignment === "latest" ? "latest" : "most";
 
   const isCircuit = type === "circuit";
   const fixedDecay = type === "royale";
@@ -214,8 +214,8 @@ function Sidebar(props) {
                 onChange={(event) => onAssignment(event.target.value)}
                 className="mt-1 block w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-bold text-white focus:border-blue-400 focus:outline-none"
               >
-                <option value="latest">Their latest event (official)</option>
                 <option value="most">Where they played most</option>
+                <option value="latest">Their latest event (official)</option>
               </select>
             </label>
           )}
@@ -391,7 +391,7 @@ function RankingBoard(props) {
               {customised && <Badge tone="blue">Custom selection</Badge>}
               {!decay && type !== "royale" && <Badge>No date decay</Badge>}
               {decay && type === "lan" && <Badge>LAN decay</Badge>}
-              {assignment === "most" && <Badge>Region: most played</Badge>}
+              {assignment === "latest" && <Badge>Region: latest event</Badge>}
               {data?.activeEvents?.length > 0 && <LiveUpdates updatedAt={ranking.updatedAt} />}
             </span>
             {(current || resultsThrough) && (
@@ -497,7 +497,7 @@ function HowPoints({ type, mode, decay }) {
 function BoardFacts({ data, assignment, full }) {
   if (!data) return null;
   const rows = [
-    ["Region", assignment === "latest" ? "Region of each player's latest event, like the official board" : "Region each player played most"],
+    ["Region", assignment === "latest" ? "Region of each player's latest event, like the official board. Taken from their 1v1 events when they have any, so a 2v2 partner never moves them" : "Region each player played most. Taken from their 1v1 events when they have any, so a 2v2 partner never moves them"],
     full && data.contributingProviders?.length ? ["Sources", providerNames(data.contributingProviders)] : null,
     full && data.algorithmVersion ? ["Scoring version", String(data.algorithmVersion)] : null,
     full && data.rankingCoverage ? ["Events with results", `${data.rankingCoverage.detailedEvents?.toLocaleString()} of ${data.rankingCoverage.totalEvents?.toLocaleString()}`] : null,

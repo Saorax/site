@@ -82,7 +82,7 @@ function TopPlayers() {
   const [regionParam, setRegion] = useQueryState("region", "NA");
   const region = REGION_OPTIONS.some((option) => option.value === regionParam) ? regionParam : "NA";
   const [mode, setMode] = useQueryState("mode", "1");
-  const ranking = useApi(apiUrl("/rankings", { region, gameMode: mode, regionAssignment: "latest", perPage: 10, page: 1 }));
+  const ranking = useApi(apiUrl("/rankings", { region, gameMode: mode, regionAssignment: "most", perPage: 10, page: 1 }));
   const players = ranking.data?.players ?? [];
   return (
     <Section
