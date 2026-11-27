@@ -1282,6 +1282,8 @@ function ComboPlayer({ play, onClose }) {
       secondHitTick: Number.isFinite(secondHitTick) ? secondHitTick : null,
       freeTick: Number(data.verdict?.freeTick ?? 0),
       linkStarts: parts.slice(1).map((part) => part.start),
+      partEnds: parts.map((part) => part.start + Number(part.frames[part.frames.length - 1].tick ?? 0)),
+      steps: Array.isArray(data.chain) && Array.isArray(data.verdict?.steps) ? data.verdict.steps : null,
     };
   }, [state.data]);
 
@@ -1297,8 +1299,11 @@ function ComboPlayer({ play, onClose }) {
   const svg = useMemo(() => svgWithViewBox(frame?.svg, timeline?.box), [frame, timeline?.box]);
   const verdict = state.data?.verdict;
   const chainIndex = timeline && Array.isArray(state.data?.chain) ? timeline.linkStarts.filter((value) => value <= tick).length : 0;
+  const chainStep = timeline?.steps && chainIndex < timeline.steps.length && tick >= (chainIndex === 0 ? timeline.endTick : timeline.partEnds[chainIndex] + 1) ? timeline.steps[chainIndex] : null;
   const phase = !timeline
     ? ""
+    : chainStep
+      ? transitionLabel(chainStep.transition || "link", chainStep.hold, chainStep.instant, chainStep.direction, chainStep.airJump, chainStep.backTap ? "tap" : chainStep.reverse, chainStep.dodgeWait)
     : chainIndex > 1
       ? moveLabel(state.data.chain[chainIndex - 1])
     : tick < timeline.endTick
@@ -1307,7 +1312,15 @@ function ComboPlayer({ play, onClose }) {
         ? transitionLabel(verdict?.transition && verdict.transition !== "throw" ? verdict.transition : "link", verdict?.hold, verdict?.instant, verdict?.direction, verdict?.airJump ?? holder.airJump, (verdict?.backTap ?? holder.backTap) ? "tap" : verdict?.reverse ?? holder.reverse, verdict?.dodgeWait ?? holder.dodgeWait)
         : moveLabel(combo.second);
   const stunned = timeline && tick < timeline.freeTick;
-  const markers = timeline ? [
+  const markers = timeline?.steps ? [
+    ...timeline.firstHitTicks.map((value) => [value, "bg-amber-400", "First hit"]),
+    [timeline.endTick, "bg-slate-300", "First move ends"],
+    ...timeline.steps.flatMap((step, index) => [
+      [Number(step.startTick), "bg-sky-400", `Move ${index + 2} starts`],
+      [Number(step.secondHitTick), "bg-emerald-400", `Move ${index + 2} hits`],
+      [Number(step.freeTick), "bg-rose-400", `Target can act after move ${index + 1}`],
+    ]),
+  ].filter(([value]) => Number.isFinite(value)) : timeline ? [
     ...timeline.firstHitTicks.map((value) => [value, "bg-amber-400", "First hit"]),
     [timeline.endTick, "bg-slate-300", "First move ends"],
     [timeline.startTick, "bg-sky-400", "Second move starts"],
@@ -1433,7 +1446,7 @@ function ComboPlayer({ play, onClose }) {
               )}
             </div>
             <div className="flex flex-wrap gap-3 text-[11px] font-bold text-slate-500">
-              {[["bg-amber-400", "first hit"], ["bg-slate-300", "first move ends"], ["bg-sky-400", "second move starts"], ["bg-emerald-400", "second hit"], ["bg-rose-400", "target can act"]].map(([color, text]) => (
+              {[["bg-amber-400", "first hit"], ["bg-slate-300", "first move ends"], ["bg-sky-400", timeline.steps ? "next move starts" : "second move starts"], ["bg-emerald-400", timeline.steps ? "next move hits" : "second hit"], ["bg-rose-400", timeline.steps ? "target can act after the move before" : "target can act"]].map(([color, text]) => (
                 <span key={text} className="flex items-center gap-1"><span className={classes("inline-block h-2 w-2 rounded-full", color)} />{text}</span>
               ))}
               {showBoxes && [["border-rose-400 bg-rose-400/25", "hitbox"], ["border-cyan-400 bg-cyan-400/15", "attacker hurtbox"], ["border-yellow-400 bg-yellow-400/15", "target hurtbox"]].map(([color, text]) => (
