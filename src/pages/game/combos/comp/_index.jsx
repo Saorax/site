@@ -1192,6 +1192,7 @@ function ComboPlayer({ play, onClose }) {
 
   useEffect(() => {
     let cancelled = false;
+    const setup = (holder.setups || []).find((entry) => damage >= entry.from && damage <= entry.to && (!entry.defenses || inDefenses(entry.defenses, targetDefense))) || holder;
     setState({ loading: true, error: "", data: null });
     setTick(0);
     getJson(`${host}/game/combos/render`, {
@@ -1206,14 +1207,14 @@ function ComboPlayer({ play, onClose }) {
           ...(combo.mode ? { mode: combo.mode } : {}),
           damage,
           levels: { strength: holder.strength, dexterity: holder.dexterity, speed: holder.speed },
-          ...(Number.isFinite(Number(holder.airStart)) && holder.airStart !== null && holder.airStart !== undefined ? { airStart: holder.airStart } : {}),
-          ...(holder.distance !== null && holder.distance !== undefined ? { distance: holder.distance } : {}),
-          ...(holder.heldDirection ? { heldDirection: holder.heldDirection } : {}),
-          ...(holder.airDrift === 0 || holder.airDrift === 2 ? { airDrift: holder.airDrift } : {}),
-          ...(typeof holder.jumpTick === "number" ? { approach: "jump", jumpTick: holder.jumpTick } : {}),
-          ...(holder.approach === "run" ? { approach: "run" } : {}),
-          ...(holder.momentum === "run" || holder.momentum === "dash" ? { momentum: holder.momentum, ...(holder.momentum === "dash" ? { momentumDelay: Number(holder.momentumDelay) || 0 } : {}) } : {}),
-          ...(holder.transition && !combo.chain ? { transitions: [holder.transition] } : {}),
+          ...(Number.isFinite(Number(setup.airStart)) && setup.airStart !== null && setup.airStart !== undefined ? { airStart: setup.airStart } : {}),
+          ...(setup.distance !== null && setup.distance !== undefined ? { distance: setup.distance } : {}),
+          ...(setup.heldDirection ? { heldDirection: setup.heldDirection } : {}),
+          ...(setup.airDrift === 0 || setup.airDrift === 2 ? { airDrift: setup.airDrift } : {}),
+          ...(typeof setup.jumpTick === "number" ? { approach: "jump", jumpTick: setup.jumpTick } : {}),
+          ...(setup.approach === "run" ? { approach: "run" } : {}),
+          ...(setup.momentum === "run" || setup.momentum === "dash" ? { momentum: setup.momentum, ...(setup.momentum === "dash" ? { momentumDelay: Number(setup.momentumDelay) || 0 } : {}) } : {}),
+          ...(setup.transition && !combo.chain ? { transitions: [setup.transition] } : {}),
           ...(targetHeroId && targetHeroId !== 3 ? { targetHeroId } : {}),
           ...(targetDefense ? { targetDefense } : {}),
         }),
@@ -1223,7 +1224,7 @@ function ComboPlayer({ play, onClose }) {
     return () => {
       cancelled = true;
     };
-  }, [heroId, targetHeroId, targetDefense, combo.mode, combo.first, combo.second, (combo.chain || []).join(">"), damage, holder.strength, holder.dexterity, holder.speed, holder.transition, holder.airStart, holder.airDrift, holder.jumpTick, holder.approach, holder.momentum, holder.momentumDelay, holder.distance, holder.heldDirection, attempt]);
+  }, [heroId, targetHeroId, targetDefense, combo.mode, combo.first, combo.second, (combo.chain || []).join(">"), damage, holder.strength, holder.dexterity, holder.speed, holder.transition, holder.airStart, holder.airDrift, holder.jumpTick, holder.approach, holder.momentum, holder.momentumDelay, holder.distance, holder.heldDirection, holder.setups, attempt]);
 
   const timeline = useMemo(() => {
     const data = state.data;
